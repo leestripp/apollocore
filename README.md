@@ -1,3 +1,5 @@
+![ApolloCore banner image](resources/banner.png)
+
 # ApolloCore
 
 > **A state-of-the-art, production-ready C++23 RAG (Retrieval-Augmented Generation) knowledge base framework with local AI inference.**
@@ -58,7 +60,7 @@ mkdir -p models
 cd models
 
 # Download embedding model (~81MB)
-curl -L -O "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5-Q4_K_M.gguf"
+curl -L -O "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
 
 # (Optional) Download LLM for entity extraction (~469MB)
 curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
@@ -82,7 +84,7 @@ int main() {
     ApolloCoreWithPersistence kb;
     
     // Load embedding model
-    kb.load_embedding_model("models/nomic-embed-text-v1.5-Q4_K_M.gguf");
+    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
     
     // Create a knowledge base
     kb.create("data/my_kb", "My Knowledge Base");
@@ -304,7 +306,7 @@ using namespace apollocore_v2;
 
 int main() {
     ApolloCoreWithPersistence kb;
-    kb.load_embedding_model("models/nomic-embed-text-v1.5-Q4_K_M.gguf");
+    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
     
     kb.create("data/research", "Research Papers");
     

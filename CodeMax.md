@@ -200,7 +200,7 @@ public:
 
 | Model | Purpose | Size | Source |
 |-------|---------|------|--------|
-| `nomic-embed-text-v1.5-Q4_K_M.gguf` | Embeddings | 81MB | ✅ Already downloaded |
+| `nomic-embed-text-v1.5.Q4_K_M.gguf` | Embeddings | 81MB | ✅ Already downloaded |
 | `llama-3.2-3B-GGUF` | Entity/Relation extraction | ~2GB | 📥 To download |
 | `bert-base-ner` (or ONNX) | Fast NER | ~400MB | 📥 Optional |
 
@@ -302,7 +302,7 @@ After implementation:
 apollocore_v2::ApolloCore kb;
 
 // Load the model
-kb.load_embedding_model("models/nomic-embed-text-v1.5-Q4_K_M.gguf");
+kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
 
 // Now you get REAL embeddings:
 // - Dimensions: 768
@@ -399,7 +399,7 @@ ApolloCore/
 │   └── apollocore_v2.hpp        # v2 API (current)
 ├── models/                      
 │   ├── README.md                # Download instructions
-│   └── nomic-embed-text-v1.5-Q4_K_M.gguf  # Downloaded (81MB)
+│   └── nomic-embed-text-v1.5.Q4_K_M.gguf  # Downloaded (81MB)
 ├── src/
 │   ├── apollocore.cpp           # Empty (impl in header)
 │   └── embedding_model.cpp      # llama.cpp wrapper + BM25 + Hybrid
@@ -618,7 +618,7 @@ auto result = extractor.extract("Albert Einstein worked at Princeton...");
 ### Models
 | Model | Size | Purpose |
 |-------|------|---------|
-| nomic-embed-text-v1.5-Q4_K_M.gguf | 81MB | Text embeddings |
+| nomic-embed-text-v1.5.Q4_K_M.gguf | 81MB | Text embeddings |
 | qwen2.5-0.5b-instruct-q4_k_m.gguf | 469MB | Entity extraction |
 
 ---
@@ -792,7 +792,7 @@ int main() {
     using namespace apollocore_v2;
     
     ApolloCore kb;
-    kb.load_embedding_model("models/nomic-embed-text-v1.5-Q4_K_M.gguf");
+    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
     
     std::string kb_path = "data/my_knowledge_base";
     

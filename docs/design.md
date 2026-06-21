@@ -626,8 +626,8 @@ private:
 mkdir -p models
 
 # Nomic Embed Text v1.5 (recommended)
-wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5-Q4_K_M.gguf \
-    -O models/nomic-embed-text-v1.5-Q4_K_M.gguf
+wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf \
+    -O models/nomic-embed-text-v1.5.Q4_K_M.gguf
 
 # Alternative: Full precision
 wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.gguf \

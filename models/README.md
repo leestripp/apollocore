@@ -1,77 +1,73 @@
-# ApolloCore - Embedding Models
+# ApolloCore - Models
 
-This directory stores GGUF embedding models for ApolloCore v2.
+This directory stores GGUF models for ApolloCore. Models are **not** committed to git — they are downloaded automatically by CMake, or manually if preferred.
 
-## Recommended Models
+## Required Models
 
-### Nomic Embed Text v1.5 (RECOMMENDED)
-- **Context**: 8,192 tokens
-- **Dimensions**: 768
-- **Quality**: Excellent, rivals OpenAI ada-002
-- **Quantized (Q4_K_M)**: ~84MB, great quality/size ratio
-- **Full**: ~274MB
+| Model | Purpose | Size | Dimensions |
+|-------|---------|------|------------|
+| `nomic-embed-text-v1.5.Q4_K_M.gguf` | Text embeddings | ~81 MB | 768 |
+| `qwen2.5-0.5b-instruct-q4_k_m.gguf` | Entity extraction (LLM) | ~469 MB | — |
 
-**Download:**
+## Automatic Download (Recommended)
+
+CMake will download the models when you configure the build:
+
 ```bash
-# Quantized (recommended for most users)
-wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5-Q4_K_M.gguf \
-    -O nomic-embed-text-v1.5-Q4_K_M.gguf
-
-# Full precision
-wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.gguf \
-    -O nomic-embed-text-v1.5.gguf
+cd /path/to/ApolloCore
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
-### All-MiniLM-L6-v2
-- **Context**: 256 tokens
-- **Dimensions**: 384
-- **Size**: ~90MB (GGUF)
-- **Speed**: Very fast
-- **Best for**: Short texts, embeddings without GPU
+The download happens **once** — subsequent builds skip files that already exist.
 
-**Download:**
+### Skip the download
+
+If you want to manage models yourself:
+
 ```bash
-wget https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/ggml-model-q4_0.gguf \
-    -O all-MiniLM-L6-v2.gguf
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DAPOLLO_SKIP_MODEL_DOWNLOAD=ON
 ```
 
-### GTE-Qwen2-1.5B-Instruct
-- **Context**: 8,192 tokens
-- **Dimensions**: 1536
-- **Quality**: High quality
-- **Size**: ~3GB
-- **Best for**: Maximum quality
+## Manual Download
 
-**Download:**
+If the automatic download fails (firewall, no internet, etc.) you can fetch the models manually:
+
 ```bash
-wget https://huggingface.co/qqnlp/gte-Qwen2-1.5B-instruct-GGUF/resolve/main/ggml-model-q4_k_m.gguf \
-    -O gte-Qwen2-1.5B-instruct.gguf
+cd models/
+
+# Embedding model (~81 MB)
+curl -L -O "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
+
+# LLM for entity extraction (~469 MB)
+curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 ```
 
-## Loading a Model
+## Using the Models in Code
 
-In your code:
 ```cpp
-#include "apollocore/apollocore_v2.hpp"
+#include <apollocore/apollo_persistence.hpp>
 
-apollocore_v2::ApolloCore kb;
+apollocore_v2::ApolloCoreWithPersistence kb;
 
-// Load the model
-kb.load_embedding_model("models/nomic-embed-text-v1.5-Q4_K_M.gguf");
+// Load the embedding model
+kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
 
-// Now all embeddings use the real model
-auto chunks = kb.add_document("Your text here", node);
-auto results = kb.query("Your query");
+// (Optional) Configure entity extraction with the LLM
+// kb.set_llm_model("models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
 ```
 
-## Model Sources
+## Why these models?
+
+- **Nomic Embed Text v1.5** — Best open-source embedding model at this size. Rivals OpenAI's `text-embedding-ada-002` on MTEB benchmark.
+- **Qwen2.5 0.5B Instruct** — Small but capable instruction-tuned LLM. Fast enough for entity extraction on CPU, good enough for JSON output.
+
+## Sources
 
 - [Nomic AI on HuggingFace](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF)
-- [Sentence Transformers on HuggingFace](https://huggingface.co/sentence-transformers)
-- [GTE on HuggingFace](https://huggingface.co/qqnlp/gte-Qwen2-1.5B-instruct-GGUF)
+- [Qwen2.5 on HuggingFace](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)
 
 ## Requirements
 
-- llama.cpp compiled with embedding support
-- GGUF format model file
-- Vulkan SDK for GPU acceleration (optional)
+- llama.cpp compiled with embedding + LLM support
+- GGUF format model files
+- ~550 MB disk space for both models
