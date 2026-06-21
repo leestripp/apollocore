@@ -1,0 +1,98 @@
+cmake_minimum_required(VERSION 3.20)
+project(ApolloCore VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Include FetchContent module
+include(FetchContent)
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+
+# nlohmann/json for serialization
+FetchContent_Declare(nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# llama.cpp for embeddings and GPU acceleration
+# Using Vulkan for AMD GPU support
+FetchContent_Declare(llama_cpp
+    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp.git
+    GIT_TAG master
+    CMAKE_ARGS 
+        -DLLAMA_VULKAN=ON
+        -DLLAMA_BUILD_EXAMPLES=OFF
+        -DLLAMA_BUILD_TESTS=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+)
+
+# Download and build llama.cpp
+FetchContent_MakeAvailable(llama_cpp)
+
+# Vulkan detection (for AMD GPU)
+find_package(Vulkan QUIET)
+if(Vulkan_FOUND)
+    message(STATUS "Vulkan found: ${Vulkan_VERSION}")
+    message(STATUS "  SDK: ${Vulkan_INCLUDE_DIR}")
+else()
+    message(STATUS "Vulkan not found - will use CPU fallback")
+endif()
+
+# SQLite for persistence
+find_package(SQLite3 REQUIRED)
+message(STATUS "SQLite3 found: ${SQLite3_VERSION}")
+
+# ============================================================================
+# Library
+# ============================================================================
+
+add_library(apollo_core STATIC)
+target_sources(apollo_core PRIVATE src/apollocore.cpp src/embedding_model.cpp src/entity_extractor.cpp src/cross_encoder.cpp src/hyde.cpp src/contextual_retrieval.cpp src/persistence.cpp src/fbin.cpp src/kb_persistence.cpp src/apollo_persistence.cpp)
+target_include_directories(apollo_core 
+    PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${llama_cpp_SOURCE_DIR}/include
+)
+target_link_libraries(apollo_core 
+    PUBLIC 
+        nlohmann_json::nlohmann_json
+        llama
+        SQLite::SQLite3
+)
+target_compile_features(apollo_core PUBLIC cxx_std_23)
+
+# Platform-specific linking
+if(Vulkan_FOUND)
+    target_link_libraries(apollo_core PRIVATE Vulkan::Vulkan)
+endif()
+
+# Install
+install(TARGETS apollo_core ARCHIVE DESTINATION lib)
+install(DIRECTORY include/apollocore DESTINATION include)
+
+# ============================================================================
+# Tests
+# ============================================================================
+enable_testing()
+add_subdirectory(tests)
+
+# ============================================================================
+# Examples
+# ============================================================================
+add_subdirectory(examples)
+
+# ============================================================================
+# Model Download
+# ============================================================================
+add_subdirectory(models)

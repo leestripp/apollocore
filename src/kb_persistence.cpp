@@ -1,0 +1,493 @@
+/**
+ * ApolloCore - Knowledge Base Persistence Implementation
+ */
+
+#include "apollocore/kb_persistence.hpp"
+#include "apollocore/persistence.hpp"
+#include "apollocore/fbin.hpp"
+#include <sqlite3.h>
+#include <filesystem>
+#include <iostream>
+#include <fstream>
+#include <sys/stat.h>
+
+namespace fs = std::filesystem;
+
+namespace apollocore_v2 {
+
+// ============================================================================
+// Constructor / Destructor
+// ============================================================================
+
+KnowledgeBasePersistence::KnowledgeBasePersistence() = default;
+
+KnowledgeBasePersistence::~KnowledgeBasePersistence() {
+    close();
+}
+
+// ============================================================================
+// Path Helpers
+// ============================================================================
+
+std::string KnowledgeBasePersistence::get_db_path() const {
+    return path_ + "/apollo.db";
+}
+
+std::string KnowledgeBasePersistence::get_embeddings_dir() const {
+    return path_ + "/embeddings";
+}
+
+std::string KnowledgeBasePersistence::get_chunk_embedding_path(
+    const std::string& chunk_id) const {
+    return get_embeddings_dir() + "/" + chunk_id + ".fbin";
+}
+
+bool KnowledgeBasePersistence::create_directory_structure() {
+    try {
+        fs::create_directories(path_);
+        fs::create_directories(get_embeddings_dir());
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "[KB Persistence] Failed to create directories: " 
+                  << e.what() << "\n";
+        return false;
+    }
+}
+
+// ============================================================================
+// Existence Check
+// ============================================================================
+
+bool KnowledgeBasePersistence::exists(const std::string& path) {
+    if (!fs::exists(path)) return false;
+    if (!fs::is_directory(path)) return false;
+    return fs::exists(path + "/apollo.db");
+}
+
+// ============================================================================
+// Create
+// ============================================================================
+
+bool KnowledgeBasePersistence::create(const std::string& path, 
+                                      const std::string& name) {
+    if (exists(path)) {
+        std::cerr << "[KB Persistence] Already exists: " << path << "\n";
+        return false;
+    }
+    
+    path_ = path;
+    
+    if (!create_directory_structure()) {
+        return false;
+    }
+    
+    if (!db_.open(get_db_path())) {
+        return false;
+    }
+    
+    if (!initialize_schema(db_)) {
+        db_.close();
+        return false;
+    }
+    
+    // Insert config
+    db_.execute(
+        "INSERT INTO config (name, embedding_dim) VALUES (?, ?);",
+        {name, "768"}
+    );
+    
+    std::cout << "[KB Persistence] Created: " << path << " (" << name << ")\n";
+    return true;
+}
+
+// ============================================================================
+// Open
+// ============================================================================
+
+bool KnowledgeBasePersistence::open(const std::string& path) {
+    if (!exists(path)) {
+        std::cerr << "[KB Persistence] Does not exist: " << path << "\n";
+        return false;
+    }
+    
+    path_ = path;
+    
+    if (!db_.open(get_db_path())) {
+        return false;
+    }
+    
+    if (!initialize_schema(db_)) {
+        db_.close();
+        return false;
+    }
+    
+    std::cout << "[KB Persistence] Opened: " << path << "\n";
+    return true;
+}
+
+// ============================================================================
+// Save
+// ============================================================================
+
+bool KnowledgeBasePersistence::save() {
+    if (!db_.is_open()) return false;
+    return true;  // Auto-commit is on; data is saved on insert
+}
+
+// ============================================================================
+// Close
+// ============================================================================
+
+void KnowledgeBasePersistence::close() {
+    if (in_transaction_) {
+        db_.rollback_transaction();
+        in_transaction_ = false;
+    }
+    db_.close();
+}
+
+// ============================================================================
+// Clear / Destroy
+// ============================================================================
+
+void KnowledgeBasePersistence::clear() {
+    if (db_.is_open()) {
+        // Delete from all tables
+        db_.execute("DELETE FROM relationships;");
+        db_.execute("DELETE FROM entities;");
+        db_.execute("DELETE FROM chunks;");
+        db_.execute("DELETE FROM nodes;");
+    }
+    
+    // Delete embedding files
+    if (fs::exists(get_embeddings_dir())) {
+        for (const auto& entry : fs::directory_iterator(get_embeddings_dir())) {
+            fs::remove(entry.path());
+        }
+    }
+}
+
+void KnowledgeBasePersistence::clear_disk() {
+    // Remove embedding files
+    if (fs::exists(get_embeddings_dir())) {
+        for (const auto& entry : fs::directory_iterator(get_embeddings_dir())) {
+            fs::remove(entry.path());
+        }
+    }
+}
+
+bool KnowledgeBasePersistence::destroy() {
+    close();
+    
+    if (fs::exists(path_)) {
+        try {
+            fs::remove_all(path_);
+            std::cout << "[KB Persistence] Destroyed: " << path_ << "\n";
+            path_.clear();
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "[KB Persistence] Failed to destroy: " << e.what() << "\n";
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// ============================================================================
+// Config
+// ============================================================================
+
+std::string KnowledgeBasePersistence::get_name() {
+    if (!db_.is_open()) return "";
+    
+    sqlite3_stmt* stmt = db_.prepare("SELECT name FROM config LIMIT 1;");
+    if (!stmt) return "";
+    
+    std::string name;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        name = db_.column_string(stmt, 0);
+    }
+    db_.finalize(stmt);
+    
+    return name;
+}
+
+bool KnowledgeBasePersistence::load_config() {
+    if (!db_.is_open()) return false;
+    
+    sqlite3_stmt* stmt = db_.prepare("SELECT COUNT(*) FROM config;");
+    if (!stmt) return false;
+    
+    bool ok = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        ok = db_.column_int(stmt, 0) > 0;
+    }
+    db_.finalize(stmt);
+    
+    return ok;
+}
+
+// ============================================================================
+// Data Operations
+// ============================================================================
+
+bool KnowledgeBasePersistence::save_node(
+    const std::string& id,
+    const std::string& title,
+    const std::string& content,
+    const std::string& parent_id,
+    const std::string& document_type,
+    const std::string& metadata_json)
+{
+    if (!db_.is_open()) return false;
+    
+    return db_.execute(
+        "INSERT OR REPLACE INTO nodes "
+        "(id, title, content, parent_id, document_type, metadata, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?);",
+        {id, title, content, parent_id, document_type, metadata_json, current_timestamp()}
+    );
+}
+
+bool KnowledgeBasePersistence::save_chunk(
+    const std::string& id,
+    const std::string& node_id,
+    const std::string& content,
+    size_t position,
+    const std::vector<float>& embedding)
+{
+    if (!db_.is_open()) return false;
+    
+    // Save embedding to .fbin file
+    std::string emb_path = get_chunk_embedding_path(id);
+    if (!save_fbin(emb_path, embedding)) {
+        std::cerr << "[KB Persistence] Failed to save embedding for: " << id << "\n";
+        return false;
+    }
+    
+    // Save chunk metadata to SQLite
+    return db_.execute(
+        "INSERT OR REPLACE INTO chunks "
+        "(id, node_id, content, position, embedding_file) "
+        "VALUES (?, ?, ?, ?, ?);",
+        {id, node_id, content, std::to_string(position), emb_path}
+    );
+}
+
+bool KnowledgeBasePersistence::save_entity(
+    const std::string& id,
+    const std::string& chunk_id,
+    const std::string& name,
+    const std::string& type,
+    const std::string& description,
+    float confidence)
+{
+    if (!db_.is_open()) return false;
+    
+    return db_.execute(
+        "INSERT OR REPLACE INTO entities "
+        "(id, chunk_id, name, type, description, confidence) "
+        "VALUES (?, ?, ?, ?, ?, ?);",
+        {id, chunk_id, name, type, description, std::to_string(confidence)}
+    );
+}
+
+bool KnowledgeBasePersistence::save_relationship(
+    const std::string& id,
+    const std::string& source_id,
+    const std::string& target_id,
+    const std::string& type,
+    const std::string& description,
+    float confidence)
+{
+    if (!db_.is_open()) return false;
+    
+    return db_.execute(
+        "INSERT OR REPLACE INTO relationships "
+        "(id, source_id, target_id, type, description, confidence) "
+        "VALUES (?, ?, ?, ?, ?, ?);",
+        {id, source_id, target_id, type, description, std::to_string(confidence)}
+    );
+}
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+bool KnowledgeBasePersistence::begin_save() {
+    if (!db_.is_open()) return false;
+    if (in_transaction_) return true;
+    
+    if (db_.begin_transaction()) {
+        in_transaction_ = true;
+        return true;
+    }
+    return false;
+}
+
+bool KnowledgeBasePersistence::end_save() {
+    if (!db_.is_open()) return false;
+    if (!in_transaction_) return true;
+    
+    bool ok = db_.commit_transaction();
+    in_transaction_ = false;
+    return ok;
+}
+
+// ============================================================================
+// Load Operations
+// ============================================================================
+
+std::vector<KnowledgeBasePersistence::LoadedNode> 
+KnowledgeBasePersistence::load_all_nodes() {
+    std::vector<LoadedNode> result;
+    if (!db_.is_open()) return result;
+    
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, title, content, parent_id, document_type, metadata "
+        "FROM nodes ORDER BY id;"
+    );
+    if (!stmt) return result;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedNode n;
+        n.id = db_.column_string(stmt, 0);
+        n.title = db_.column_string(stmt, 1);
+        n.content = db_.column_string(stmt, 2);
+        n.parent_id = db_.column_string(stmt, 3);
+        n.document_type = db_.column_string(stmt, 4);
+        n.metadata = db_.column_string(stmt, 5);
+        result.push_back(n);
+    }
+    db_.finalize(stmt);
+    
+    return result;
+}
+
+std::vector<KnowledgeBasePersistence::LoadedChunk>
+KnowledgeBasePersistence::load_all_chunks() {
+    std::vector<LoadedChunk> result;
+    if (!db_.is_open()) return result;
+    
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, node_id, content, position, embedding_file "
+        "FROM chunks ORDER BY node_id, position;"
+    );
+    if (!stmt) return result;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedChunk c;
+        c.id = db_.column_string(stmt, 0);
+        c.node_id = db_.column_string(stmt, 1);
+        c.content = db_.column_string(stmt, 2);
+        c.position = static_cast<size_t>(db_.column_int(stmt, 3));
+        
+        // Load embedding
+        std::string emb_path = db_.column_string(stmt, 4);
+        if (!emb_path.empty() && fs::exists(emb_path)) {
+            c.embedding = load_fbin(emb_path);
+        }
+        
+        result.push_back(c);
+    }
+    db_.finalize(stmt);
+    
+    return result;
+}
+
+std::vector<KnowledgeBasePersistence::LoadedEntity>
+KnowledgeBasePersistence::load_all_entities() {
+    std::vector<LoadedEntity> result;
+    if (!db_.is_open()) return result;
+    
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, chunk_id, name, type, description, confidence "
+        "FROM entities ORDER BY id;"
+    );
+    if (!stmt) return result;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedEntity e;
+        e.id = db_.column_string(stmt, 0);
+        e.chunk_id = db_.column_string(stmt, 1);
+        e.name = db_.column_string(stmt, 2);
+        e.type = db_.column_string(stmt, 3);
+        e.description = db_.column_string(stmt, 4);
+        e.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        result.push_back(e);
+    }
+    db_.finalize(stmt);
+    
+    return result;
+}
+
+std::vector<KnowledgeBasePersistence::LoadedRelationship>
+KnowledgeBasePersistence::load_all_relationships() {
+    std::vector<LoadedRelationship> result;
+    if (!db_.is_open()) return result;
+    
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, source_id, target_id, type, description, confidence "
+        "FROM relationships ORDER BY id;"
+    );
+    if (!stmt) return result;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedRelationship r;
+        r.id = db_.column_string(stmt, 0);
+        r.source_id = db_.column_string(stmt, 1);
+        r.target_id = db_.column_string(stmt, 2);
+        r.type = db_.column_string(stmt, 3);
+        r.description = db_.column_string(stmt, 4);
+        r.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        result.push_back(r);
+    }
+    db_.finalize(stmt);
+    
+    return result;
+}
+
+std::vector<float> KnowledgeBasePersistence::load_chunk_embedding(
+    const std::string& chunk_id) {
+    return load_fbin(get_chunk_embedding_path(chunk_id));
+}
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
+KnowledgeBasePersistence::DiskStats 
+KnowledgeBasePersistence::get_disk_stats() {
+    DiskStats stats;
+    if (!db_.is_open()) return stats;
+    
+    auto count_query = [&](const std::string& sql) -> size_t {
+        sqlite3_stmt* stmt = db_.prepare(sql);
+        if (!stmt) return 0;
+        size_t count = 0;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = static_cast<size_t>(db_.column_int(stmt, 0));
+        }
+        db_.finalize(stmt);
+        return count;
+    };
+    
+    stats.total_nodes = count_query("SELECT COUNT(*) FROM nodes;");
+    stats.total_chunks = count_query("SELECT COUNT(*) FROM chunks;");
+    stats.total_entities = count_query("SELECT COUNT(*) FROM entities;");
+    stats.total_relationships = count_query("SELECT COUNT(*) FROM relationships;");
+    
+    // Sum embedding file sizes
+    if (fs::exists(get_embeddings_dir())) {
+        for (const auto& entry : fs::directory_iterator(get_embeddings_dir())) {
+            if (fs::is_regular_file(entry.path())) {
+                stats.embedding_files_size += fs::file_size(entry.path());
+            }
+        }
+    }
+    
+    return stats;
+}
+
+} // namespace apollocore_v2
