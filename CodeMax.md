@@ -2,7 +2,9 @@
 
 > **IMPORTANT**: See [docs/design.md](docs/design.md) for comprehensive architecture and implementation plan.
 
-## ✅ Implementation Status: PRODUCTION READY
+## ⚠️ Implementation Status: CORE COMPLETE, INTEGRATION GAPS REMAIN
+
+> **Honest assessment**: Core library is complete. The `ApolloCore` class works for embedding + semantic search + persistence. However, **entity extraction is NOT wired into the main API** — it's only available as a separate module that requires manual integration. See **[Phase G1 Plan](#phase-g1-wire-entity-extraction-into-apollocore)** below.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -292,6 +294,175 @@ After implementation:
 
 ---
 
+## Phase G1: Wire Entity Extraction into ApolloCore
+
+### Problem Statement
+
+The `EntityExtractor` module was built and tested in isolation (Phase 6/7), but was **never wired into the main `ApolloCore` API**. As a result:
+
+- `kb.add_document("text...")` embeds and stores text, but never extracts entities
+- After adding 5 documents, the demo shows: `Entities: 0, Relationships: 0`
+- The SQLite `entities` and `relationships` tables exist but are always empty
+- The Qwen2.5 LLM model is downloaded but never used by `ApolloCore`
+
+This was masked by marking Phase 6 as "✅ COMPLETE" — but the framework existed without integration.
+
+### Root Cause
+
+The original `ApolloCore` class (`apollocore_v2.hpp`) was designed before `EntityExtractor` was built. When entity extraction was added later as a separate module, it was never connected back to the main `add_document()` flow.
+
+### Goal
+
+After Phase G1:
+```cpp
+apollocore_v2::ApolloCore kb;
+kb.load_embedding_model("models/embeddings.gguf");
+kb.load_llm_model("models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
+kb.create("data/wiki", "My KB");
+kb.add_document("Einstein worked at Princeton...");
+// ^ This call should now ALSO extract entities & relationships
+
+auto stats = kb.get_stats();
+// stats.entity_count > 0  ✓
+// stats.relationship_count > 0  ✓
+```
+
+### Design Decisions
+
+**Decision 1: Explicit vs automatic extraction**
+
+- **Choice: Explicit method `extract_entities()`**
+- Reasoning: Entity extraction is slow (LLM call per chunk). Users may want to batch it, run it on a schedule, or skip it entirely for large corpora.
+- API:
+  ```cpp
+  kb.add_document(text);          // fast: embed + store
+  kb.extract_entities();         // slow: LLM per chunk, saves to DB
+  ```
+
+**Decision 2: How to pass LLM model**
+
+- Add `load_llm_model(path)` method to `ApolloCore`
+- Internally creates an `EntityExtractor` instance
+- `extract_entities()` uses this instance
+
+**Decision 3: Batch vs per-chunk LLM calls**
+
+- **Choice: Per-chunk for now** (simple, correct)
+- Future: Could batch multiple chunks in one LLM prompt for efficiency
+
+**Decision 4: Deduplication**
+
+- When the same entity (e.g. "Einstein") appears in multiple chunks, create one entity per chunk OR deduplicate globally?
+- **Choice: Per-chunk entities (simpler)**, with deduplication deferred to a future phase
+- Each entity gets a unique ID like `entity_{chunk_id}_{n}`
+
+### Implementation Tasks
+
+| ID | Task | Priority | Estimate |
+|----|------|----------|----------|
+| G1.1 | Add `load_llm_model(path)` to `ApolloCore` | 🔴 Critical | 15 min |
+| G1.2 | Add internal `EntityExtractor` member to `ApolloCore` | 🔴 Critical | 10 min |
+| G1.3 | Add `extract_entities()` method that iterates all chunks | 🔴 Critical | 30 min |
+| G1.4 | Wire `EntityExtractor` results to `KnowledgeBasePersistence::save_entity()` / `save_relationship()` | 🔴 Critical | 20 min |
+| G1.5 | Track which chunks have been entity-extracted (avoid re-extraction) | 🟡 Important | 20 min |
+| G1.6 | Add error handling (LLM may fail on individual chunks) | 🟡 Important | 15 min |
+| G1.7 | Update `full_demo.cpp` to call `extract_entities()` and show entity counts | 🟡 Important | 15 min |
+| G1.8 | Add `stats.entity_count` and `stats.relationship_count` to be non-zero in demo | 🟡 Important | 10 min |
+| G1.9 | Add unit tests for the full entity-extraction flow | 🟢 Nice | 30 min |
+| G1.10 | Add config option `extract_on_add` (auto-extract when adding) | 🟢 Nice | 20 min |
+
+**Total estimate**: ~3 hours
+
+### API Changes
+
+**New methods on `ApolloCore`:**
+
+```cpp
+class ApolloCore {
+public:
+    // Load the LLM model for entity extraction
+    bool load_llm_model(const std::string& path, bool use_gpu = false);
+    
+    // Check if LLM is loaded
+    bool is_llm_loaded() const;
+    
+    // Extract entities from all chunks (uses LLM)
+    // Returns: number of entities extracted
+    size_t extract_entities(
+        float min_confidence = 0.5f,
+        bool skip_already_extracted = true
+    );
+    
+    // Extract from a single chunk by ID
+    size_t extract_entities_for_chunk(const std::string& chunk_id);
+    
+    // Get all entities (loaded from disk)
+    std::vector<Entity> get_entities(size_t limit = 0);
+    
+    // Get entities for a chunk
+    std::vector<Entity> get_entities_for_chunk(const std::string& chunk_id);
+    
+    // Get all relationships
+    std::vector<Relationship> get_relationships(size_t limit = 0);
+};
+```
+
+**New stats fields:**
+
+```cpp
+struct Stats {
+    // ... existing fields ...
+    size_t chunks_with_entities = 0;  // How many chunks have been extracted
+};
+```
+
+### Updated Demo Flow
+
+```
+Step 1: Load embedding model
+Step 2: Load LLM model (NEW)
+Step 3: Create KB
+Step 4: Add documents (embed + store)
+Step 5: Extract entities from all chunks (NEW — uses LLM)
+Step 6: Query (semantic search)
+Step 7: Show entity/relationship counts (NON-ZERO!)
+Step 8: Demonstrate persistence
+```
+
+### Acceptance Criteria
+
+Phase G1 is **DONE** when:
+
+1. ✅ Demo shows `Entities: > 0, Relationships: > 0` after running
+2. ✅ `extract_entities()` extracts entities from all chunks
+3. ✅ Entities persist across program restarts
+4. ✅ Entities can be retrieved via `get_entities()`
+5. ✅ Relationships can be retrieved via `get_relationships()`
+6. ✅ All existing tests still pass
+7. ✅ New unit tests pass (`test_entity_extraction_flow`)
+8. ✅ Build is clean (no warnings)
+9. ✅ Commit message acknowledges the gap was real
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| LLM is slow → demo takes minutes | Show progress per chunk; allow batch in future |
+| LLM may hallucinate JSON | Existing `EntityExtractor` already handles this; test with bad output |
+| Existing tests break | Add entity extraction as opt-in, don't change `add_document()` |
+| Memory: keeping LLM loaded uses RAM | Document the RAM cost; allow unload |
+
+### Timeline
+
+| Step | Time |
+|------|------|
+| G1.1–G1.4 (core wiring) | ~75 min |
+| G1.5–G1.8 (demo + tests) | ~60 min |
+| G1.9–G1.10 (polish) | ~50 min |
+| **Total** | **~3 hours** |
+
+---
+
 ## What's Working Now
 
 ### Real Embeddings with Nomic Embed Text v1.5
@@ -463,8 +634,9 @@ All tests completed successfully!
 | 3 | ✅ Complete | Hybrid Search (Vector + BM25 + RRF) |
 | 4 | ✅ Complete | Smart Chunking |
 | 5 | ✅ Complete | KnowledgeGraph infrastructure |
-| 6 | ✅ **COMPLETE** | Entity Extraction Framework |
+| 6 | ⚠️ **Framework only** | Entity Extraction Framework (NOT wired into ApolloCore) |
 | 7 | ✅ **COMPLETE** | LLM Backend Integration (Qwen2.5) |
+| **G1** | 📋 **PLANNED** | **Wire entity extraction into ApolloCore** (see plan below) |
 | 8 | ✅ **COMPLETE** | Cross-Encoder Reranking |
 | 9 | ✅ **COMPLETE** | HyDE Query Enhancement |
 | 10 | ✅ **COMPLETE** | Contextual Retrieval |
