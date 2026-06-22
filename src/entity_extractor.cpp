@@ -144,9 +144,15 @@ std::string LlamaCppBackend::generate(const std::string& prompt) {
             break;
         }
         
-        // Check for end of JSON (simple heuristic)
-        if (response.find("}\n") != std::string::npos || 
-            response.find("}]") != std::string::npos) {
+        // Check for end of FULL JSON (not just entities array)
+        // Look for "}}}" which would be: end of array + end of object
+        // (e.g., "...}]}") - this means both entities AND relationships are done
+        if (response.find("}]}") != std::string::npos) {
+            break;
+        }
+        // Also stop on "}\n" if we have a complete-looking JSON
+        if (response.find("}\n") != std::string::npos && 
+            response.find("\"relationships\"") != std::string::npos) {
             break;
         }
         

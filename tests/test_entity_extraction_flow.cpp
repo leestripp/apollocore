@@ -27,7 +27,7 @@ using namespace apollocore_v2;
 
 const std::string TEST_KB_PATH = "/tmp/apollo_g1_test";
 const std::string MODEL_PATH = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
-const std::string LLM_MODEL_PATH = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const std::string LLM_MODEL_PATH = "models/qwen2.5-3b-instruct-q4_k_m.gguf";
 
 void cleanup() {
     if (std::filesystem::exists(TEST_KB_PATH)) {

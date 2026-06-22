@@ -48,7 +48,7 @@ int main() {
 
     const std::string KB_PATH = "data/demo_kb";
     const std::string EMBED_MODEL = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
-    const std::string LLM_MODEL   = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+    const std::string LLM_MODEL   = "models/qwen2.5-3b-instruct-q4_k_m.gguf";
 
     // Clean up any previous run
     if (ApolloCore::kb_exists(KB_PATH)) {
