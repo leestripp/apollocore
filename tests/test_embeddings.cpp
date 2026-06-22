@@ -11,7 +11,7 @@ int main() {
     std::cout << "ApolloCore - Real Embedding Test with Nomic\n";
     std::cout << "=============================================\n\n";
     
-    ApolloCore kb;
+    ApolloEngine kb;
     
     // Load the embedding model
     const std::string model_path = "models/nomic-embed-text-v1.5-Q4_K_M.gguf";

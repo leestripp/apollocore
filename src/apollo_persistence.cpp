@@ -48,6 +48,12 @@ public:
             return false;
         }
         
+        // CRITICAL: Enable embeddings extraction
+        llama_set_embeddings(ctx_, true);
+        
+        // Cache encoder flag and pooling type for embed()
+        has_encoder_ = llama_model_has_encoder(model_);
+        
         return true;
     }
     
@@ -76,14 +82,51 @@ public:
         if (n_tokens <= 0) return result;
         tokens.resize(n_tokens);
         
+        // Use proper batch setup with logits enabled for all tokens
+        llama_batch batch = llama_batch_init((int32_t)n_tokens, 0, 1);
         for (int i = 0; i < n_tokens; i++) {
-            llama_batch batch = llama_batch_get_one(&tokens[i], 1);
-            if (llama_decode(ctx_, batch) != 0) {
-                return result;
+            batch.token[i] = tokens[i];
+            batch.pos[i] = i;
+            batch.n_seq_id[i] = 1;
+            batch.seq_id[i][0] = 0;
+            batch.logits[i] = 1;  // Required to get embeddings
+        }
+        batch.n_tokens = n_tokens;
+        
+        int rc;
+        // Use cached encoder flag. Also treat pooled models as encoders.
+        bool is_encoder = has_encoder_ || 
+                         (llama_pooling_type(ctx_) != LLAMA_POOLING_TYPE_NONE);
+        if (is_encoder) {
+            // Encoder model (nomic-bert) - use llama_encode
+            rc = llama_encode(ctx_, batch);
+        } else {
+            // Decoder model - use llama_decode
+            rc = llama_decode(ctx_, batch);
+        }
+        llama_batch_free(batch);
+        
+        if (rc != 0) {
+            std::cerr << "[Embedder] inference failed (rc=" << rc << ")\n";
+            return result;
+        }
+        
+        // For pooled models (nomic-bert), use embeddings_seq
+        // For non-pooled, use embeddings
+        const float* emb = nullptr;
+        auto pool = llama_pooling_type(ctx_);
+        if (pool != LLAMA_POOLING_TYPE_NONE) {
+            emb = llama_get_embeddings_seq(ctx_, 0);
+        } else {
+            emb = llama_get_embeddings(ctx_);
+        }
+        
+        if (emb) {
+            for (int i = 0; i < dimensions(); i++) {
+                result[i] = emb[i];
             }
         }
         
-        const float* emb = llama_get_embeddings(ctx_);
         if (emb) {
             for (int i = 0; i < dimensions(); i++) {
                 result[i] = emb[i];
@@ -104,6 +147,7 @@ public:
 private:
     llama_model* model_ = nullptr;
     llama_context* ctx_ = nullptr;
+    bool has_encoder_ = false;
 };
 
 // Alias for the header's forward-declared class
@@ -113,11 +157,11 @@ private:
 // Constructor / Destructor
 // ============================================================================
 
-ApolloCoreWithPersistence::ApolloCoreWithPersistence() 
+ApolloCore::ApolloCore() 
     : embedder_(std::make_unique<Embedder>())
     , kb_persistence_(std::make_unique<KnowledgeBasePersistence>()) {}
 
-ApolloCoreWithPersistence::~ApolloCoreWithPersistence() {
+ApolloCore::~ApolloCore() {
     close();
 }
 
@@ -125,7 +169,7 @@ ApolloCoreWithPersistence::~ApolloCoreWithPersistence() {
 // Model Management
 // ============================================================================
 
-bool ApolloCoreWithPersistence::load_embedding_model(
+bool ApolloCore::load_embedding_model(
     const std::string& path, bool use_gpu) {
     return embedder_->load(path);
 }
@@ -134,11 +178,11 @@ bool ApolloCoreWithPersistence::load_embedding_model(
 // Knowledge Base Management
 // ============================================================================
 
-bool ApolloCoreWithPersistence::kb_exists(const std::string& path) {
+bool ApolloCore::kb_exists(const std::string& path) {
     return KnowledgeBasePersistence::exists(path);
 }
 
-bool ApolloCoreWithPersistence::create(
+bool ApolloCore::create(
     const std::string& path, const std::string& name) {
     if (is_open_) close();
     
@@ -155,7 +199,7 @@ bool ApolloCoreWithPersistence::create(
     return true;
 }
 
-bool ApolloCoreWithPersistence::open(const std::string& path) {
+bool ApolloCore::open(const std::string& path) {
     if (is_open_) close();
     
     if (!kb_persistence_->open(path)) {
@@ -188,7 +232,7 @@ bool ApolloCoreWithPersistence::open(const std::string& path) {
     return true;
 }
 
-bool ApolloCoreWithPersistence::save() {
+bool ApolloCore::save() {
     if (!is_open_) {
         std::cerr << "[ApolloCore] No knowledge base open\n";
         return false;
@@ -196,14 +240,14 @@ bool ApolloCoreWithPersistence::save() {
     return kb_persistence_->save();
 }
 
-void ApolloCoreWithPersistence::close() {
+void ApolloCore::close() {
     if (is_open_) {
         kb_persistence_->close();
         is_open_ = false;
     }
 }
 
-void ApolloCoreWithPersistence::clear() {
+void ApolloCore::clear() {
     if (is_open_) {
         kb_persistence_->clear();
     }
@@ -211,7 +255,7 @@ void ApolloCoreWithPersistence::clear() {
     chunks_.clear();
 }
 
-bool ApolloCoreWithPersistence::destroy() {
+bool ApolloCore::destroy() {
     bool was_open = is_open_;
     close();
     
@@ -221,11 +265,11 @@ bool ApolloCoreWithPersistence::destroy() {
     return true;
 }
 
-std::string ApolloCoreWithPersistence::get_kb_path() const {
+std::string ApolloCore::get_kb_path() const {
     return kb_persistence_->get_path();
 }
 
-std::string ApolloCoreWithPersistence::get_kb_name() const {
+std::string ApolloCore::get_kb_name() const {
     return kb_persistence_->get_name();
 }
 
@@ -233,7 +277,7 @@ std::string ApolloCoreWithPersistence::get_kb_name() const {
 // Data Operations
 // ============================================================================
 
-size_t ApolloCoreWithPersistence::add_document(
+size_t ApolloCore::add_document(
     const std::string& text, size_t chunk_size) {
     
     if (!is_open_) {
@@ -314,7 +358,7 @@ size_t ApolloCoreWithPersistence::add_document(
 }
 
 std::vector<std::pair<std::string, float>> 
-ApolloCoreWithPersistence::query(const std::string& query_text, size_t top_k) {
+ApolloCore::query(const std::string& query_text, size_t top_k) {
     std::vector<std::pair<std::string, float>> results;
     
     if (chunks_.empty()) return results;
@@ -382,7 +426,7 @@ ApolloCoreWithPersistence::query(const std::string& query_text, size_t top_k) {
 // Statistics
 // ============================================================================
 
-ApolloCoreWithPersistence::Stats ApolloCoreWithPersistence::get_stats() {
+ApolloCore::Stats ApolloCore::get_stats() {
     Stats stats;
     
     stats.document_count = documents_.size();

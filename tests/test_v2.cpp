@@ -22,7 +22,7 @@ int main() {
     std::cout << "ApolloCore v2 - Real Embedding Test\n";
     std::cout << "====================================\n\n";
     
-    ApolloCore kb;
+    ApolloEngine kb;
     
     // Check if model is loaded
     std::cout << "Model loaded: " << (kb.is_model_loaded() ? "YES" : "NO") << "\n\n";

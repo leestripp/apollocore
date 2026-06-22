@@ -470,10 +470,20 @@ private:
 class Chunk;
 using ChunkHandle = std::shared_ptr<Chunk>;
 
-class ApolloCore {
+/**
+ * ApolloEngine - The core search engine (advanced use only).
+ *
+ * This is the original full-featured ApolloCore class with template-heavy
+ * handles (NodeHandle, ChunkHandle), knowledge graph integration, hybrid
+ * search (vector + BM25 + RRF), and chunk enrichment.
+ *
+ * For most users, the simpler `ApolloCore` class in `apollo_persistence.hpp`
+ * is recommended — it has all the same capabilities with a cleaner API.
+ */
+class ApolloEngine {
 public:
-    ApolloCore();
-    ~ApolloCore();
+    ApolloEngine();
+    ~ApolloEngine();
     
     // Model management
     bool load_embedding_model(const std::string& path, bool use_gpu = true);
@@ -1178,11 +1188,11 @@ inline QueryResults HybridSearchEngine::search(std::string_view query, const Que
     return results;
 }
 
-// --- ApolloCore ---
+// --- ApolloEngine ---
 
 using ChunkHandle = std::shared_ptr<Chunk>;
 
-inline ApolloCore::ApolloCore() 
+inline ApolloEngine::ApolloEngine() 
     : embedding_model_(std::make_unique<EmbeddingModel>()),
       hybrid_search_(HybridSearchEngine::Config{0.5f, 0.5f, 0.0f, 60.0f, 50}) {
     hybrid_search_.set_vector_store(&vector_store_);
@@ -1191,15 +1201,15 @@ inline ApolloCore::ApolloCore()
     hybrid_search_.set_knowledge_graph(&knowledge_graph_);
 }
 
-inline ApolloCore::~ApolloCore() = default;
+inline ApolloEngine::~ApolloEngine() = default;
 
-inline bool ApolloCore::load_embedding_model(const std::string& path, bool use_gpu) {
+inline bool ApolloEngine::load_embedding_model(const std::string& path, bool use_gpu) {
     return embedding_model_->load(path, use_gpu);
 }
 
-inline ChunkID ApolloCore::gen_chunk_id() { return "chunk_" + std::to_string(++chunk_counter_); }
+inline ChunkID ApolloEngine::gen_chunk_id() { return "chunk_" + std::to_string(++chunk_counter_); }
 
-inline std::vector<std::string> ApolloCore::split_sentences(std::string_view text) const {
+inline std::vector<std::string> ApolloEngine::split_sentences(std::string_view text) const {
     std::vector<std::string> sents;
     std::string cur;
     for (size_t i = 0; i < text.size(); ++i) {
@@ -1214,15 +1224,15 @@ inline std::vector<std::string> ApolloCore::split_sentences(std::string_view tex
     return sents;
 }
 
-inline NodeHandle ApolloCore::create_node(std::string_view title, std::string_view content) {
+inline NodeHandle ApolloEngine::create_node(std::string_view title, std::string_view content) {
     return tree_.create_node(title, content, tree_.get_root());
 }
 
-inline NodeHandle ApolloCore::create_node(std::string_view title, std::string_view content, NodeHandle parent) {
+inline NodeHandle ApolloEngine::create_node(std::string_view title, std::string_view content, NodeHandle parent) {
     return tree_.create_node(title, content, parent ? parent : tree_.get_root());
 }
 
-inline bool ApolloCore::delete_node(NodeHandle node, bool delete_children) {
+inline bool ApolloEngine::delete_node(NodeHandle node, bool delete_children) {
     if (!node) return false;
     if (delete_children) {
         for (auto& d : tree_.get_descendants(node)) {
@@ -1236,18 +1246,18 @@ inline bool ApolloCore::delete_node(NodeHandle node, bool delete_children) {
     return tree_.delete_node(node);
 }
 
-inline NodeHandle ApolloCore::get_node(const NodeID& id) const { return tree_.get_node(id); }
-inline NodeHandle ApolloCore::get_root() const { return tree_.get_root(); }
-inline std::vector<NodeHandle> ApolloCore::get_children(NodeHandle node) const { return tree_.get_children(node); }
-inline std::vector<NodeHandle> ApolloCore::get_ancestors(NodeHandle node) const { return tree_.get_ancestors(node); }
-inline std::vector<NodeHandle> ApolloCore::get_descendants(NodeHandle node) const { return tree_.get_descendants(node); }
-inline std::string_view ApolloCore::get_content(NodeHandle node) const { return tree_.get_content(node); }
+inline NodeHandle ApolloEngine::get_node(const NodeID& id) const { return tree_.get_node(id); }
+inline NodeHandle ApolloEngine::get_root() const { return tree_.get_root(); }
+inline std::vector<NodeHandle> ApolloEngine::get_children(NodeHandle node) const { return tree_.get_children(node); }
+inline std::vector<NodeHandle> ApolloEngine::get_ancestors(NodeHandle node) const { return tree_.get_ancestors(node); }
+inline std::vector<NodeHandle> ApolloEngine::get_descendants(NodeHandle node) const { return tree_.get_descendants(node); }
+inline std::string_view ApolloEngine::get_content(NodeHandle node) const { return tree_.get_content(node); }
 
-inline bool ApolloCore::set_content(NodeHandle node, std::string_view content) {
+inline bool ApolloEngine::set_content(NodeHandle node, std::string_view content) {
     return tree_.set_content(node, content);
 }
 
-inline ChunkHandle ApolloCore::add_chunk(std::string_view content, NodeHandle parent_node) {
+inline ChunkHandle ApolloEngine::add_chunk(std::string_view content, NodeHandle parent_node) {
     NodeID pid = parent_node ? parent_node->id : "";
     auto chunk = std::make_shared<Chunk>();
     chunk->id = gen_chunk_id();
@@ -1268,7 +1278,7 @@ inline ChunkHandle ApolloCore::add_chunk(std::string_view content, NodeHandle pa
     return chunk;
 }
 
-inline std::vector<ChunkHandle> ApolloCore::add_document(std::string_view text, NodeHandle parent_node, 
+inline std::vector<ChunkHandle> ApolloEngine::add_document(std::string_view text, NodeHandle parent_node, 
                                                           const ChunkConfig& config) {
     NodeID pid = parent_node ? parent_node->id : "";
     SmartChunker chunker(config);
@@ -1295,7 +1305,7 @@ inline std::vector<ChunkHandle> ApolloCore::add_document(std::string_view text, 
     return result;
 }
 
-inline std::vector<ChunkHandle> ApolloCore::search_chunks(std::string_view query, size_t top_k) {
+inline std::vector<ChunkHandle> ApolloEngine::search_chunks(std::string_view query, size_t top_k) {
     QueryResults results = hybrid_search_.search(query, QueryOptions{top_k, 0.0f, true, true, false});
     std::vector<ChunkHandle> found;
     for (auto& item : results.items) {
@@ -1305,7 +1315,7 @@ inline std::vector<ChunkHandle> ApolloCore::search_chunks(std::string_view query
     return found;
 }
 
-inline QueryResults ApolloCore::query(std::string_view query_text, const QueryOptions& options) {
+inline QueryResults ApolloEngine::query(std::string_view query_text, const QueryOptions& options) {
     QueryResults results = hybrid_search_.search(query_text, options);
     
     for (auto& item : results.items) {
@@ -1321,12 +1331,12 @@ inline QueryResults ApolloCore::query(std::string_view query_text, const QueryOp
     return results;
 }
 
-inline ApolloCore::Stats ApolloCore::get_stats() const {
+inline ApolloEngine::Stats ApolloEngine::get_stats() const {
     auto kg_stats = knowledge_graph_.get_stats();
     return {tree_.node_count(), chunks_.size(), kg_stats.entity_count, kg_stats.relationship_count};
 }
 
-inline void ApolloCore::clear() {
+inline void ApolloEngine::clear() {
     tree_.clear();
     chunks_.clear();
     node_to_chunks_.clear();

@@ -9,15 +9,15 @@
 
 int main() {
     using namespace apollocore_v2;
-    
+
     std::cout << "ApolloCore Simple Usage Example\n";
     std::cout << "===============================\n\n";
     
-    ApolloCore kb;
+    ApolloEngine kb;
     
     // Load embedding model
     std::cout << "0. Loading embedding model...\n";
-    std::string model_path = "models/nomic-embed-text-v1.5-Q4_K_M.gguf";
+    std::string model_path = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
     if (!kb.load_embedding_model(model_path, false)) {
         std::cout << "   WARNING: Could not load embedding model from " << model_path << "\n";
         std::cout << "   Semantic search will not work.\n\n";

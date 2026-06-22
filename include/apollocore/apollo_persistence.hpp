@@ -46,21 +46,21 @@ struct StoredChunk;
 struct StoredDocument;
 
 /**
- * This class provides persistence methods to ApolloCore.
+ * This class is the unified ApolloCore entry point.
  * It can be used in two ways:
  * 1. Composition: via ApolloCoreWithPersistence wrapper
  * 2. Direct: by adding methods to ApolloCore (modifies header)
- * 
+ *
  * We use composition for clean separation.
  */
-class ApolloCoreWithPersistence {
+class ApolloCore {
 public:
-    ApolloCoreWithPersistence();
-    ~ApolloCoreWithPersistence();
+    ApolloCore();
+    ~ApolloCore();
     
     // Non-copyable
-    ApolloCoreWithPersistence(const ApolloCoreWithPersistence&) = delete;
-    ApolloCoreWithPersistence& operator=(const ApolloCoreWithPersistence&) = delete;
+    ApolloCore(const ApolloCore&) = delete;
+    ApolloCore& operator=(const ApolloCore&) = delete;
     
     // ========================================================================
     // Model management
@@ -162,5 +162,15 @@ private:
     std::vector<std::pair<std::string, std::vector<float>>> chunks_;  // id, embedding
     bool is_open_ = false;
 };
+
+// ============================================================================
+// Backward Compatibility Alias
+// ============================================================================
+
+/**
+ * @deprecated Use ApolloCore directly. This alias is kept for
+ * backward compatibility with code that used the old name.
+ */
+using ApolloCoreWithPersistence = ApolloCore;
 
 } // namespace apollocore_v2
