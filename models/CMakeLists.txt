@@ -17,8 +17,8 @@ set(MODELS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(EMBEDDING_MODEL_NAME "nomic-embed-text-v1.5.Q4_K_M.gguf")
 set(EMBEDDING_MODEL_URL  "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf")
 
-set(LLM_MODEL_NAME        "qwen2.5-3b-instruct-q4_k_m.gguf")
-set(LLM_MODEL_URL         "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf")
+set(LLM_MODEL_NAME        "qwen2.5-0.5b-instruct-q4_k_m.gguf")
+set(LLM_MODEL_URL         "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf")
 
 # =============================================================================
 # Helper function: download_model
