@@ -28,10 +28,12 @@
 
 #include "apollocore/kb_persistence.hpp"
 #include "apollocore/fbin.hpp"
+#include "apollocore/entity_extractor.hpp"
 #include <string>
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace apollocore_v2 {
@@ -66,6 +68,20 @@ public:
     // Model management
     // ========================================================================
     bool load_embedding_model(const std::string& path, bool use_gpu = false);
+    
+    /**
+     * Load the LLM model for entity extraction (e.g. Qwen2.5).
+     * Required for extract_entities().
+     * @param path Path to the GGUF model file
+     * @param use_gpu Whether to use GPU layers
+     * @return true on success
+     */
+    bool load_llm_model(const std::string& path, bool use_gpu = false);
+    
+    /**
+     * Check if the LLM model is loaded
+     */
+    bool is_llm_loaded() const;
     
     // ========================================================================
     // Knowledge base management
@@ -142,6 +158,58 @@ public:
     );
     
     // ========================================================================
+    // Entity extraction (requires LLM model)
+    // ========================================================================
+    
+    /**
+     * Extract entities and relationships from all chunks using the LLM.
+     * Uses the loaded LLM model (Qwen2.5 or similar).
+     * 
+     * This is explicit (not automatic on add_document) because LLM calls
+     * are slow. Call once after adding a batch of documents.
+     * 
+     * @param min_confidence Minimum confidence threshold (0-1)
+     * @param skip_already_extracted If true, skip chunks already processed
+     * @return Total number of entities extracted
+     */
+    size_t extract_entities(
+        float min_confidence = 0.5f,
+        bool skip_already_extracted = true
+    );
+    
+    /**
+     * Extract entities from a single chunk by ID.
+     * @param chunk_id The chunk ID to process
+     * @return Number of entities extracted from this chunk
+     */
+    size_t extract_entities_for_chunk(
+        const std::string& chunk_id,
+        float min_confidence = 0.5f
+    );
+    
+    /**
+     * Get all entities from the knowledge base.
+     * @param limit Max entities to return (0 = all)
+     */
+    std::vector<Entity> get_entities(size_t limit = 0);
+    
+    /**
+     * Get entities extracted from a specific chunk.
+     */
+    std::vector<Entity> get_entities_for_chunk(const std::string& chunk_id);
+    
+    /**
+     * Get all relationships from the knowledge base.
+     * @param limit Max relationships to return (0 = all)
+     */
+    std::vector<Relationship> get_relationships(size_t limit = 0);
+    
+    /**
+     * Get the underlying EntityExtractor (advanced use).
+     */
+    EntityExtractor* get_entity_extractor();
+    
+    // ========================================================================
     // Statistics
     // ========================================================================
     
@@ -151,15 +219,18 @@ public:
         size_t entity_count = 0;
         size_t relationship_count = 0;
         size_t embedding_files_size = 0;
+        size_t chunks_with_entities = 0;  // How many chunks have been entity-extracted
     };
     
     Stats get_stats();
     
 private:
     std::unique_ptr<class Embedder> embedder_;
+    std::unique_ptr<EntityExtractor> entity_extractor_;  // For entity extraction
     std::unique_ptr<KnowledgeBasePersistence> kb_persistence_;
     std::vector<std::pair<std::string, std::string>> documents_;  // id, content
     std::vector<std::pair<std::string, std::vector<float>>> chunks_;  // id, embedding
+    std::string llm_model_path_;  // Path to loaded LLM model
     bool is_open_ = false;
 };
 

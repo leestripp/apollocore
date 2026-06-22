@@ -122,3 +122,14 @@ target_include_directories(test_apollo_persistence PRIVATE
     ${SQLite3_INCLUDE_DIRS}
 )
 target_link_libraries(test_apollo_persistence PRIVATE apollo_core)
+
+# Entity extraction flow tests (Phase G1) - requires both models
+add_executable(test_entity_extraction_flow
+    test_entity_extraction_flow.cpp
+)
+target_include_directories(test_entity_extraction_flow PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    ${SQLite3_INCLUDE_DIRS}
+)
+target_link_libraries(test_entity_extraction_flow PRIVATE apollo_core)

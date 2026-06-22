@@ -159,6 +159,7 @@ private:
 
 ApolloCore::ApolloCore() 
     : embedder_(std::make_unique<Embedder>())
+    , entity_extractor_(nullptr)  // Created on demand when LLM is loaded
     , kb_persistence_(std::make_unique<KnowledgeBasePersistence>()) {}
 
 ApolloCore::~ApolloCore() {
@@ -172,6 +173,38 @@ ApolloCore::~ApolloCore() {
 bool ApolloCore::load_embedding_model(
     const std::string& path, bool use_gpu) {
     return embedder_->load(path);
+}
+
+bool ApolloCore::load_llm_model(
+    const std::string& path, bool use_gpu) {
+    // Build extraction config using the loaded model
+    ExtractionConfig config = llama_extraction_config(path);
+    
+    try {
+        entity_extractor_ = std::make_unique<EntityExtractor>(config);
+        llm_model_path_ = path;
+        
+        if (entity_extractor_->is_initialized()) {
+            std::cout << "[ApolloCore] LLM model loaded for entity extraction: " 
+                      << path << "\n";
+            return true;
+        } else {
+            std::cerr << "[ApolloCore] LLM model loaded but extractor not initialized: "
+                      << path << "\n";
+            entity_extractor_.reset();
+            llm_model_path_.clear();
+            return false;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ApolloCore] Failed to load LLM model: " << e.what() << "\n";
+        entity_extractor_.reset();
+        llm_model_path_.clear();
+        return false;
+    }
+}
+
+bool ApolloCore::is_llm_loaded() const {
+    return entity_extractor_ && entity_extractor_->is_initialized();
 }
 
 // ============================================================================
@@ -423,6 +456,245 @@ ApolloCore::query(const std::string& query_text, size_t top_k) {
 }
 
 // ============================================================================
+// Entity Extraction (G1.3, G1.4, G1.5, G1.6)
+// ============================================================================
+
+size_t ApolloCore::extract_entities_for_chunk(
+    const std::string& chunk_id,
+    float min_confidence)
+{
+    if (!is_llm_loaded()) {
+        std::cerr << "[ApolloCore] LLM not loaded. Call load_llm_model() first.\n";
+        return 0;
+    }
+    
+    if (!is_open_) {
+        std::cerr << "[ApolloCore] No knowledge base open\n";
+        return 0;
+    }
+    
+    // Get chunk content from DB
+    auto all_chunks = kb_persistence_->load_all_chunks();
+    std::string chunk_content;
+    for (const auto& c : all_chunks) {
+        if (c.id == chunk_id) {
+            chunk_content = c.content;
+            break;
+        }
+    }
+    
+    if (chunk_content.empty()) {
+        std::cerr << "[ApolloCore] Chunk not found: " << chunk_id << "\n";
+        return 0;
+    }
+    
+    // Skip if already extracted (G1.5: tracking)
+    // We mark this by checking if any entities exist for this chunk
+    auto existing_entities = kb_persistence_->load_all_entities();
+    for (const auto& e : existing_entities) {
+        if (e.chunk_id == chunk_id) {
+            // Already extracted - skip
+            return 0;
+        }
+    }
+    
+    // Run extraction (G1.3, G1.6: error handling)
+    std::cerr << "[ApolloCore] Extracting entities from chunk: " << chunk_id << "...\n";
+    
+    ExtractionResult result;
+    try {
+        result = entity_extractor_->extract(chunk_content, chunk_id);
+    } catch (const std::exception& e) {
+        std::cerr << "[ApolloCore] Extraction failed for chunk " << chunk_id 
+                  << ": " << e.what() << "\n";
+        return 0;
+    }
+    
+    // Apply confidence filter
+    auto filtered = result.filter_by_confidence(min_confidence);
+    
+    // Save entities to DB (G1.4: wire to persistence)
+    size_t saved_entities = 0;
+    for (const auto& entity : filtered.entities) {
+        std::string entity_id = chunk_id + "_entity_" + std::to_string(saved_entities);
+        bool ok = kb_persistence_->save_entity(
+            entity_id, chunk_id, entity.name,
+            entity_type_to_string(entity.type),
+            entity.description,
+            entity.confidence
+        );
+        if (ok) saved_entities++;
+    }
+    
+    // Save relationships to DB
+    size_t saved_rels = 0;
+    for (const auto& rel : filtered.relationships) {
+        // Find entity IDs by name (they were just created above)
+        std::string source_id, target_id;
+        for (size_t i = 0; i < filtered.entities.size(); i++) {
+            if (filtered.entities[i].name == rel.source) {
+                source_id = chunk_id + "_entity_" + std::to_string(i);
+            }
+            if (filtered.entities[i].name == rel.target) {
+                target_id = chunk_id + "_entity_" + std::to_string(i);
+            }
+        }
+        
+        if (!source_id.empty() && !target_id.empty()) {
+            std::string rel_id = chunk_id + "_rel_" + std::to_string(saved_rels);
+            bool ok = kb_persistence_->save_relationship(
+                rel_id, source_id, target_id,
+                relation_type_to_string(rel.type),
+                rel.description,
+                rel.weight
+            );
+            if (ok) saved_rels++;
+        }
+    }
+    
+    std::cerr << "[ApolloCore]   Extracted: " << saved_entities 
+              << " entities, " << saved_rels << " relationships\n";
+    
+    return saved_entities;
+}
+
+size_t ApolloCore::extract_entities(
+    float min_confidence,
+    bool skip_already_extracted)
+{
+    if (!is_llm_loaded()) {
+        std::cerr << "[ApolloCore] LLM not loaded. Call load_llm_model() first.\n";
+        return 0;
+    }
+    
+    if (!is_open_) {
+        std::cerr << "[ApolloCore] No knowledge base open\n";
+        return 0;
+    }
+    
+    std::cerr << "[ApolloCore] Starting entity extraction for all chunks...\n";
+    
+    // Get all chunks from DB
+    auto all_chunks = kb_persistence_->load_all_chunks();
+    
+    if (all_chunks.empty()) {
+        std::cerr << "[ApolloCore] No chunks to process\n";
+        return 0;
+    }
+    
+    // Track which chunks have entities (for skip_already_extracted)
+    std::unordered_set<std::string> chunks_with_entities;
+    if (skip_already_extracted) {
+        auto existing_entities = kb_persistence_->load_all_entities();
+        for (const auto& e : existing_entities) {
+            chunks_with_entities.insert(e.chunk_id);
+        }
+    }
+    
+    size_t total_entities = 0;
+    size_t chunks_processed = 0;
+    
+    for (const auto& chunk : all_chunks) {
+        if (skip_already_extracted && 
+            chunks_with_entities.count(chunk.id)) {
+            // Skip already-processed chunk
+            continue;
+        }
+        
+        size_t count = extract_entities_for_chunk(chunk.id, min_confidence);
+        if (count > 0) {
+            total_entities += count;
+            chunks_processed++;
+        }
+    }
+    
+    std::cerr << "[ApolloCore] Entity extraction complete.\n";
+    std::cerr << "  Total entities extracted: " << total_entities << "\n";
+    std::cerr << "  Chunks processed: " << chunks_processed << "\n";
+    
+    return total_entities;
+}
+
+std::vector<Entity> ApolloCore::get_entities(size_t limit) {
+    std::vector<Entity> result;
+    if (!is_open_) return result;
+    
+    auto loaded = kb_persistence_->load_all_entities();
+    result.reserve(loaded.size());
+    
+    for (const auto& le : loaded) {
+        Entity e;
+        e.name = le.name;
+        e.description = le.description;
+        e.confidence = le.confidence;
+        e.type = string_to_entity_type(le.type.c_str());
+        e.id = le.id;
+        e.sources.push_back(le.chunk_id);
+        result.push_back(e);
+        
+        if (limit > 0 && result.size() >= limit) break;
+    }
+    
+    return result;
+}
+
+std::vector<Entity> ApolloCore::get_entities_for_chunk(
+    const std::string& chunk_id) {
+    std::vector<Entity> result;
+    if (!is_open_) return result;
+    
+    auto loaded = kb_persistence_->load_all_entities();
+    for (const auto& le : loaded) {
+        if (le.chunk_id != chunk_id) continue;
+        
+        Entity e;
+        e.name = le.name;
+        e.description = le.description;
+        e.confidence = le.confidence;
+        e.type = string_to_entity_type(le.type.c_str());
+        e.id = le.id;
+        e.sources.push_back(le.chunk_id);
+        result.push_back(e);
+    }
+    
+    return result;
+}
+
+std::vector<Relationship> ApolloCore::get_relationships(size_t limit) {
+    std::vector<Relationship> result;
+    if (!is_open_) return result;
+    
+    auto loaded = kb_persistence_->load_all_relationships();
+    result.reserve(loaded.size());
+    
+    for (const auto& lr : loaded) {
+        // Find the entity names from IDs
+        auto entities = kb_persistence_->load_all_entities();
+        std::string source_name, target_name;
+        for (const auto& e : entities) {
+            if (e.id == lr.source_id) source_name = e.name;
+            if (e.id == lr.target_id) target_name = e.name;
+        }
+        
+        Relationship r;
+        r.source = source_name;
+        r.target = target_name;
+        r.type = string_to_relation_type(lr.type.c_str());
+        r.description = lr.description;
+        r.weight = lr.confidence;
+        result.push_back(r);
+        
+        if (limit > 0 && result.size() >= limit) break;
+    }
+    
+    return result;
+}
+
+EntityExtractor* ApolloCore::get_entity_extractor() {
+    return entity_extractor_.get();
+}
+
+// ============================================================================
 // Statistics
 // ============================================================================
 
@@ -437,6 +709,14 @@ ApolloCore::Stats ApolloCore::get_stats() {
         stats.entity_count = disk_stats.total_entities;
         stats.relationship_count = disk_stats.total_relationships;
         stats.embedding_files_size = disk_stats.embedding_files_size;
+        
+        // Count chunks that have entities extracted
+        auto entities = kb_persistence_->load_all_entities();
+        std::unordered_set<std::string> chunk_ids;
+        for (const auto& e : entities) {
+            chunk_ids.insert(e.chunk_id);
+        }
+        stats.chunks_with_entities = chunk_ids.size();
     }
     
     return stats;

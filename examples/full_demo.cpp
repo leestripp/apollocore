@@ -59,7 +59,7 @@ int main() {
     }
 
     // ====================================================================
-    print_step(1, "Initialize ApolloCore and load embedding model");
+    print_step(2, "Load embedding model and LLM model");
     // ====================================================================
     ApolloCore kb;
     
@@ -72,11 +72,25 @@ int main() {
                   << duration_cast<milliseconds>(t1 - t0).count() << "ms\n";
         std::cout << "  Model: " << EMBED_MODEL << "\n";
     } else {
-        std::cout << "✗ Failed to load model. Running in text-only mode.\n";
+        std::cout << "✗ Failed to load embedding model. Running in text-only mode.\n";
+    }
+    
+    // Load LLM model for entity extraction
+    auto t2 = high_resolution_clock::now();
+    bool llm_loaded = kb.load_llm_model(LLM_MODEL);
+    auto t3 = high_resolution_clock::now();
+    
+    if (llm_loaded) {
+        std::cout << "✓ LLM model loaded in "
+                  << duration_cast<milliseconds>(t3 - t2).count() << "ms\n";
+        std::cout << "  Model: " << LLM_MODEL << "\n";
+        std::cout << "  (required for entity extraction)\n";
+    } else {
+        std::cout << "✗ Failed to load LLM model. Entity extraction will be skipped.\n";
     }
 
     // ====================================================================
-    print_step(2, "Create a new persistent knowledge base");
+    print_step(3, "Create a new persistent knowledge base");
     // ====================================================================
     bool created = kb.create(KB_PATH, "ApolloCore Demo KB");
     if (created) {
@@ -88,7 +102,7 @@ int main() {
     }
 
     // ====================================================================
-    print_step(3, "Add documents (auto-embedded and persisted)");
+    print_step(4, "Add documents (auto-embedded and persisted)");
     // ====================================================================
     std::vector<std::pair<std::string, std::string>> documents = {
         {"Physics",
@@ -134,7 +148,42 @@ int main() {
     }
 
     // ====================================================================
-    print_step(4, "Query the knowledge base (semantic search)");
+    print_step(5, "Extract entities and relationships (uses LLM)");
+    // ====================================================================
+    if (llm_loaded) {
+        std::cout << "  Running entity extraction on all chunks...\n";
+        auto t_ext_start = high_resolution_clock::now();
+        size_t total_entities = kb.extract_entities(0.5f, true);
+        auto t_ext_end = high_resolution_clock::now();
+        std::cout << "✓ Extracted " << total_entities << " entities in "
+                  << duration_cast<milliseconds>(t_ext_end - t_ext_start).count() << "ms\n";
+        
+        // Show some sample entities
+        auto entities = kb.get_entities(10);
+        if (!entities.empty()) {
+            std::cout << "  Sample entities (first 10):\n";
+            for (const auto& e : entities) {
+                std::cout << "    • " << e.name 
+                          << " (" << entity_type_to_string(e.type) << ")\n";
+            }
+        }
+        
+        // Show relationships
+        auto relationships = kb.get_relationships(10);
+        if (!relationships.empty()) {
+            std::cout << "  Sample relationships (first 10):\n";
+            for (const auto& r : relationships) {
+                std::cout << "    • " << r.source 
+                          << " --[" << relation_type_to_string(r.type) 
+                          << "]--> " << r.target << "\n";
+            }
+        }
+    } else {
+        std::cout << "  Skipped (LLM not loaded)\n";
+    }
+
+    // ====================================================================
+    print_step(6, "Query the knowledge base (semantic search)");
     // ====================================================================
     std::vector<std::pair<std::string, std::string>> queries = {
         {"What did Einstein develop?", "Should find physics document"},
@@ -165,7 +214,7 @@ int main() {
     }
 
     // ====================================================================
-    print_step(5, "View statistics");
+    print_step(7, "View statistics");
     // ====================================================================
     auto stats = kb.get_stats();
     std::cout << "  In-memory documents: " << stats.document_count << "\n";
@@ -176,7 +225,7 @@ int main() {
               << (stats.embedding_files_size / 1024) << " KB\n";
 
     // ====================================================================
-    print_step(6, "Demonstrate persistence (data survives restart)");
+    print_step(8, "Demonstrate persistence (data survives restart)");
     // ====================================================================
     std::cout << "  Closing knowledge base...\n";
     kb.close();
@@ -186,12 +235,12 @@ int main() {
     std::cout << "  Reopening knowledge base in a fresh ApolloCore instance...\n";
     ApolloCore kb2;
     
-    auto t2 = high_resolution_clock::now();
+    auto t4 = high_resolution_clock::now();
     bool opened = kb2.open(KB_PATH);
-    auto t3 = high_resolution_clock::now();
+    auto t5 = high_resolution_clock::now();
     
     if (opened) {
-        std::cout << "  ✓ Reopened in " << duration_cast<milliseconds>(t3 - t2).count() << "ms\n";
+        std::cout << "  ✓ Reopened in " << duration_cast<milliseconds>(t5 - t4).count() << "ms\n";
         std::cout << "  Name: " << kb2.get_kb_name() << "\n";
         
         auto stats2 = kb2.get_stats();
@@ -210,7 +259,7 @@ int main() {
     }
     
     // ====================================================================
-    print_step(7, "Cleanup (destroy the demo database)");
+    print_step(9, "Cleanup (destroy the demo database)");
     // ====================================================================
     kb2.close();
     kb2.destroy();
