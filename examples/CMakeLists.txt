@@ -28,6 +28,7 @@ target_link_libraries(omninet_hello PRIVATE apollo_core OmniNet)
 add_executable(apollo_rest_server
     apollo_rest_server.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_rest_api.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_http.cpp
 )
 target_include_directories(apollo_rest_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include

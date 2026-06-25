@@ -14,6 +14,7 @@
 #include "OmniNet.h"
 #include "apollocore/apollo_persistence.hpp"
 #include "apollocore/apollo_rest_api.hpp"  // REST API route handlers
+#include "apollocore/apollo_mcp_http.hpp"  // MCP JSON-RPC route handlers
 
 #include <chrono>
 #include <cstdlib>
@@ -161,13 +162,18 @@ int main(int argc, char** argv) {
     apollocore_v2::rest::g_kb = std::move(kb);
 
     // =========================================================================
-    // Register routes
+    // Register routes (REST + MCP HTTP transport)
     // =========================================================================
     apollocore_v2::rest::register_routes(server);
+    apollocore_v2::mcp::register_routes(server);
 
     std::cout << "\n";
-    std::cout << "  Routes registered: 11\n";
-    std::cout << "  Try: curl http://localhost:" << args.port << "/api/health\n";
+    std::cout << "  REST routes: 11 (under /api/...)\n";
+    std::cout << "  MCP routes:   2 (POST /mcp, GET /mcp/sse)\n";
+    std::cout << "  Try:\n";
+    std::cout << "    curl http://localhost:" << args.port << "/api/health\n";
+    std::cout << "    curl -X POST http://localhost:" << args.port
+              << "/mcp -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'\n";
     std::cout << "  Press Ctrl+C to stop\n\n";
 
     // Run
