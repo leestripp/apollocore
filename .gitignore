@@ -13,4 +13,7 @@ test_data/
 data/
 *.fbin
 
+# graphify
+graphify-out/
+
 prompt.txt

@@ -537,6 +537,271 @@ This is a **model capability limitation**, not a code issue. Larger models
 
 ---
 
+## Phase M1: ApolloCore MCP Server
+
+### What is MCP?
+
+**Model Context Protocol (MCP)** is Anthropic's open protocol for connecting AI models to local tools and data. An MCP server exposes:
+- **Tools** — functions the AI can call (e.g., `search_kb`)
+- **Resources** — data the AI can read (e.g., entity lists)
+- **Prompts** — reusable prompt templates
+
+Communication is **JSON-RPC over stdio** (or HTTP/SSE). The server runs as a separate process that any MCP-compatible client (Claude Desktop, Continue.dev, custom agents) can spawn and talk to.
+
+### Why ApolloCore Should Be an MCP Server
+
+ApolloCore is a **local RAG knowledge base**. To be useful in AI workflows, it needs to be **callable by AI agents**. Today you have to:
+1. Start ApolloCore as a CLI tool
+2. Run a search manually
+3. Copy results back to the AI
+
+With MCP, the AI can directly:
+- Search your knowledge base mid-conversation
+- Add new documents it learns about
+- Extract entities from text
+- Get statistics about what's stored
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  AI Client (Claude Desktop, Continue.dev, etc.)    │
+│  ─────────────────────────────────────────────────  │
+│  Spawns ApolloCore MCP server as subprocess        │
+│  Communicates via JSON-RPC over stdio              │
+└─────────────────────────────────────────────────────┘
+                    ↕ stdin/stdout
+┌─────────────────────────────────────────────────────┐
+│  ApolloCore MCP Server (new executable)             │
+│  ─────────────────────────────────────────────────  │
+│  Reads JSON-RPC requests from stdin                │
+│  Routes to tool/resource handlers                  │
+│  Uses ApolloCore API under the hood                │
+│  Writes JSON-RPC responses to stdout              │
+└─────────────────────────────────────────────────────┘
+                    ↕ (links to existing libapollo_core.a)
+┌─────────────────────────────────────────────────────┐
+│  Existing ApolloCore Library                       │
+│  ─────────────────────────────────────────────────  │
+│  ApolloCore, EntityExtractor, EmbeddingModel, etc. │
+│  Persistence (SQLite + FBIN)                       │
+└─────────────────────────────────────────────────────┘
+```
+
+### MCP Tools to Expose (8 tools)
+
+Each tool is invokable by the AI via `tools/call`:
+
+| Tool | Purpose | Parameters | Returns |
+|------|---------|------------|---------|
+| `search` | Semantic search over KB | `query: string, top_k: int = 5` | Array of `{chunk_id, score, content}` |
+| `add_document` | Add text to KB | `text: string, metadata?: object` | `{chunk_count, doc_id}` |
+| `extract_entities` | Extract entities from text | `text: string, min_confidence?: float = 0.5` | `{entities, relationships}` |
+| `get_entities` | List all entities | `chunk_id?: string, limit?: int = 100` | Array of `Entity` |
+| `get_relationships` | List all relationships | `limit?: int = 100` | Array of `Relationship` |
+| `create_kb` | Create new knowledge base | `path: string, name?: string` | `{success, kb_path}` |
+| `open_kb` | Open existing KB | `path: string` | `{success, stats}` |
+| `get_stats` | KB statistics | (none) | `{doc_count, chunk_count, entity_count, ...}` |
+
+### MCP Resources to Expose (3 resources)
+
+Resources are addressable by URI:
+
+| URI | Purpose | Mime Type |
+|-----|---------|-----------|
+| `apollocore://current_kb` | Current KB metadata | `application/json` |
+| `apollocore://entities` | All entities in current KB | `application/json` |
+| `apollocore://stats` | Real-time statistics | `application/json` |
+
+### Design Decisions
+
+**Decision 1: stdio vs HTTP**
+
+- **Choice: stdio first, HTTP later**
+- Reasoning: stdio is the MCP default and simpler (no port conflicts, no auth). HTTP/SSE is needed for remote servers, but local-first means stdio.
+- API: New executable `apollo_mcp_server` reads JSON-RPC from stdin.
+
+**Decision 2: Single KB or multi-KB?**
+
+- **Choice: Single active KB per server instance** (matches current ApolloCore design)
+- The AI must call `create_kb` or `open_kb` before other operations.
+- Future: Multi-KB support with a registry if needed.
+
+**Decision 3: Model loading on startup vs lazy**
+
+- **Choice: Lazy — load embedding model on first search**
+- Reasoning: Fast startup, models load only when needed.
+- Trade-off: First search is slow (~5s for model load).
+
+**Decision 4: Long-running extract_entities**
+
+- Entity extraction is slow (LLM call per chunk).
+- The tool runs synchronously and returns when done.
+- Future: Add `extract_entities_async` with a job ID.
+
+**Decision 5: Error format**
+
+- MCP uses JSON-RPC; errors follow JSON-RPC error format:
+  ```json
+  {"jsonrpc": "2.0", "id": 1, "error": {"code": -32603, "message": "..."}}
+  ```
+- Tool-level errors use MCP's standard error codes.
+
+### Implementation Tasks
+
+| ID | Task | Priority | Estimate |
+|----|------|----------|----------|
+| M1.1 | Add MCP library (header-only or vendored) | 🔴 Critical | 30 min |
+| M1.2 | Create `apollo_mcp_server` executable target | 🔴 Critical | 15 min |
+| M1.3 | Implement JSON-RPC stdio loop | 🔴 Critical | 1 hour |
+| M1.4 | Implement `tools/list` handler | 🔴 Critical | 30 min |
+| M1.5 | Implement `tools/call` router | 🔴 Critical | 1 hour |
+| M1.6 | Wire `search` tool to `ApolloCore::query()` | 🔴 Critical | 30 min |
+| M1.7 | Wire `add_document` tool to `ApolloCore::add_document()` | 🔴 Critical | 30 min |
+| M1.8 | Wire `extract_entities` tool to `EntityExtractor` | 🔴 Critical | 30 min |
+| M1.9 | Wire `get_entities` / `get_relationships` to accessors | 🔴 Critical | 30 min |
+| M1.10 | Wire `create_kb` / `open_kb` tools | 🔴 Critical | 30 min |
+| M1.11 | Wire `get_stats` tool | 🔴 Critical | 15 min |
+| M1.12 | Implement `resources/list` and `resources/read` | 🟡 Important | 1 hour |
+| M1.13 | Add Claude Desktop config example | 🟡 Important | 30 min |
+| M1.14 | Add MCP integration tests | 🟡 Important | 1 hour |
+| M1.15 | Write MCP server README section | 🟢 Nice | 30 min |
+| M1.16 | Support HTTP/SSE transport | 🟢 Nice | 2 hours |
+
+**Total estimate**: ~10 hours for core (M1.1-M1.14)
+
+### File Layout
+
+```
+apollo_mcp_server.cpp       # New: MCP server entry point
+include/apollocore/mcp.hpp  # New: MCP server class (optional, for tests)
+CMakeLists.txt              # Modified: add apollo_mcp_server target
+examples/CMakeLists.txt     # Modified: add example MCP client
+tests/test_mcp_server.cpp   # New: MCP integration tests
+docs/mcp.md                 # New: MCP usage guide
+README.md                   # Modified: MCP section
+```
+
+### Example: Tool Call (JSON-RPC)
+
+**Request (from AI):**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "search",
+    "arguments": {
+      "query": "What is relativity?",
+      "top_k": 3
+    }
+  }
+}
+```
+
+**Response (from server):**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "[{\"chunk_id\":\"doc_1_chunk_0\",\"score\":0.81,\"content\":\"Albert Einstein developed...\"}]"
+    }]
+  }
+}
+```
+
+### Example: Claude Desktop Config
+
+`claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "apollocore": {
+      "command": "/path/to/apollo_mcp_server",
+      "args": ["--models-dir", "/path/to/models", "--kb", "/path/to/data/kb"],
+      "env": {}
+    }
+  }
+}
+```
+
+After restarting Claude Desktop, the AI sees 8 new tools in its toolbox.
+
+### Dependencies
+
+- **nlohmann/json** — already vendored via FetchContent. Used for JSON-RPC messages.
+- **No new external deps** — MCP is just JSON over stdio; we can implement it without a library.
+- Alternative: vendor `mcp-cpp` if it exists (research during M1.1).
+
+### Acceptance Criteria
+
+Phase M1 is **DONE** when:
+
+1. ✅ `apollo_mcp_server` builds and starts
+2. ✅ Responds to `initialize` with server info
+3. ✅ Responds to `tools/list` with all 8 tools
+4. ✅ `tools/call` with `search` returns real results from ApolloCore
+5. ✅ `tools/call` with `add_document` persists to disk
+6. ✅ `tools/call` with `extract_entities` uses the LLM
+7. ✅ `resources/list` and `resources/read` work
+8. ✅ Can be launched from Claude Desktop config
+9. ✅ Integration tests pass (search, add, extract via MCP)
+10. ✅ Documented in README
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| MCP spec changes (it's evolving) | Pin to a specific version; isolate in `mcp.hpp` |
+| Slow startup if models loaded eagerly | Lazy loading on first use |
+| Concurrent tool calls | Single-threaded by default (matches MCP spec); future: thread pool |
+| Large response payloads | Use `content` as `text` (string); truncate if >1MB |
+| Embedding model not found | Clear error message with path hint |
+| KB doesn't exist | Return MCP error code with helpful message |
+
+### Open Questions
+
+1. **Do we need HTTP transport in M1?** — Proposed: defer to M1.16
+2. **Multi-KB support?** — Proposed: defer (single KB per process)
+3. **Should MCP server manage model lifecycle?** — Proposed: yes, accept `--models-dir` flag
+4. **Async extract_entities?** — Proposed: defer (sync is fine for small chunks)
+
+### Timeline
+
+| Step | Time |
+|------|------|
+| M1.1–M1.5 (core JSON-RPC loop) | ~3 hours |
+| M1.6–M1.11 (wire 8 tools) | ~3 hours |
+| M1.12 (resources) | ~1 hour |
+| M1.13–M1.14 (docs + tests) | ~1.5 hours |
+| M1.15 (README) | ~30 min |
+| **Core total** | **~9 hours** |
+| M1.16 (HTTP/SSE) | +2 hours (optional) |
+
+### Example Session (User Perspective)
+
+```
+User: "What does my knowledge base know about Einstein?"
+
+Claude Desktop → apollo_mcp_server (stdio):
+  tools/call: search "Einstein", top_k=3
+  tools/call: get_entities
+  tools/call: get_relationships
+
+Claude Desktop formats results, shows user:
+  - 3 relevant chunks (scores 0.81, 0.65, 0.60)
+  - 7 entities (Einstein, relativity, quantum, etc.)
+  - 4 relationships (Einstein --DEVELOPED--> relativity, etc.)
+```
+
+The user gets a knowledge-grounded answer from their local KB, with no data leaving their machine.
+
+---
+
 ## What's Working Now
 
 ### Real Embeddings with Nomic Embed Text v1.5

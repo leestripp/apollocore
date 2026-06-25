@@ -405,6 +405,33 @@ int main() {
 
 ---
 
+## 🤖 Model Selection
+
+ApolloCore uses two GGUF models, both auto-downloaded by CMake.
+
+### Required Models
+
+| Model | Purpose | Size | Dimensions |
+|-------|---------|------|------------|
+| `nomic-embed-text-v1.5.Q4_K_M.gguf` | Text embeddings | ~81 MB | 768 |
+| `qwen2.5-0.5b-instruct-q4_k_m.gguf` | Entity extraction (LLM) | ~469 MB | — |
+
+### Why these models?
+
+- **Nomic Embed Text v1.5** — Best open-source embedding model at this size. Rivals OpenAI's `text-embedding-ada-002` on MTEB benchmark.
+- **Qwen2.5 0.5B Instruct** — Small but capable instruction-tuned LLM. Fast enough for entity extraction on CPU, good enough for JSON output.
+
+### 0.5B vs 3B Comparison
+
+We tested both Qwen2.5 0.5B and 3B for entity extraction. The **stop condition bug** in the generation loop was the real blocker — once fixed (waiting for `}]}` instead of `}]`), the 0.5B model produces real relationships.
+
+| Model | Size | Entities | Relationships | Time |
+|-------|------|----------|----------------|------|
+| Qwen2.5 0.5B | 469 MB | 10–42 | 0–4 | ~60s |
+| Qwen2.5 3B | 2.1 GB | 18–20 | 6 | ~280s |
+
+**Recommendation:** Use **0.5B** (the default). It's 4.5× smaller and 4× faster with nearly the same quality. Switch to 3B+ only if you need higher accuracy on complex relationships and can afford the slowdown.
+
 ## 📁 File Formats
 
 ApolloCore uses a hybrid storage approach. See [docs/file-formats.md](docs/file-formats.md) for details.
