@@ -802,6 +802,218 @@ The user gets a knowledge-grounded answer from their local KB, with no data leav
 
 ---
 
+## Phase O1: Integrate OmniNet (HTTP/WebSocket Library)
+
+### What is OmniNet?
+
+**OmniNet** is a C++23 HTTP/WebSocket server library by Lee Stripp (same author as ApolloCore). It provides:
+
+- HTTP/1.1 server with keep-alive
+- WebSocket (RFC 6455)
+- TLS/HTTPS via OpenSSL 3.0
+- Static file serving with MIME types
+- SQLite-backed sessions, API keys, user auth
+- Rate limiting, CSRF, CORS helpers
+- Server-Sent Events (SSE)
+- Admin dashboard at `/omninet`
+- Public test framework
+
+**Repo:** https://gitlab.com/leestripp/omninet  
+**License:** MIT  
+**Dependencies:** OpenSSL 1.1.1+, SQLite3 (already in ApolloCore!)  
+**Build:** CMake static library, C++23
+
+### Why ApolloCore Needs It
+
+| Need | Solution |
+|------|----------|
+| MCP server HTTP transport (M1.16) | OmniNet provides it |
+| REST API for browser/desktop clients | OmniNet routes |
+| Live KB exploration dashboard | OmniNet static handler |
+| WebSocket for real-time search updates | OmniNet WS support |
+| TLS for remote access | OmniNet + OpenSSL |
+| Sessions for browser-based KB UI | OmniNet sessions |
+
+Already-shared dependencies (ApolloCore + OmniNet):
+- **C++23** ✓
+- **SQLite3** ✓ (ApolloCore uses it for KB persistence; OmniNet uses it for sessions)
+- **CMake 3.16+** ✓
+
+### Design Decisions
+
+**Decision 1: FetchContent vs git submodule vs vendored**
+
+- **Choice: FetchContent (declarative, shallow clone)**
+- Reasoning:
+  - No manual version bumping in our repo
+  - Tag-pinned for reproducibility (`GIT_TAG 0.5.2`)
+  - CMake's deduplication prevents double-build
+- Alternative considered: submodule (rejected — adds friction for users)
+
+**Decision 2: Build as part of apollo_core target vs separate target**
+
+- **Choice: Separate CMake target `omninet` (FetchContent provides this)**
+- ApolloCore links against it as `PRIVATE` dependency
+- Future: could expose as PUBLIC if we ship `include/omninet/...` headers to users
+
+**Decision 3: API surface**
+
+- ApolloCore code will `#include "OmniNet.h"` from the FetchContent source tree
+- We add `src/` and `include/` from OmniNet to our target's include path
+- ApolloCore gets:
+  - `OmniNet::HTTP::Server` for serving
+  - `OmniNet::DB::Database` for SQLite (we already have our own — keep ours)
+  - `OmniNet::WebSocket` for live updates
+
+**Decision 4: Where to use OmniNet**
+
+| ApolloCore feature | OmniNet usage |
+|--------------------|---------------|
+| MCP server (Phase M1.16) | HTTP/SSE transport |
+| Future REST API | Routes |
+| Future browser dashboard | Static files + WS |
+| KB query in browser | WS for live updates |
+
+For **O1**, just integrate the library and verify it builds. Don't write any handlers yet.
+
+### Implementation Tasks
+
+| ID | Task | Priority | Estimate |
+|----|------|----------|----------|
+| O1.1 | Add `FetchContent_Declare(omninet ...)` to top-level CMakeLists.txt | 🔴 Critical | 10 min |
+| O1.2 | Add `FetchContent_MakeAvailable(omninet)` | 🔴 Critical | 5 min |
+| O1.3 | Add `target_link_libraries(apollo_core PRIVATE OmniNet)` | 🔴 Critical | 5 min |
+| O1.4 | Verify clean build of apollo_core with OmniNet linked | 🔴 Critical | 15 min |
+| O1.5 | Verify existing tests still pass (OmniNet link is non-invasive) | 🔴 Critical | 15 min |
+| O1.6 | Add minimal example: `examples/omninet_hello.cpp` that starts a server | 🟡 Important | 30 min |
+| O1.7 | Wire example into `examples/CMakeLists.txt` | 🟡 Important | 5 min |
+| O1.8 | Document integration in `docs/omninet-integration.md` | 🟢 Nice | 30 min |
+| O1.9 | Add OmniNet to README "Dependencies" section | 🟢 Nice | 10 min |
+| O1.10 | Add CI-friendly `OMNINET_SKIP_FETCH=ON` cache option | 🟢 Nice | 15 min |
+
+**Total estimate**: ~2.5 hours
+
+### CMakeLists.txt Changes (top-level)
+
+Add to `CMakeLists.txt` (above `apollo_core` target):
+
+```cmake
+# ============================================================================
+# OmniNet — HTTP/WebSocket library
+# ============================================================================
+# Used by future HTTP REST API and MCP HTTP transport.
+# Pinned to a specific tag for reproducibility.
+include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
+
+FetchContent_Declare(
+    omninet
+    GIT_REPOSITORY https://gitlab.com/leestripp/omninet.git
+    GIT_TAG        0.5.2
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(omninet)
+```
+
+Add to `apollo_core` target:
+```cmake
+target_link_libraries(apollo_core PRIVATE
+    OmniNet
+    # ... existing links
+)
+```
+
+### Minimal Example (`examples/omninet_hello.cpp`)
+
+```cpp
+#include "OmniNet.h"
+#include <iostream>
+
+namespace on  = OmniNet;
+namespace onh = OmniNet::HTTP;
+
+int main() {
+    on::init();
+    onh::Server::Config sc;
+    sc.address = "0.0.0.0";
+    sc.port    = 18080;     // avoid common dev ports
+    onh::Server server(sc);
+    
+    server.get("/api/health", [](const onh::Request&, onh::Response& resp) {
+        resp.setStatus(onh::StatusCode::OK);
+        resp.setContentType("application/json");
+        resp.setBody(R"({"status":"ok","service":"apollocore"})");
+    });
+    
+    std::cout << "ApolloCore + OmniNet demo: http://localhost:18080/api/health\n";
+    server.start();
+    on::cleanup();
+    return 0;
+}
+```
+
+### Acceptance Criteria
+
+Phase O1 is **DONE** when:
+
+1. ✅ `apollo_core` builds with OmniNet as a private dependency
+2. ✅ All existing tests still pass (no regressions)
+3. ✅ `examples/omninet_hello` builds and runs
+4. ✅ `curl http://localhost:18080/api/health` returns `{"status":"ok"}`
+5. ✅ First build fetches OmniNet successfully
+6. ✅ Subsequent builds are incremental (cached)
+7. ✅ No new warnings introduced
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| OmniNet tag moves / deleted | Pin to specific tag; document update process |
+| OpenSSL not on user's system | Document `apt install libssl-dev` in README |
+| sqlite-vec extension issues | ApolloCore doesn't use OmniNet::Vector — disable with `-DOMNINET_ENABLE_VEC=OFF` |
+| Slow first build (FetchContent downloads) | Use `GIT_SHALLOW TRUE`; document build time |
+| Header path conflicts | OmniNet uses `OmniNet.h` umbrella; ApolloCore uses `apollocore/...` — no conflicts |
+| Duplicate OpenSSL/SQLite3 declarations | CMake deduplicates targets — verified |
+
+### Dependencies Confirmed Compatible
+
+| Dependency | ApolloCore has | OmniNet has | Conflict? |
+|-----------|---------------|-------------|-----------|
+| C++23 | ✓ | ✓ | No |
+| CMake 3.16+ | ✓ (we use 3.20+) | ✓ | No |
+| OpenSSL | (not used) | ✓ required | ApolloCore just links it transitively |
+| SQLite3 | ✓ (for KB) | ✓ (for sessions) | Both use `find_package(SQLite3)`; targets deduplicate |
+| llama.cpp | ✓ (vendored) | ✗ | No conflict |
+| nlohmann/json | ✓ (vendored) | ✓ (FetchContent) | CMake deduplicates |
+
+### File Layout Changes
+
+```
+CMakeLists.txt                  ← M1.1: FetchContent + link
+examples/CMakeLists.txt         ← M1.7: add omninet_hello target
+examples/omninet_hello.cpp      ← NEW: minimal server example
+docs/omninet-integration.md     ← NEW: integration guide
+README.md                       ← M1.9: mention OmniNet
+```
+
+### Next Steps After O1
+
+After O1 is done, these become possible:
+- **M1.16**: HTTP transport for MCP server
+- **Phase REST**: ApolloCore REST API (`/api/search`, `/api/add`, etc.)
+- **Phase UI**: Browser-based KB explorer
+
+### Timeline
+
+| Step | Time |
+|------|------|
+| O1.1–O1.5 (CMake + build verification) | ~50 min |
+| O1.6–O1.7 (hello example) | ~35 min |
+| O1.8–O1.10 (docs + polish) | ~55 min |
+| **Total** | **~2.5 hours** |
+
+---
+
 ## What's Working Now
 
 ### Real Embeddings with Nomic Embed Text v1.5
