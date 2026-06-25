@@ -1014,6 +1014,196 @@ After O1 is done, these become possible:
 
 ---
 
+## Phase R1: ApolloCore REST API (OmniNet-powered)
+
+### Why Now
+
+Phase O1 (OmniNet integration) is complete. Now we can expose ApolloCore over HTTP without writing a server from scratch.
+
+**Phase R1 builds the first user-facing HTTP API for ApolloCore.** This unlocks:
+- Browser-based KB exploration
+- CLI clients in any language (curl, Python, etc.)
+- MCP HTTP transport (Phase M1.16) becomes trivial
+- Mobile/web integration
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────────┐
+│  HTTP Clients (curl, browser, scripts)            │
+└────────────────────────────────────────────────────┘
+                    ↕ HTTP
+┌────────────────────────────────────────────────────┐
+│  examples/apollo_rest_server (NEW)                │
+│  - OmniNet HTTP server on port 18080              │
+│  - Routes wired to ApolloCore API                  │
+└────────────────────────────────────────────────────┘
+                    ↕ (uses)
+┌────────────────────────────────────────────────────┐
+│  ApolloCore library (existing)                    │
+│  - ApolloCore class                               │
+│  - EntityExtractor, EmbeddingModel, etc.          │
+└────────────────────────────────────────────────────┘
+```
+
+### REST Endpoints (8 routes)
+
+| Method | Path | Purpose | Request Body | Response |
+|--------|------|---------|--------------|----------|
+| GET | `/api/health` | Health check | (none) | `{status, version}` |
+| POST | `/api/kb/create` | Create new KB | `{path, name}` | `{success, path}` |
+| POST | `/api/kb/open` | Open existing KB | `{path}` | `{success, stats}` |
+| POST | `/api/kb/close` | Close current KB | (none) | `{success}` |
+| DELETE | `/api/kb` | Destroy current KB | (none) | `{success}` |
+| GET | `/api/kb/stats` | Get KB statistics | (none) | `{doc_count, chunk_count, ...}` |
+| POST | `/api/documents` | Add document | `{text}` | `{chunk_count, doc_id}` |
+| POST | `/api/search` | Semantic search | `{query, top_k}` | `[{chunk_id, score, content}]` |
+| GET | `/api/entities` | List entities | `?limit=N&chunk_id=...` | `[{name, type, ...}]` |
+| GET | `/api/relationships` | List relationships | `?limit=N` | `[{source, target, type}]` |
+| POST | `/api/extract` | Extract entities (LLM) | `{chunk_id, min_confidence}` | `{entities, relationships}` |
+
+### Design Decisions
+
+**Decision 1: Models loaded on startup or on demand?**
+
+- **Choice: Loaded on startup** (controlled by CLI flags)
+- Reasoning: First-request latency is bad UX
+- Flags: `--embedding-model PATH`, `--llm-model PATH` (optional)
+- If LLM model not provided, `/api/extract` returns 503
+
+**Decision 2: Single KB or multi-KB server?**
+
+- **Choice: Single KB per server** (matches ApolloCore design)
+- Reasoning: Simpler, matches existing patterns
+- Future: Multi-KB with a registry
+
+**Decision 3: Authentication?**
+
+- **Choice: None for R1** (localhost-only trust)
+- Reasoning: REST API is for local use; add auth in Phase REMOTE
+- CORS enabled for browser access from same origin
+
+**Decision 4: Response format?**
+
+- **Choice: Always JSON** (matches MCP conventions)
+- Errors: `{"error": "message", "code": N}`
+- Success: `{"data": ...}` or directly the data
+
+**Decision 5: Async or sync?**
+
+- **Choice: Sync** (block during LLM calls)
+- Reasoning: Simpler; matches current ApolloCore API
+- Future: Async with job IDs for long ops
+
+### Implementation Tasks
+
+| ID | Task | Priority | Estimate |
+|----|------|----------|----------|
+| R1.1 | Create `src/apollo_rest_api.cpp` with route handlers | 🔴 Critical | 1.5 hours |
+| R1.2 | Create `examples/apollo_rest_server.cpp` (server entry) | 🔴 Critical | 30 min |
+| R1.3 | Add target to `examples/CMakeLists.txt` | 🔴 Critical | 5 min |
+| R1.4 | Implement health check route | 🔴 Critical | 10 min |
+| R1.5 | Implement KB lifecycle routes (create/open/close/destroy) | 🔴 Critical | 45 min |
+| R1.6 | Implement document add + search routes | 🔴 Critical | 45 min |
+| R1.7 | Implement entities/relationships routes | 🟡 Important | 30 min |
+| R1.8 | Implement extract route (uses LLM) | 🟡 Important | 30 min |
+| R1.9 | Add CLI flag parsing (embedding-model, llm-model) | 🟡 Important | 30 min |
+| R1.10 | JSON helper utilities (parse request body, write response) | 🟡 Important | 30 min |
+| R1.11 | Error handling (404, 405, 500) | 🟡 Important | 20 min |
+| R1.12 | CORS headers for browser access | 🟢 Nice | 15 min |
+| R1.13 | Integration tests via curl (in docs) | 🟢 Nice | 30 min |
+| R1.14 | README section "REST API" | 🟢 Nice | 20 min |
+
+**Total estimate**: ~6 hours
+
+### Example Session
+
+```bash
+$ ./build/examples/apollo_rest_server \
+    --embedding-model models/nomic-embed-text-v1.5.Q4_K_M.gguf \
+    --llm-model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+    --kb data/my_kb
+
+🚀 ApolloCore REST API
+   Embedding: ✓ nomic-embed
+   LLM: ✓ qwen2.5-0.5b
+   KB: ✓ data/my_kb
+   Listening: http://0.0.0.0:18080
+
+$ curl -X POST http://localhost:18080/api/documents \
+    -H 'Content-Type: application/json' \
+    -d '{"text": "Einstein worked at Princeton."}'
+{"chunk_count":1,"doc_id":"doc_1"}
+
+$ curl -X POST http://localhost:18080/api/search \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "Who worked at Princeton?", "top_k": 3}'
+[{"chunk_id":"doc_1_chunk_0","score":0.81,"content":"Einstein worked at Princeton."}]
+
+$ curl http://localhost:18080/api/entities
+[{"name":"Albert Einstein","type":"PERSON","confidence":0.99,"chunk_id":"doc_1_chunk_0"}]
+```
+
+### File Layout
+
+```
+src/apollo_rest_api.cpp          # NEW: REST API implementation
+examples/apollo_rest_server.cpp   # NEW: server entry point
+examples/CMakeLists.txt          # M1.3: add target
+docs/rest-api.md                 # NEW: REST API docs
+README.md                        # M1.14: REST API section
+```
+
+### Acceptance Criteria
+
+Phase R1 is **DONE** when:
+
+1. ✅ `apollo_rest_server` builds with OmniNet linked
+2. ✅ `GET /api/health` returns `{"status":"ok"}`
+3. ✅ `POST /api/kb/create` creates a KB on disk
+4. ✅ `POST /api/documents` adds a doc, returns chunk count
+5. ✅ `POST /api/search` returns ranked results
+6. ✅ `GET /api/entities` returns entities (after extraction)
+7. ✅ All existing ApolloCore tests still pass
+8. ✅ README has a "REST API" section with curl examples
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Models take long to load on startup | Show progress; document in README |
+| LLM extract is slow (60s+ per chunk) | Return 202 Accepted with job_id (future) |
+| Concurrent requests | OmniNet is multi-threaded; single KB locks internally |
+| Large responses (1000s of entities) | Limit query params; paginate (future) |
+| Path traversal in `--kb data/../../etc` | Validate paths; reject absolute paths |
+
+### Open Questions
+
+1. **JSON library choice?** — Use nlohmann/json (already in ApolloCore)
+2. **Path validation?** — Reject `..` and absolute paths for now
+3. **Hot-reload models?** — Out of scope for R1; restart server to change
+
+### Timeline
+
+| Step | Time |
+|------|------|
+| R1.1–R1.3 (skeleton + wiring) | ~35 min |
+| R1.4–R1.6 (core routes) | ~1.75 hours |
+| R1.7–R1.8 (entity/relationship routes) | ~1 hour |
+| R1.9–R1.11 (CLI + errors) | ~1.25 hours |
+| R1.12–R1.14 (polish) | ~1 hour |
+| **Total** | **~6 hours** |
+
+### Updates to Other Plans
+
+**M1 (MCP server) plan** — now that REST API exists:
+- M1.16 (HTTP MCP transport) becomes a thin wrapper around REST API
+- M1.16 estimate reduced from 2h → 30min
+
+**O1 (OmniNet integration)** — already complete ✓
+
+---
+
 ## What's Working Now
 
 ### Real Embeddings with Nomic Embed Text v1.5

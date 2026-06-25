@@ -23,3 +23,16 @@ target_include_directories(omninet_hello PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/omninet-src/src
 )
 target_link_libraries(omninet_hello PRIVATE apollo_core OmniNet)
+
+# ApolloCore REST Server (Phase R1) - HTTP API for KB operations
+add_executable(apollo_rest_server
+    apollo_rest_server.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_rest_api.cpp
+)
+target_include_directories(apollo_rest_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/omninet-src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/omninet-src/src
+)
+target_link_libraries(apollo_rest_server PRIVATE apollo_core OmniNet)
