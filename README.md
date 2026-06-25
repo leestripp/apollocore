@@ -128,6 +128,20 @@ All dependencies are automatically fetched by CMake:
 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | master | Local LLM/embedding inference |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | JSON serialization |
 | [SQLite3](https://www.sqlite.org/) | 3.46+ | Metadata storage |
+| [OmniNet](https://gitlab.com/leestripp/omninet) | 0.7.1 | HTTP/WebSocket server (private dep) |
+
+OmniNet brings these system-level requirements (installed by your package manager):
+
+| System Package | Ubuntu/Debian | Purpose |
+|----------------|---------------|---------|
+| OpenSSL 3.x | `libssl-dev` | TLS + crypto for OmniNet |
+| zlib | `zlib1g-dev` | HTTP gzip compression |
+| SQLite3 dev | `libsqlite3-dev` | OmniNet session storage |
+
+Quick install on Ubuntu/Debian:
+```bash
+sudo apt install -y libssl-dev zlib1g-dev libsqlite3-dev
+```
 
 ### Build Options
 

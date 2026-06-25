@@ -14,3 +14,12 @@ target_include_directories(full_demo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
 )
 target_link_libraries(full_demo PRIVATE apollo_core)
+
+# OmniNet hello world - demonstrates HTTP server integration (Phase O1)
+add_executable(omninet_hello omninet_hello.cpp)
+target_include_directories(omninet_hello PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/omninet-src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/omninet-src/src
+)
+target_link_libraries(omninet_hello PRIVATE apollo_core OmniNet)

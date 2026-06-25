@@ -37,6 +37,27 @@ FetchContent_Declare(llama_cpp
 # Download and build llama.cpp
 FetchContent_MakeAvailable(llama_cpp)
 
+# OmniNet — HTTP/WebSocket server library (Phase O1)
+# Pinned to a specific tag for reproducibility.
+# Used by future REST API and MCP HTTP transport.
+# See docs/omninet-integration.md
+option(OMNINET_SKIP_FETCH "Use system OmniNet instead of FetchContent (for CI)" OFF)
+if(NOT OMNINET_SKIP_FETCH)
+    FetchContent_Declare(
+        omninet
+        GIT_REPOSITORY https://gitlab.com/leestripp/omninet.git
+        GIT_TAG        0.7.1
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(omninet)
+else()
+    # Allow CI to use a pre-installed OmniNet
+    find_package(omninet QUIET)
+    if(NOT omninet_FOUND)
+        message(FATAL_ERROR "OMNINET_SKIP_FETCH=ON but find_package(omninet) failed")
+    endif()
+endif()
+
 # Vulkan detection (for AMD GPU)
 find_package(Vulkan QUIET)
 if(Vulkan_FOUND)
@@ -69,6 +90,8 @@ target_link_libraries(apollo_core
         nlohmann_json::nlohmann_json
         llama
         SQLite::SQLite3
+    PRIVATE
+        OmniNet
 )
 target_compile_features(apollo_core PUBLIC cxx_std_23)
 
