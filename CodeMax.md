@@ -537,27 +537,826 @@ This is a **model capability limitation**, not a code issue. Larger models
 
 ---
 
-## Phase M1: ApolloCore MCP Server
+## Phase M2: State-of-the-Art MCP Server for ApolloCore KG/RAG Hybrid
 
-### What is MCP?
+> **Status**: Phase M1.16 (basic HTTP MCP, 8 tools, 3 resources) is **done**.
+> This plan **rewrites and extends** it into a production-grade MCP server.
 
-**Model Context Protocol (MCP)** is Anthropic's open protocol for connecting AI models to local tools and data. An MCP server exposes:
-- **Tools** — functions the AI can call (e.g., `search_kb`)
-- **Resources** — data the AI can read (e.g., entity lists)
-- **Prompts** — reusable prompt templates
+### Why Rewrite
 
-Communication is **JSON-RPC over stdio** (or HTTP/SSE). The server runs as a separate process that any MCP-compatible client (Claude Desktop, Continue.dev, custom agents) can spawn and talk to.
+The current M1.16 implementation is a thin JSON-RPC wrapper. It works, but it's far from what an MCP server for a **Knowledge Graph + RAG hybrid** should be.
 
-### Why ApolloCore Should Be an MCP Server
+A truly state-of-the-art MCP server should:
 
-ApolloCore is a **local RAG knowledge base**. To be useful in AI workflows, it needs to be **callable by AI agents**. Today you have to:
-1. Start ApolloCore as a CLI tool
-2. Run a search manually
-3. Copy results back to the AI
+| Need | Current M1.16 | State-of-the-art M2 |
+|------|----------------|---------------------|
+| Tools | 8 basic KB ops | 25+ covering KB, search, KG, jobs |
+| Resources | 3 simple URIs | Templated URI scheme with subscriptions |
+| Prompts | none | Library of reusable RAG/KG prompts |
+| Sampling | none | Server→client LLM (re-ranking, synthesis) |
+| Elicitation | none | Server→user clarification ("which KB?") |
+| Notifications | none | Live progress, log streaming |
+| Subscriptions | none | Resource change notifications |
+| Completion | none | Argument autocompletion |
+| Transports | HTTP only | stdio + Streamable HTTP + WebSocket |
+| Multi-KB | single | Registry, switching, scoping |
+| Hybrid search | none | Vector + BM25 + graph boost (THE killer feature) |
+| Async jobs | none | For long extractions on large KBs |
+| Streaming | none | SSE for progress + token streaming |
+| Caching | none | Search results, embeddings, traversals |
+| Observability | none | Metrics, logs, traces |
+| Security | none | Token auth, per-KB permissions, rate limits |
+| Errors | basic | MCP-standard codes + ApolloCore-specific |
 
-With MCP, the AI can directly:
-- Search your knowledge base mid-conversation
-- Add new documents it learns about
+### Vision
+
+**ApolloCore is the only local-first KB that combines:**
+1. **Vector search** — Nomic embeddings, cosine similarity
+2. **Knowledge graph** — entities + typed relationships, extracted by LLM
+3. **Local LLM** — Qwen 2.5 for extraction, synthesis, re-ranking
+4. **Persistent** — SQLite + FBIN, survives restarts
+
+The MCP server exposes ALL of this to AI agents. After M2:
+- Any Claude Desktop / Continue.dev / custom agent can search the hybrid KB
+- Agents can read live entity/relationship data as resources
+- Agents can request LLM operations via sampling
+- Long operations run as async jobs with progress events
+- The whole thing runs 100% locally — zero data leaves the machine
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  AI Clients                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │ Claude      │  │ Continue    │  │ Custom      │  │ curl/HTTP   │    │
+│  │ Desktop     │  │ .dev        │  │ Agent       │  │ clients     │    │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘    │
+└─────────┼────────────────┼────────────────┼────────────────┼────────────┘
+          │ stdio         │ stdio         │ stdio/HTTP    │ HTTP/SSE
+          ▼                ▼                ▼                ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Transport Layer (M2.14)                                                │
+│  ┌──────────────┐ ┌──────────────────┐ ┌──────────────────┐             │
+│  │ stdio        │ │ Streamable HTTP  │ │ WebSocket        │             │
+│  │ (Claude D.)  │ │ (REST + MCP)     │ │ (live updates)   │             │
+│  └──────┬───────┘ └─────────┬────────┘ └─────────┬────────┘             │
+└─────────┼────────────────────┼─────────────────────┼────────────────────┘
+          └────────────┬───────┴──────────┬─────────┘
+                       ▼                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  MCP Protocol Layer (M2.3)                                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
+│  │ JSON-RPC    │ │ Capability  │ │ Capability  │ │ Capability  │       │
+│  │ framing     │ │ negotiation │ │ router      │ │ registry    │       │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘       │
+└─────────────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Capability Handlers                                                    │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
+│  │ Tools       │ │ Resources   │ │ Prompts     │ │ Sampling    │       │
+│  │ Registry    │ │ + Subs      │ │ Library     │ │ (srv→clt)   │       │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘       │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                       │
+│  │ Elicitation │ │ Completion  │ │ Notifs      │                       │
+│  │ (srv→user)  │ │ (autocomp.) │ │ (live logs) │                       │
+│  └─────────────┘ └─────────────┘ └─────────────┘                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Domain Layer (M2.2, M2.7)                                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
+│  │ KB          │ │ Hybrid      │ │ KG          │ │ Job         │       │
+│  │ Registry    │ │ Search      │ │ Traversal   │ │ Manager     │       │
+│  │ (multi-KB)  │ │ (v+BM25+g)  │ │ (paths)     │ │ (async)     │       │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘       │
+│  ┌─────────────┐ ┌─────────────┐                                       │
+│  │ Cache       │ │ Cache       │                                       │
+│  │ (results)   │ │ (embedding) │                                       │
+│  └─────────────┘ └─────────────┘                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  ApolloCore Library (existing)                                         │
+│  ApolloCore, EntityExtractor, EmbeddingModel, FBIN, SQLite             │
+└─────────────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Cross-Cutting Concerns                                                 │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
+│  │ Auth        │ │ Metrics     │ │ Logging     │ │ Errors      │       │
+│  │ (tokens)    │ │ (Prom)      │ │ (struct.)   │ │ (standard)  │       │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘       │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Hybrid Search — The Killer Feature
+
+This is what makes ApolloCore's MCP server unique. Most KBs do vector OR graph, not both combined.
+
+**Algorithm** (`hybrid_search(query, top_k, alpha, beta, gamma)`):
+
+```
+1. Vector search (alpha weight)
+   - Encode query → 768-dim vector
+   - Cosine similarity with all chunk embeddings
+   - Return top N candidates (N = top_k * 5)
+
+2. BM25 keyword search (beta weight)
+   - Tokenize query and chunks
+   - Score with BM25 (Okapi)
+   - Return top N candidates
+
+3. Graph expansion (gamma weight)
+   - Extract entities from query (via LLM, cached)
+   - Find entities in KB by name (exact + fuzzy)
+   - Get neighbors within N hops
+   - Get chunks mentioning those entities
+   - Score = distance-weighted
+
+4. Reciprocal Rank Fusion (RRF)
+   - Combine the three ranked lists
+   - score(d) = Σ  1 / (k + rank_i(d))
+   - k = 60 (standard)
+
+5. Optional re-rank via sampling (M2.10)
+   - If client has better model, server offers top 20 for re-ranking
+   - Client uses its model to score them
+   - Server uses returned scores
+
+6. Return top_k
+```
+
+**Why this is state-of-the-art**:
+- Combines three orthogonal signals (semantic, lexical, structural)
+- No external services — all local
+- RRF is the standard fusion technique used by production search systems
+- Optional sampling-based re-rank uses the agent's own LLM (often smarter than local)
+
+**Example**:
+- Query: "Who developed quantum theory?"
+- Vector: finds chunks about "quantum mechanics" (semantic match)
+- BM25: finds chunks containing "developed", "quantum", "theory"
+- Graph: finds Max Planck (PERSON), quantum theory (CONCEPT), neighbors
+- Combined: top result = chunk about Max Planck developing quantum theory
+
+### Tool Catalog (25+ tools)
+
+#### KB Lifecycle (5)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `list_knowledge_bases` | List all known KBs (registry) | (none) |
+| `create_knowledge_base` | Create new KB at path | `path`, `name?` |
+| `open_knowledge_base` | Open existing KB | `path` |
+| `close_knowledge_base` | Close current KB | (none) |
+| `destroy_knowledge_base` | Delete KB (irreversible) | `path`, `confirm: bool` |
+
+#### Documents (5)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `add_document` | Add single document | `text`, `metadata?` |
+| `add_documents_batch` | Add multiple (async if >10) | `documents: [...]` |
+| `list_documents` | List documents in KB | `limit?`, `offset?` |
+| `get_document` | Get full document | `document_id` |
+| `delete_document` | Remove document + chunks | `document_id`, `confirm: bool` |
+
+#### Search (4) — **THE KILLER FEATURES**
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `vector_search` | Pure vector similarity | `query`, `top_k?` |
+| `bm25_search` | Pure keyword search | `query`, `top_k?` |
+| **`hybrid_search`** | **Vector + BM25 + graph (RRF)** | `query`, `top_k?`, `alpha?`, `beta?`, `gamma?` |
+| `search_with_rerank` | Hybrid + client re-rank via sampling | `query`, `top_k?`, `rerank_top_n?` |
+
+#### Entities (5)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `extract_entities` | Run LLM extraction on chunks | `chunk_id?`, `min_confidence?`, `async?` |
+| `list_entities` | List entities (filter by type/chunk) | `chunk_id?`, `type?`, `limit?` |
+| `get_entity` | Get entity by ID | `entity_id` |
+| `search_entities` | Find entities by name (fuzzy) | `name`, `limit?` |
+| `get_entity_types` | List all entity types in KB | (none) |
+
+#### Relationships (5)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `list_relationships` | List all relationships | `type?`, `limit?` |
+| `get_relationship` | Get by ID | `relationship_id` |
+| `search_relationships` | Find where entity participates | `entity_name`, `direction?` |
+| `get_relationship_types` | List all rel types | (none) |
+| `get_paths` | Find paths between two entities | `from_entity`, `to_entity`, `max_hops?` |
+
+#### Graph Operations (3)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `get_neighbors` | N-hop neighborhood of an entity | `entity_id`, `hops?` |
+| `get_subgraph` | Extract subgraph around entities | `entity_ids: [...]`, `hops?` |
+| `export_graph` | Export full KG as JSON-LD | `format?: "json-ld" \| "graphml"` |
+
+#### Stats & Health (3)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `get_stats` | KB statistics | (none) |
+| `get_health` | Deep health (models, KB, jobs) | (none) |
+| `list_jobs` | List async jobs | `status?` |
+
+#### Async Job Operations (3)
+
+| Tool | Description | Key params |
+|------|-------------|------------|
+| `get_job_status` | Get job progress | `job_id` |
+| `cancel_job` | Cancel running job | `job_id` |
+| `get_job_result` | Get completed job result | `job_id` |
+
+### Resource URI Scheme (Full Spec)
+
+```
+apollocore://                                       # server root (server info)
+apollocore://kbs                                    # list all known KBs
+apollocore://kbs/{name}                             # KB metadata
+apollocore://kbs/{name}/documents                   # document list (paginated)
+apollocore://kbs/{name}/documents/{id}              # single document
+apollocore://kbs/{name}/chunks                      # all chunks (paginated)
+apollocore://kbs/{name}/chunks/{id}                 # chunk + embedding metadata
+apollocore://kbs/{name}/entities                    # all entities (paginated)
+apollocore://kbs/{name}/entities/{id}               # single entity
+apollocore://kbs/{name}/relationships               # all relationships (paginated)
+apollocore://kbs/{name}/relationships/{id}         # single relationship
+apollocore://kbs/{name}/stats                       # real-time stats
+apollocore://kbs/{name}/graph                       # graph export (JSON-LD)
+apollocore://jobs                                   # all jobs
+apollocore://jobs/{id}                              # single job
+apollocore://search/{query_hash}                    # cached search result
+```
+
+**Resource subscriptions** (M2.3):
+- Clients can subscribe to a resource URI
+- Server sends `notifications/resources/updated` when content changes
+- E.g., subscribe to `apollocore://kbs/{name}/stats` for live KB dashboard
+
+### Prompts Library (Reusable Templates)
+
+MCP prompts are pre-built conversations the AI can use.
+
+| Prompt | Arguments | Description |
+|--------|-----------|-------------|
+| `rag_qa` | `question`, `top_k?` | Standard RAG: search, then answer with citations |
+| `summarize_chunk` | `chunk_id` | One-paragraph summary of a chunk |
+| `summarize_kb` | (none) | High-level overview of entire KB |
+| `extract_from_text` | `text` | Guided extraction with entity/relationship focus |
+| `find_related` | `entity_name`, `hops?` | Graph expansion from entity |
+| `explain_entity` | `entity_name` | All context about an entity from the KB |
+| `compare_entities` | `entity_a`, `entity_b` | Side-by-side comparison |
+| `quiz_me` | `topic`, `num_questions?` | Generate quiz questions from KB |
+
+Each prompt:
+- Has a JSON schema for its arguments
+- Returns a list of messages (user/assistant) ready to send to the LLM
+- Includes a `description` field so agents know when to use it
+
+### Sampling (Server → Client LLM Calls)
+
+The server can ask the **client's** LLM to do work. This is powerful when:
+- The client has a smarter model (Claude Opus vs local Qwen 0.5B)
+- The task is one-shot generation (re-rank, summarize)
+
+**Re-ranking example** (most common use):
+
+```json
+// Server → Client
+{
+  "method": "sampling/createMessage",
+  "params": {
+    "messages": [{
+      "role": "user",
+      "content": {
+        "type": "text",
+        "text": "Query: 'Who developed relativity?'\n\nRank these chunks by relevance (1=best):\n1. \"Einstein worked at Princeton.\" (score 0.81)\n2. \"Newton developed gravity.\" (score 0.75)\n3. \"Biology is the study of life.\" (score 0.65)\n\nReturn JSON: [{\"id\":N,\"score\":0.0-1.0}]"
+      }
+    }],
+    "maxTokens": 500
+  }
+}
+
+// Client → Server (Claude's response)
+{
+  "result": {
+    "role": "assistant",
+    "content": {
+      "type": "text",
+      "text": "[{\"id\":1,\"score\":0.95},{\"id\":2,\"score\":0.30},{\"id\":3,\"score\":0.05}]"
+    }
+  }
+}
+```
+
+### Elicitation (Server → User Questions)
+
+Server can ask the user a clarification question. Use case:
+
+```json
+// User calls: open_knowledge_base with ambiguous input
+// Server: "Multiple KBs match 'physics'. Which one?"
+{
+  "method": "elicitation/create",
+  "params": {
+    "prompt": "Multiple KBs match. Please choose:",
+    "options": [
+      {"label": "physics_2024", "value": "data/physics_2024"},
+      {"label": "physics_textbook", "value": "data/physics_textbook"}
+    ]
+  }
+}
+```
+
+### Notifications (Server → Client Messages)
+
+Server-initiated messages for logs and progress:
+
+```json
+// Server → Client (during long extraction)
+{
+  "method": "notifications/message",
+  "params": {
+    "level": "info",
+    "logger": "apollo.extraction",
+    "data": {"job_id": "abc", "progress": 0.45, "current_chunk": "doc_3_chunk_2"}
+  }
+}
+
+// Server → Client (when resource changes)
+{
+  "method": "notifications/resources/updated",
+  "params": {"uri": "apollocore://kbs/my_kb/stats"}
+}
+```
+
+### Completion (Argument Autocompletion)
+
+Clients can request autocompletion for tool arguments:
+
+```json
+// Client → Server (as user types entity name)
+{
+  "method": "completion/complete",
+  "params": {
+    "ref": {"type": "ref/tool", "name": "get_neighbors"},
+    "argument": {"name": "entity_id", "value": "Al"}
+  }
+}
+
+// Server → Client
+{
+  "result": {
+    "completion": {
+      "values": ["Albert Einstein", "Alan Turing", "Alexander Graham Bell"]
+    }
+  }
+}
+```
+
+### Multi-KB Design
+
+```
+KB Registry (in-memory, persistent in ~/.apollocore/registry.json):
+┌──────────────┬────────────────┬──────────────┬──────────┐
+│ name         │ path           │ embedding_md │ llm_md   │ last_used│
+├──────────────┼────────────────┼──────────────┼──────────┼──────────┤
+│ physics      │ data/physics   │ models/...   │ models/.. │ 2h ago   │
+│ code_review  │ data/code      │ models/...   │ -        │ 1d ago   │
+│ notes        │ data/notes     │ models/...   │ models/.. │ 30m ago  │
+└──────────────┴────────────────┴──────────────┴──────────┴──────────┘
+
+- One "active" KB at a time per server instance
+- Models loaded once and shared across KBs
+- Unloading after N hours idle (configurable)
+- Registry persists across restarts
+```
+
+### Async Job System
+
+For long operations on large KBs (extraction, indexing):
+
+```
+Job lifecycle:
+  queued → running → completed
+                 ↘ failed
+                 ↘ cancelled (by user)
+
+Job fields:
+  - id (UUID)
+  - type ("extract_entities", "add_documents_batch", "index_full_kb")
+  - status
+  - progress (0.0 - 1.0)
+  - started_at, finished_at
+  - params (input)
+  - result (when complete)
+  - error (if failed)
+  - cancel_requested (bool)
+
+Notification during run:
+  - Server sends notifications/message with progress every ~2 seconds
+  - Client can subscribe to apollocore://jobs/{id}
+
+Cancellable:
+  - cancel_job sets cancel_requested
+  - Job checks flag at safe points and aborts cleanly
+```
+
+### Caching Layer
+
+```
+┌──────────────────────────────────────┐
+│ L1: Search results cache             │
+│   - Key: hash(query, params)         │
+│   - TTL: 5 min                       │
+│   - Invalidate on: KB mutation       │
+├──────────────────────────────────────┤
+│ L2: Entity lookup cache              │
+│   - Key: entity_name                 │
+│   - TTL: until KB reload             │
+├──────────────────────────────────────┤
+│ L3: Graph traversal cache            │
+│   - Key: (entity_id, hops)           │
+│   - TTL: 1 min (high invalidation)   │
+├──────────────────────────────────────┤
+│ L4: Embedding cache (in ApolloCore)  │
+│   - Key: text hash                   │
+│   - TTL: forever                     │
+└──────────────────────────────────────┘
+```
+
+### Streaming Responses (SSE)
+
+For long ops, server sends progress events:
+
+```
+GET /mcp/stream/{job_id}
+Accept: text/event-stream
+
+event: progress
+data: {"progress": 0.2, "current": "doc_1_chunk_2"}
+
+event: progress
+data: {"progress": 0.4, "current": "doc_2_chunk_0"}
+
+event: result
+data: {"entities_extracted": 23, "total": 42}
+```
+
+For `search_with_rerank`:
+```
+event: candidates
+data: [{"id": 1, "score": 0.81}, ...]
+
+event: rerank
+data: {"completed": true, "results": [...]}
+```
+
+### Error Handling — Standard MCP Codes
+
+```cpp
+enum class ErrorCode : int {
+    // JSON-RPC standard
+    ParseError = -32700,
+    InvalidRequest = -32600,
+    MethodNotFound = -32601,
+    InvalidParams = -32602,
+    InternalError = -32603,
+
+    // ApolloCore-specific (-32000 to -32099)
+    KbNotFound = -32001,
+    KbAlreadyOpen = -32002,
+    ModelNotLoaded = -32003,
+    LlmTimeout = -32004,
+    JobNotFound = -32005,
+    JobCancelled = -32006,
+    ResourceNotFound = -32007,
+    PermissionDenied = -32008,
+    RateLimited = -32009,
+    InvalidPath = -32010,
+    ExtractionFailed = -32011,
+};
+
+// Each error includes:
+// - code (int)
+// - message (human-readable)
+// - data (structured context)
+// - retryable (bool — client should retry?)
+```
+
+### Observability
+
+**Metrics** (`GET /metrics`, Prometheus format):
+```
+# HELP apollocore_requests_total Total MCP requests
+# TYPE apollocore_requests_total counter
+apollocore_requests_total{tool="search_kb",status="ok"} 142
+
+# HELP apollocore_search_duration_seconds Search latency
+# TYPE apollocore_search_duration_seconds histogram
+apollocore_search_duration_seconds_bucket{le="0.1"} 12
+...
+
+# HELP apollocore_entities_total Entities in KB
+# TYPE apollocore_entities_total gauge
+apollocore_entities_total{kb="physics"} 4281
+```
+
+**Logs** (`GET /logs`, structured JSON):
+```json
+{"ts":"2026-06-26T12:34:56Z","level":"info","logger":"apollo.search",
+ "msg":"hybrid_search","kb":"physics","top_k":5,"duration_ms":42}
+```
+
+**Health** (`GET /health`):
+```json
+{
+  "status": "ok",
+  "checks": {
+    "embedding_model": "ok",
+    "llm_model": "ok",
+    "active_kb": "ok",
+    "registry": "ok"
+  }
+}
+```
+
+### Security (Phase 2 — but designed in)
+
+```
+Authentication:
+  - Bearer tokens in Authorization header
+  - Tokens: ~/.apollocore/tokens.json (hashed)
+  - Issue: apolloctl token create <name> <scopes>
+
+Scopes:
+  - kb:read       - read KB data
+  - kb:write      - mutate KB
+  - kb:admin      - destroy KBs
+  - tools:all     - call any tool
+  - tools:safe    - only read-only tools
+
+Per-KB permissions:
+  - tokens can be granted access to specific KBs
+  - Default: token has access to all KBs user owns
+
+Rate limiting:
+  - Per-token: 60 req/min default
+  - Per-tool: configurable
+  - Per-IP (HTTP): 120 req/min
+
+Path validation:
+  - Reject absolute paths
+  - Reject ".." components
+  - Resolve symlinks, reject escapes
+```
+
+### Implementation Tasks (M2.1 – M2.20)
+
+| ID | Task | Priority | Estimate |
+|----|------|----------|----------|
+| M2.1 | Formal resource URI scheme spec (RFC-style) | 🔴 | 2 hours |
+| M2.2 | KB Registry (multi-KB support, persistent) | 🔴 | 4 hours |
+| M2.3 | Refactor: extract Tool Registry from current handlers | 🔴 | 3 hours |
+| M2.4 | Implement remaining 17+ tools (KB, docs, search, KG) | 🔴 | 10 hours |
+| M2.5 | Resource subscriptions (notifications/resources/updated) | 🟡 | 3 hours |
+| M2.6 | Prompts library (8 prompts) | 🟡 | 4 hours |
+| M2.7 | **Hybrid search (vector + BM25 + graph + RRF)** | 🔴 | 6 hours |
+| M2.8 | Async job manager + Job table schema | 🟡 | 4 hours |
+| M2.9 | SSE streaming for long ops | 🟡 | 3 hours |
+| M2.10 | Sampling (sampling/createMessage handler) | 🟡 | 3 hours |
+| M2.11 | Elicitation (elicitation/create handler) | 🟡 | 2 hours |
+| M2.12 | Notifications infrastructure (server→client msgs) | 🟡 | 2 hours |
+| M2.13 | Completion (completion/complete handler) | 🟢 | 2 hours |
+| M2.14 | Multi-transport: stdio + Streamable HTTP + WebSocket | 🔴 | 6 hours |
+| M2.15 | Hybrid search re-rank via sampling | 🟡 | 2 hours |
+| M2.16 | Caching layer (search, lookup, traversal) | 🟡 | 3 hours |
+| M2.17 | Observability (metrics, logs, health, tracing) | 🟡 | 4 hours |
+| M2.18 | Standardized error codes + retry classification | 🔴 | 2 hours |
+| M2.19 | Token auth + scopes + rate limiting | 🟢 | 4 hours |
+| M2.20 | Comprehensive integration tests (50+ test cases) | 🟡 | 6 hours |
+| M2.21 | Documentation: docs/mcp.md (usage guide) | 🟡 | 3 hours |
+| M2.22 | Client examples: Claude Desktop, Continue.dev, raw curl | 🟡 | 2 hours |
+
+**Total estimate**: ~80 hours of focused work (or ~2 weeks full-time)
+
+### Phasing
+
+Rather than do all of M2 in one go, **phase it**:
+
+**M2.A (Core, ~20 hours)** — must-have for "state-of-the-art":
+- M2.3 Tool Registry refactor
+- M2.4 Remaining tools
+- M2.7 Hybrid search (THE feature)
+- M2.14 Multi-transport
+- M2.18 Standardized errors
+- M2.20 Core tests
+
+**M2.B (Full protocol, ~25 hours)** — complete MCP:
+- M2.5 Resource subscriptions
+- M2.6 Prompts library
+- M2.8 Async jobs
+- M2.9 SSE streaming
+- M2.10 Sampling
+- M2.11 Elicitation
+- M2.12 Notifications
+- M2.13 Completion
+
+**M2.C (Production polish, ~20 hours)** — ready for real users:
+- M2.1 Formal URI spec
+- M2.2 KB Registry (multi-KB)
+- M2.15 Re-rank via sampling
+- M2.16 Caching
+- M2.17 Observability
+- M2.19 Auth + rate limits
+- M2.21 Docs
+- M2.22 Client examples
+
+**M2.D (Future)**:
+- WebSocket transport
+- Distributed (multi-node) KB
+- Custom embedding models per KB
+
+### Acceptance Criteria — Phase M2.A
+
+The CORE phase is done when:
+
+1. ✅ 25+ tools callable via MCP HTTP transport
+2. ✅ `hybrid_search` returns results combining vector + BM25 + graph
+3. ✅ stdio transport works (Claude Desktop config)
+4. ✅ HTTP transport still works (backwards compatible)
+5. ✅ All errors use standardized MCP error codes
+6. ✅ Tools have proper JSON schemas with descriptions
+7. ✅ Resources have templated URI scheme
+8. ✅ Integration tests cover: each tool, hybrid search, error paths
+9. ✅ Existing REST API still works (M1.16 not broken)
+10. ✅ All existing ApolloCore tests still pass
+
+### Backwards Compatibility
+
+M1.16 implementations continue to work:
+- Same HTTP routes (`/api/*`, `/mcp`)
+- Same JSON-RPC envelope
+- Same basic 8 tools
+- New tools are additive
+- Error format extended (not breaking)
+
+### Example: Full Hybrid Search Session
+
+```
+User (via Claude Desktop): "Tell me about Einstein's contributions to physics"
+
+Claude Desktop → apollocore MCP server (stdio):
+  tools/call: hybrid_search
+    query="Einstein contributions physics"
+    top_k=10
+    alpha=0.5, beta=0.3, gamma=0.2
+
+  [server runs hybrid search]
+  [vector: 5 candidates, BM25: 8 candidates, graph: 3 candidates]
+  [RRF fusion → top 10]
+  [sampling: ask client to re-rank top 10]
+    sampling/createMessage: "Rank these 10 chunks..."
+
+  [client (Claude) re-ranks with its smarter model]
+  [server returns final ranked list]
+
+  resources/read: apollocore://kbs/physics/entities
+    [server streams entity list]
+
+  resources/read: apollocore://kbs/physics/entities/Einstein
+    [server streams Einstein's full context]
+
+Claude Desktop composes answer:
+  "Einstein contributed to physics in several major ways [uses chunks 1-5,
+   score 0.85+]. His work on [uses entities: special relativity, general
+   relativity, photoelectric effect, Brownian motion]. The relationships
+   show he [uses relationships: Einstein-DEVELOPED-relativity,
+   Einstein-WON-Nobel_Prize, ...]..."
+
+[User gets a knowledge-grounded, multi-source answer from local KB]
+```
+
+### Comparison: ApolloCore MCP vs Generic
+
+| Feature | Generic MCP | ApolloCore MCP |
+|---------|-------------|----------------|
+| Tools | 5-20 | **25+** |
+| Search | Vector OR keyword | **Vector + BM25 + graph (RRF)** |
+| Graph | none | **Full KG ops (paths, neighbors, communities)** |
+| Transports | 1-2 | **3 (stdio, HTTP, WebSocket)** |
+| Sampling | rarely | **Yes (re-ranking)** |
+| Prompts | none | **8 templates** |
+| Resources | simple | **templated + subscriptions** |
+| Multi-KB | single | **registry + switching** |
+| Async | none | **job manager** |
+| Streaming | rare | **SSE for all long ops** |
+| Caching | none | **4-layer** |
+| Observability | logs only | **metrics + logs + health** |
+| Security | varies | **tokens + scopes + rate limits** |
+
+### Open Questions
+
+1. **stdio or HTTP for Claude Desktop?** — stdio (standard), but HTTP+SSE works
+2. **Async default for extraction?** — Auto-async if KB has >100 chunks
+3. **Sampling re-rank default?** — Off (client opts in)
+4. **Default transport?** — HTTP+SSE (more flexible), stdio optional
+5. **Cache TTL?** — 5 min search, 1 min graph (configurable)
+
+### Timeline
+
+| Phase | Time | Priority |
+|-------|------|----------|
+| **M2.A** (Core) | ~20 hours | Must-have for "state-of-the-art" |
+| **M2.B** (Full protocol) | ~25 hours | Complete MCP |
+| **M2.C** (Polish) | ~20 hours | Production ready |
+| M2.D (Future) | varies | Optional |
+
+### What Becomes Possible After M2.A
+
+- AI agents can do sophisticated hybrid search
+- KG exploration is first-class
+- Long operations don't block
+- Standard error handling
+- Works in Claude Desktop
+
+### What Becomes Possible After M2.B + M2.C
+
+- Server can ask agent's LLM to re-rank
+- Server can ask user clarification
+- Resource subscriptions (live dashboards)
+- Async job manager with progress
+- Production security
+
+### Files This Plan Will Touch (When Implemented)
+
+```
+include/apollocore/
+  apollo_mcp_server.hpp        # NEW: Tool registry, KB registry
+  apollo_mcp_transports.hpp    # NEW: stdio, HTTP, WebSocket
+  apollo_mcp_sampling.hpp      # NEW: sampling handler
+  apollo_mcp_elicitation.hpp   # NEW: elicitation handler
+  apollo_mcp_prompts.hpp       # NEW: prompts library
+  apollo_mcp_jobs.hpp          # NEW: job manager
+  apollo_mcp_cache.hpp         # NEW: caching layer
+  apollo_mcp_errors.hpp        # NEW: error codes
+  apollo_hybrid_search.hpp     # NEW: hybrid search engine
+  apollo_mcp_resources.hpp     # NEW: resource URI scheme
+
+src/
+  apollo_mcp_server.cpp        # NEW: MCP server core
+  apollo_mcp_tools.cpp         # NEW: 25+ tools
+  apollo_mcp_resources.cpp     # NEW: resources
+  apollo_mcp_prompts.cpp       # NEW: prompts
+  apollo_mcp_sampling.cpp      # NEW: sampling
+  apollo_mcp_elicitation.cpp   # NEW: elicitation
+  apollo_mcp_jobs.cpp          # NEW: jobs
+  apollo_mcp_cache.cpp         # NEW: caches
+  apollo_mcp_observability.cpp # NEW: metrics/logs
+  apollo_hybrid_search.cpp     # NEW: hybrid algorithm
+  apollo_mcp_stdio.cpp         # NEW: stdio transport
+  apollo_mcp_websocket.cpp     # NEW: WS transport
+  (existing src/apollo_mcp_http.cpp → src/apollo_mcp_http_transport.cpp)
+
+examples/
+  apollo_mcp_stdio_server.cpp  # NEW: stdio entry point
+  apollo_mcp_http_server.cpp   # RENAME: apollo_rest_server (multi-transport)
+  apollo_mcp_ws_server.cpp     # NEW: WS entry point
+
+docs/
+  mcp.md                       # NEW: usage guide
+  mcp-tools.md                 # NEW: tool catalog
+  mcp-resources.md             # NEW: resource scheme
+  mcp-transports.md            # NEW: transport matrix
+  mcp-hybrid-search.md         # NEW: hybrid algorithm spec
+
+tests/
+  test_mcp_server.cpp          # NEW: MCP integration tests
+  test_hybrid_search.cpp       # NEW: hybrid search unit tests
+  test_mcp_stdio.cpp           # NEW: stdio transport tests
+  test_mcp_websocket.cpp       # NEW: WS transport tests
+  test_mcp_jobs.cpp            # NEW: job manager tests
+  test_mcp_sampling.cpp        # NEW: sampling tests
+
+CodeMax.md                     # UPDATE: mark M2 phases complete as done
+```
+
+~30+ new files. ~5000+ lines of code. The largest single phase of ApolloCore so far.
+
+---
 - Extract entities from text
 - Get statistics about what's stored
 
@@ -762,43 +1561,6 @@ Phase M1 is **DONE** when:
 | Large response payloads | Use `content` as `text` (string); truncate if >1MB |
 | Embedding model not found | Clear error message with path hint |
 | KB doesn't exist | Return MCP error code with helpful message |
-
-### Open Questions
-
-1. **Do we need HTTP transport in M1?** — Proposed: defer to M1.16
-2. **Multi-KB support?** — Proposed: defer (single KB per process)
-3. **Should MCP server manage model lifecycle?** — Proposed: yes, accept `--models-dir` flag
-4. **Async extract_entities?** — Proposed: defer (sync is fine for small chunks)
-
-### Timeline
-
-| Step | Time |
-|------|------|
-| M1.1–M1.5 (core JSON-RPC loop) | ~3 hours |
-| M1.6–M1.11 (wire 8 tools) | ~3 hours |
-| M1.12 (resources) | ~1 hour |
-| M1.13–M1.14 (docs + tests) | ~1.5 hours |
-| M1.15 (README) | ~30 min |
-| **Core total** | **~9 hours** |
-| M1.16 (HTTP/SSE) | +2 hours (optional) |
-
-### Example Session (User Perspective)
-
-```
-User: "What does my knowledge base know about Einstein?"
-
-Claude Desktop → apollo_mcp_server (stdio):
-  tools/call: search "Einstein", top_k=3
-  tools/call: get_entities
-  tools/call: get_relationships
-
-Claude Desktop formats results, shows user:
-  - 3 relevant chunks (scores 0.81, 0.65, 0.60)
-  - 7 entities (Einstein, relativity, quantum, etc.)
-  - 4 relationships (Einstein --DEVELOPED--> relativity, etc.)
-```
-
-The user gets a knowledge-grounded answer from their local KB, with no data leaving their machine.
 
 ---
 
