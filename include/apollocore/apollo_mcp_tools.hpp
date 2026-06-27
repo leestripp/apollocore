@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include "apollocore/apollo_mcp_errors.hpp"
+
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <string>
@@ -22,7 +24,12 @@
 
 #include "apollocore/apollo_mcp_errors.hpp"
 
-namespace apollocore_v2::mcp {
+namespace apollocore_v2 {
+
+// Forward declaration — ApolloCore is defined in apollo_persistence.hpp
+class ApolloCore;
+
+namespace mcp {
 
 class ToolRegistry {
 public:
@@ -150,4 +157,14 @@ inline nlohmann::json make_schema(
     };
 }
 
-} // namespace apollocore_v2::mcp
+/**
+ * Register all 25+ ApolloCore MCP tools into a registry.
+ * Defined in apollo_mcp_tools.cpp.
+ *
+ * @param registry The registry to populate
+ * @param kb       ApolloCore instance (tools will use it directly)
+ */
+void register_all_tools(ToolRegistry& registry, ApolloCore& kb);
+
+} // namespace mcp
+} // namespace apollocore_v2
