@@ -27,15 +27,29 @@ FetchContent_MakeAvailable(nlohmann_json)
 FetchContent_Declare(llama_cpp
     GIT_REPOSITORY https://github.com/ggerganov/llama.cpp.git
     GIT_TAG master
-    CMAKE_ARGS 
-        -DLLAMA_VULKAN=ON
+    CMAKE_ARGS
+        -DGGML_VULKAN=ON          # Vulkan GPU backend (was LLAMA_VULKAN in older versions)
         -DLLAMA_BUILD_EXAMPLES=OFF
         -DLLAMA_BUILD_TESTS=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
 # Download and build llama.cpp
+# Note: Set GGML_VULKAN explicitly here because option() in inner ggml project
+# would otherwise override our -DGGML_VULKAN=ON from CMAKE_ARGS.
+set(GGML_VULKAN ON CACHE BOOL "Enable ggml Vulkan backend" FORCE)
 FetchContent_MakeAvailable(llama_cpp)
+
+# Patch: GGML_VULKAN option is declared in ggml/CMakeLists.txt but never used,
+# so the Vulkan backend is never built. Add it after CPU backend.
+file(READ "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt" _ggml_src)
+string(REPLACE
+    "ggml_add_backend(CPU)"
+    "ggml_add_backend(CPU)\n\n# Patch: enable Vulkan backend (GGML_VULKAN option was declared but never used)\nif (GGML_VULKAN)\n    ggml_add_backend(VULKAN)\nendif()"
+    _ggml_src_patched
+    "${_ggml_src}")
+file(WRITE "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt" "${_ggml_src_patched}")
+message(STATUS "Patched llama.cpp to enable Vulkan backend")
 
 # OmniNet — HTTP/WebSocket server library (Phase O1)
 # Pinned to a specific tag for reproducibility.

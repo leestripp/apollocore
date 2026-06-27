@@ -615,6 +615,18 @@ size_t ApolloCore::extract_entities(
     return total_entities;
 }
 
+std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_chunks() {
+    std::vector<std::pair<std::string, std::string>> result;
+    if (!is_open_ || !kb_persistence_) return result;
+
+    auto chunks = kb_persistence_->load_all_chunks();
+    result.reserve(chunks.size());
+    for (const auto& c : chunks) {
+        result.emplace_back(c.id, c.content);
+    }
+    return result;
+}
+
 std::vector<Entity> ApolloCore::get_entities(size_t limit) {
     std::vector<Entity> result;
     if (!is_open_) return result;

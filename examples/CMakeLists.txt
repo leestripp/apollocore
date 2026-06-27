@@ -29,6 +29,8 @@ add_executable(apollo_rest_server
     apollo_rest_server.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_rest_api.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_http.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_hybrid_search.cpp
 )
 target_include_directories(apollo_rest_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include

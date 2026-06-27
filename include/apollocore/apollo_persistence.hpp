@@ -1,30 +1,15 @@
 /**
  * ApolloCore - Persistence Integration
- * 
+ *
  * Adds save/load capabilities to the main ApolloCore class.
- * 
+ *
  * This file extends the ApolloCore class with persistence methods.
- * 
+ *
  * Usage:
  *   ApolloCore kb;
  *   kb.load_embedding_model("models/embeddings.gguf");
- *   
- *   // Option 1: Create new knowledge base
- *   kb.create("data/my_kb", "My Knowledge Base");
- *   kb.add_document("...", kb.get_root());
- *   // Auto-persists on add_document
- *   
- *   // Option 2: Open existing
- *   kb.open("data/my_kb");
- *   // All chunks/embeddings/entities/relationships are loaded
- *   
- *   // Query (works on loaded data)
- *   auto results = kb.query("search");
- *   
- *   // Close
- *   kb.close();
- *   kb.destroy();  // delete the KB
  */
+#pragma once
 
 #include "apollocore/kb_persistence.hpp"
 #include "apollocore/fbin.hpp"
@@ -186,7 +171,13 @@ public:
         const std::string& chunk_id,
         float min_confidence = 0.5f
     );
-    
+
+    /**
+     * Get all chunks in the current KB as (id, content) pairs.
+     * Used by hybrid search to build BM25 index.
+     */
+    std::vector<std::pair<std::string, std::string>> get_all_chunks();
+
     /**
      * Get all entities from the knowledge base.
      * @param limit Max entities to return (0 = all)
