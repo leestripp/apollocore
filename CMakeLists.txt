@@ -72,6 +72,39 @@ else()
     endif()
 endif()
 
+# ============================================================================
+# Tree-sitter — proper AST parsing for code (M3.B)
+# ============================================================================
+# MIT-licensed, modern (v0.26.9, May 2026), used by Neovim/Helix/GitHub.
+# Used for auto-extracting code-aware entities (FUNCTION, CLASS, etc.)
+# from ingested source files. Replaces regex hacks.
+#
+# Core is a C library (linked statically). The C++ grammar is a separate
+# repo providing the tree_sitter_cpp() entry point.
+option(TREE_SITTER_SKIP_FETCH "Use system tree-sitter instead of FetchContent" OFF)
+if(NOT TREE_SITTER_SKIP_FETCH)
+    FetchContent_Declare(
+        tree-sitter
+        GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
+        GIT_TAG        v0.26.9
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_Declare(
+        tree-sitter-cpp
+        GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(tree-sitter)
+    FetchContent_MakeAvailable(tree-sitter-cpp)
+else()
+    find_package(tree-sitter QUIET)
+    if(NOT tree-sitter_FOUND)
+        message(FATAL_ERROR "TREE_SITTER_SKIP_FETCH=ON but find_package failed")
+    endif()
+endif()
+
+
 # Vulkan detection (for AMD GPU)
 find_package(Vulkan QUIET)
 if(Vulkan_FOUND)

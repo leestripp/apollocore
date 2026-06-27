@@ -2501,3 +2501,375 @@ int main() {
 - [Nomic Embed Text](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF)
 - [BERT NER](https://huggingface.co/dslim/bert-base-NER)
 - [LLM Entity Extraction Best Practices](https://arxiv.org/abs/2406.16157)
+
+---
+
+# 🌳 PHASE M3.B: Tree-sitter AST Parsing for Code-Aware Extraction
+
+## Overview
+
+**Goal:** When `add_files` ingests source code, automatically extract code-aware
+entities (FUNCTION, CLASS, FILE, MODULE, NAMESPACE) and relationships
+(CALLS, INHERITS, IMPORTS, DEFINES) using **tree-sitter** proper AST parsing.
+
+**Why tree-sitter (not regex):**
+- 100% accurate C/C++/Python/JS parsing (handles all syntax edge cases)
+- MIT-licensed throughout (core, grammars, bindings)
+- Modern and actively maintained (v0.26.9, May 2026)
+- Industry-standard — used by Neovim, Helix, GitHub, Nova, Zed
+- Future-proof — easy to add more languages
+- Incremental parsing built-in (for editing files later)
+
+**Cost estimate:** ~half day
+
+## Status (start of session)
+
+| Step | Status |
+|------|--------|
+| Add tree-sitter + tree-sitter-cpp to FetchContent | DONE |
+| Verify CMake configure succeeds | DONE |
+| Write this plan | DONE |
+| Build the libraries | TODO (tomorrow) |
+| Write C++ wrapper | TODO |
+| Test on real C++ file | TODO |
+| Write AST → entity/relationship extractor | TODO |
+| Integrate into `add_files` | TODO |
+| Test end-to-end | TODO |
+| Commit | TODO |
+
+## Why This Matters
+
+Right now, the manual workflow is:
+```
+add_files("/path/to/code")
+add_entity("authenticate", "FUNCTION", ...)    ← me, manually
+add_entity("login", "FUNCTION", ...)
+add_entity("Session", "CLASS", ...)
+add_relationship("login", "Session", "INSTANTIATES")
+... × 100+ functions per codebase ...
+```
+
+After tree-sitter, this becomes:
+```
+add_files("/path/to/code")
+# DONE. Graph populated automatically.
+```
+
+That's the difference between ApolloCore being useful vs being a fancy search.
+
+## Architecture
+
+```
+File → tree-sitter parse → AST → walk → CodeModel
+  ↓
+CodeModel → ApolloCore (entities + relationships)
+```
+
+### Tree-sitter Integration Layers
+
+```
+┌─────────────────────────────────────────┐
+│ apollo_code_extractor.cpp (NEW)         │ ← walks AST, builds CodeModel
+├─────────────────────────────────────────┤
+│ apollo_ts_wrapper.hpp/cpp (NEW)         │ ← thin C++ wrapper around C API
+├─────────────────────────────────────────┤
+│ libtree-sitter + libtree-sitter-cpp      │ ← linked statically
+└─────────────────────────────────────────┘
+```
+
+## Files to Create/Modify
+
+### NEW files
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `include/apollocore/apollo_ts_wrapper.hpp` | C++ classes: TSParser, TSNode, TSQuery | ~80 |
+| `src/apollo_ts_wrapper.cpp` | Implementations + RAII wrappers | ~120 |
+| `include/apollocore/apollo_code_extractor.hpp` | CodeModel struct, extract_code() API | ~40 |
+| `src/apollo_code_extractor.cpp` | Walk AST, emit entities + rels | ~250 |
+| `tests/test_code_extractor.cpp` | Unit tests on real C++ files | ~150 |
+
+### MODIFIED files
+
+| File | Change |
+|------|--------|
+| `CMakeLists.txt` | Add tree-sitter + tree-sitter-cpp (DONE) |
+| `examples/CMakeLists.txt` | Link to new sources, add extractor to apollo_core lib |
+| `src/apollo_codebase_ingest.cpp` | Call extractor after reading each file |
+| `src/apollo_mcp_tools.cpp` | Add new optional arg to `add_files`: `extract_code_entities: bool` |
+
+## Implementation Steps
+
+### Step 1: Build verification (10 min)
+- [ ] Build tree-sitter + tree-sitter-cpp from FetchContent
+- [ ] Confirm `libtree-sitter.a` and `libtree-sitter-cpp.a` (or equivalent) exist
+- [ ] Verify link to a tiny test program
+
+### Step 2: C++ wrapper (1-2 hours)
+File: `include/apollocore/apollo_ts_wrapper.hpp` + `src/apollo_ts_wrapper.cpp`
+
+Minimal C++ classes wrapping the tree-sitter C API:
+
+```cpp
+class TSParser {
+    TSParser* p_;
+public:
+    TSParser();                              // ts_parser_new()
+    ~TSParser();                             // ts_parser_delete()
+    void set_cpp_language();                  // ts_parser_set_language(p_, tree_sitter_cpp())
+    TSTree parse_string(std::string_view src); // ts_parser_parse_string(...)
+};
+
+class TSNode {
+    TSNode n_;
+public:
+    std::string type() const;                // ts_node_type(n_)
+    bool is_named() const;                   // ts_node_is_named
+    uint32_t child_count() const;            // ts_node_child_count
+    TSNode child(uint32_t i) const;          // ts_node_child
+    TSNode named_child(uint32_t i) const;    // ts_node_named_child
+    std::optional<TSNode> first_child_of_type(std::string_view type) const;
+    std::string_view text(std::string_view source) const; // ts_node_slice
+};
+```
+
+Plus `TSQuery` for pattern matching (optional but powerful).
+
+### Step 3: AST → CodeModel (2-3 hours)
+File: `include/apollocore/apollo_code_extractor.hpp` + `src/apollo_code_extractor.cpp`
+
+```cpp
+struct CodeEntity {
+    std::string name;
+    std::string type;       // "FUNCTION", "CLASS", etc.
+    std::string file_path;  // for chunk_id derivation
+    std::string chunk_id;
+    std::string parent;     // enclosing class/namespace
+    size_t start_line;
+    size_t end_line;
+    std::string signature;  // for display
+};
+
+struct CodeRelationship {
+    std::string source;
+    std::string target;
+    std::string type;       // "CALLS", "INHERITS", etc.
+    size_t line;
+};
+
+struct CodeModel {
+    std::vector<CodeEntity> entities;
+    std::vector<CodeRelationship> relationships;
+};
+
+CodeModel extract_cpp(const std::string& source, const std::string& file_path);
+```
+
+**Walk strategy:**
+- Top-level walk → find `function_definition` and `class_specifier` nodes
+- For each, extract name (from `field_declaration` / `function_declarator`)
+- For `class_specifier`, find base_class list → emit INHERITS
+- For function body, walk for `call_expression` → emit CALLS
+- For `preproc_include`, emit IMPORTS
+
+### Step 4: Integrate into `add_files` (30 min)
+
+```cpp
+// src/apollo_codebase_ingest.cpp
+if (extract_entities) {
+    CodeModel model = extract_cpp(content, file_path);
+    for (auto& e : model.entities) {
+        kb.add_entity(e.name, e.type, e.chunk_id, e.signature);
+    }
+    for (auto& r : model.relationships) {
+        kb.add_relationship(r.source, r.target, r.type, "", 1.0f);
+    }
+}
+```
+
+### Step 5: Test (1 hour)
+- [ ] `tests/test_code_extractor.cpp` parses ApolloCore's own `src/apollo_persistence.cpp`
+  - Should find 50+ entities (classes, functions)
+  - Should find CALLS relationships between functions
+- [ ] End-to-end test: ingest a small codebase, verify graph is populated
+- [ ] Verify completion works on extracted entity names
+
+### Step 6: Document (15 min)
+- [ ] Update README.md with auto-extraction feature
+- [ ] Update CodeMax.md to mark M3.B complete
+
+## API Design (target)
+
+### `add_files` extended schema
+
+```json
+{
+  "path": "/path/to/code",
+  "extensions": [".cpp", ".hpp"],
+  "extract_code_entities": true,        // NEW (default: true)
+  "extract_relationships": true,        // NEW (default: true)
+  "recursive": true
+}
+```
+
+Returns unchanged (file processing stats), but internally graph is now populated.
+
+### New tool: `extract_code_entities` (standalone)
+
+For files that already exist in the KB but haven't been extracted yet:
+
+```json
+{
+  "name": "extract_code_entities",
+  "description": "Parse all source files in the KB with tree-sitter, "
+                 "populating code-aware entities and relationships.",
+  "args": {
+    "language": "cpp"  // future: python, javascript
+  }
+}
+```
+
+## Edge Cases to Handle
+
+| Case | Strategy |
+|------|----------|
+| Parse error (malformed source) | Log warning, skip file, continue with others |
+| Same symbol in different namespaces | Use qualified name `ns::Foo::bar` |
+| Templates, operator overloads | Best-effort — capture name + line, don't try to be perfect |
+| Macros that look like functions | Heuristic — check if name is uppercase |
+| Anonymous namespaces | Skip (no name) |
+| Forward declarations | Skip (no body) |
+| Header files vs source files | Both extracted; dedupe on (file, line) |
+
+## Performance Targets
+
+- Parse 10K-line C++ file in <500ms
+- Extract entities + relationships in <100ms additional
+- Memory: <100MB for tree-sitter parser state
+- Incremental parse (Phase M3.B+): <10ms for small edits
+
+## Dependencies
+
+Already added to `CMakeLists.txt`:
+- `tree-sitter` v0.26.9 (core, ~8MB)
+- `tree-sitter-cpp` (grammar, ~3MB)
+
+Both MIT-licensed.
+
+Optional future (Phase 3+):
+- `tree-sitter-python`
+- `tree-sitter-javascript`
+- `tree-sitter-typescript`
+
+## Known Limitations (acceptable for v1)
+
+1. **Templates & generics** — partial extraction (name + position, not full signature)
+2. **Operator overloads** — captured as `operator()` etc, may not always be perfect
+3. **Header files** — extracted independently (might duplicate entities across .h and .cpp)
+   - Mitigation: dedupe on (entity name, file) tuple
+4. **Comments and macros** — won't extract from inside comments
+5. **Cross-file references** — `#include "Foo.h"` → IMPORTS detected, but
+   resolving to actual entities needs separate phase
+6. **No incremental updates** — full re-parse on file change (Phase 3 work)
+
+## Commit Plan
+
+Each step gets its own commit for safe rollback:
+1. `feat(deps): add tree-sitter + tree-sitter-cpp via FetchContent`
+2. `feat: add C++ wrapper for tree-sitter C API`
+3. `feat: add code extractor (AST → entities + relationships)`
+4. `feat: integrate code extractor into add_files`
+5. `test: unit tests for code extractor`
+6. `docs: document auto-extraction feature`
+
+## Related Work
+
+This phase **completes** the manual workflow from M2:
+- M2 added 37 tools + 6 prompts
+- M3.A added code-aware entity/relationship types
+- M3.B adds automatic extraction (this phase)
+
+After M3.B, ApolloCore will be:
+- **37+ tools** for me to query the KB
+- **6 prompts** for rendering context
+- **auto-extraction** so I don't manually tag every function
+- **call graph** (entities + CALLS relationships) queryable via existing get_neighbors / get_paths
+
+## Verification Tests
+
+When implementation is done, verify with:
+
+```bash
+# 1. Ingest ApolloCore itself (dogfooding)
+add_files({path: "src/", recursive: true, extract_code_entities: true})
+
+# 2. Verify entity count
+list_entities({type: "FUNCTION", limit: 1000})
+# Expected: 100+ functions
+
+# 3. Verify call graph
+get_neighbors({entity_id: "add_document", hops: 2})
+# Expected: shows what add_document calls
+
+# 4. Verify completion works on extracted names
+completion/complete({ref: {type: "ref/tool", name: "search_symbols"},
+                     argument: {name: "name", value: "query_"},
+                     context: {arguments: {}}})
+# Expected: shows query_text, query_embedding, etc.
+```
+
+## Open Questions
+
+- Should `add_document` (single text, not file) also support code extraction?
+  - **Decision:** No — text is opaque. Only file paths get parsed.
+- Should we extract from `.cpp` only or also `.hpp`?
+  - **Decision:** Both — entities are duplicated across files, dedupe later
+- Auto-extract on `create_kb`?
+  - **Decision:** No — KB creation is just structure. Extraction is explicit.
+
+## Estimated Time
+
+| Step | Time |
+|------|------|
+| 1. Build verification | 10 min |
+| 2. C++ wrapper | 1-2 hours |
+| 3. AST → CodeModel | 2-3 hours |
+| 4. Integrate into add_files | 30 min |
+| 5. Tests | 1 hour |
+| 6. Documentation | 15 min |
+| **Total** | **~5-7 hours** |
+
+## Ready to Resume Tomorrow
+
+The next session should:
+1. Build tree-sitter (verify it compiles after FetchContent)
+2. Start with Step 2 (C++ wrapper) — minimal, just enough for testing
+3. Use `apollo_code_extractor.cpp` as the integration target
+4. Test against `src/apollo_persistence.cpp` first (known C++ file)
+5. Then dogfood against the whole ApolloCore codebase
+
+## Session Wrap-up (today)
+
+What got done:
+- CMakeLists.txt: tree-sitter + tree-sitter-cpp via FetchContent
+- Verified configure succeeds (after wiping stale llama_cpp build state)
+- This plan written in CodeMax.md
+
+What was committed earlier today:
+- `71336b0` — add_entity / add_relationship tools
+- `978f804` — code-aware entity + relationship types (FUNCTION, CLASS, CALLS, etc.)
+- `c8e3237` — tool/prompt name completion
+- `74775ca` — search_symbols + improved get_document + path-based IDs + slash fix
+- `4350a8c` — add_files tool (codebase directory ingestion)
+
+Current ApolloCore capabilities:
+- 37 MCP tools
+- 6 prompts (5 useful, 1 graph_explore)
+- Code-aware entity/relationship types
+- Tool name completion
+- Stdio + HTTP transports
+- Vulkan-accelerated embeddings via llama.cpp
+- Working call-graph on manually-tagged entities
+
+Next session: build tree-sitter, write C++ wrapper, write AST walker, dogfood.
+
