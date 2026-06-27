@@ -14,6 +14,7 @@
 #include "apollocore/apollo_rest_api.hpp"  // for g_kb
 #include "apollocore/apollo_mcp_tools.hpp"  // ToolRegistry
 #include "apollocore/apollo_mcp_prompts.hpp"  // PromptRegistry
+#include "apollocore/apollo_mcp_completion.hpp"  // provide_completion
 #include "apollocore/apollo_mcp_errors.hpp"
 
 #include <nlohmann/json.hpp>
@@ -112,7 +113,8 @@ void handle_jsonrpc(const onh::Request& req, onh::Response& resp) {
                 {"capabilities", {
                     {"tools", json::object()},
                     {"resources", json::object()},
-                    {"prompts", json::object()}
+                    {"prompts", json::object()},
+                    {"completions", json::object()}
                 }}
             };
         }
@@ -137,6 +139,24 @@ void handle_jsonrpc(const onh::Request& req, onh::Response& resp) {
             std::string prompt_name = params.value("name", "");
             json args = params.value("arguments", json::object());
             result = get_prompt_registry().get_prompt(prompt_name, args);
+        }
+        else if (method == "completion/complete") {
+            // params: {ref: {type, name}, argument: {name, value}, context: {arguments}}
+            json ref = params.value("ref", json::object());
+            json argument = params.value("argument", json::object());
+            json context = params.value("context", json::object());
+
+            std::string ref_type = ref.value("type", "ref/tool");
+            std::string ref_name = ref.value("name", "");
+            std::string arg_name = argument.value("name", "");
+            std::string partial = argument.value("value", "");
+            json ctx_args = context.value("arguments", json::object());
+
+            if (!rest::g_kb) {
+                throw McpError(ErrorCode::KbNotFound, "No KB open");
+            }
+            result = provide_completion(*rest::g_kb, ref_type, ref_name,
+                                       arg_name, partial, ctx_args);
         }
         else if (method == "resources/list") {
             result = {{"resources", get_resources_list()}};

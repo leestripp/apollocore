@@ -8,6 +8,7 @@
 #include "apollocore/apollo_mcp_stdio.hpp"
 #include "apollocore/apollo_mcp_tools.hpp"   // ToolRegistry, register_all_tools
 #include "apollocore/apollo_mcp_prompts.hpp" // PromptRegistry, register_all_prompts
+#include "apollocore/apollo_mcp_completion.hpp" // provide_completion
 #include "apollocore/apollo_mcp_errors.hpp"  // make_error, ErrorCode
 #include "apollocore/apollo_persistence.hpp"  // ApolloCore
 
@@ -135,7 +136,8 @@ nlohmann::json handle_jsonrpc_request(
                 {"capabilities", {
                     {"tools", json::object()},
                     {"resources", json::object()},
-                    {"prompts", json::object()}
+                    {"prompts", json::object()},
+                    {"completions", json::object()}
                 }}
             };
         }
@@ -160,6 +162,21 @@ nlohmann::json handle_jsonrpc_request(
             std::string prompt_name = params.value("name", "");
             json args = params.value("arguments", json::object());
             result = prompt_registry.get_prompt(prompt_name, args);
+        }
+        else if (method == "completion/complete") {
+            // params: {ref: {type, name}, argument: {name, value}, context: {arguments}}
+            json ref = params.value("ref", json::object());
+            json argument = params.value("argument", json::object());
+            json context = params.value("context", json::object());
+
+            std::string ref_type = ref.value("type", "ref/tool");
+            std::string ref_name = ref.value("name", "");
+            std::string arg_name = argument.value("name", "");
+            std::string partial = argument.value("value", "");
+            json ctx_args = context.value("arguments", json::object());
+
+            result = provide_completion(kb, ref_type, ref_name, arg_name,
+                                       partial, ctx_args);
         }
         else if (method == "ping" || method == "notifications/initialized") {
             result = json::object();
