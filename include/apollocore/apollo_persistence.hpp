@@ -157,6 +157,41 @@ public:
     bool delete_document(const std::string& document_id);
 
     /**
+     * Manually add an entity to the KB. Used for populating code-aware
+     * entities (functions, classes) when the LLM extractor isn't sufficient.
+     *
+     * @param name Entity name (e.g. "authenticate", "Session")
+     * @param type_str Entity type as string (e.g. "FUNCTION", "CLASS")
+     * @param chunk_id Source chunk ID (where this entity was found)
+     * @param description Brief description (optional)
+     * @param confidence 0-1 (default 1.0 for manually added)
+     * @return entity ID, or empty string on failure
+     */
+    std::string add_entity(
+        const std::string& name,
+        const std::string& type_str,
+        const std::string& chunk_id,
+        const std::string& description = "",
+        float confidence = 1.0f);
+
+    /**
+     * Manually add a relationship between two entities.
+     *
+     * @param source Source entity name (must exist as entity)
+     * @param target Target entity name (must exist as entity)
+     * @param type_str Relationship type as string (e.g. "CALLS", "INHERITS")
+     * @param description Brief description (optional)
+     * @param confidence 0-1 (default 1.0)
+     * @return relationship ID, or empty string on failure
+     */
+    std::string add_relationship(
+        const std::string& source,
+        const std::string& target,
+        const std::string& type_str,
+        const std::string& description = "",
+        float confidence = 1.0f);
+
+    /**
      * Query the knowledge base
      */
     std::vector<std::pair<std::string, float>> query(

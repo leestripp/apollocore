@@ -676,6 +676,83 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
     });
 
     registry.register_tool({
+        "add_entity",
+        "Manually add an entity to the KB. Useful for code-aware entities "
+        "(FUNCTION, CLASS, FILE, etc.) when the LLM extractor isn't sufficient.",
+        make_schema({
+            {"name", "string", "Entity name (e.g. function or class name)"},
+            {"type", "string", "Entity type: PERSON, FUNCTION, CLASS, FILE, MODULE, etc."},
+            {"chunk_id", "string", "Source chunk ID (where this entity was found)"},
+            {"description", "string", "Brief description (optional)"},
+            {"confidence", "number", "Confidence 0-1 (default 1.0 for manual)"}
+        }, {"name", "type"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string name = str_arg(args, "name");
+            std::string type_str = str_arg(args, "type");
+            std::string chunk_id = str_arg(args, "chunk_id", "");
+            std::string description = str_arg(args, "description", "");
+            float confidence = 1.0f;
+            if (args.contains("confidence") && args["confidence"].is_number()) {
+                confidence = args["confidence"].get<float>();
+            }
+            if (name.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'name'");
+            if (type_str.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'type'");
+
+            std::string eid = kb.add_entity(name, type_str, chunk_id, description, confidence);
+            if (eid.empty()) {
+                throw McpError(ErrorCode::InternalError, "Failed to add entity");
+            }
+            return {
+                {"entity_id", eid},
+                {"name", name},
+                {"type", type_str},
+                {"chunk_id", chunk_id}
+            };
+        }
+    });
+
+    registry.register_tool({
+        "add_relationship",
+        "Manually add a relationship between two entities. Source and target "
+        "should be entity names that already exist in the KB.",
+        make_schema({
+            {"source", "string", "Source entity name"},
+            {"target", "string", "Target entity name"},
+            {"type", "string", "Relationship type: CALLS, INHERITS, IMPORTS, etc."},
+            {"description", "string", "Brief description (optional)"},
+            {"confidence", "number", "Confidence 0-1 (default 1.0 for manual)"}
+        }, {"source", "target", "type"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string source = str_arg(args, "source");
+            std::string target = str_arg(args, "target");
+            std::string type_str = str_arg(args, "type");
+            std::string description = str_arg(args, "description", "");
+            float confidence = 1.0f;
+            if (args.contains("confidence") && args["confidence"].is_number()) {
+                confidence = args["confidence"].get<float>();
+            }
+            if (source.empty() || target.empty() || type_str.empty()) {
+                throw McpError(ErrorCode::InvalidParams,
+                    "Missing 'source', 'target', or 'type'");
+            }
+
+            std::string rid = kb.add_relationship(source, target, type_str,
+                                                 description, confidence);
+            if (rid.empty()) {
+                throw McpError(ErrorCode::InternalError, "Failed to add relationship");
+            }
+            return {
+                {"relationship_id", rid},
+                {"source", source},
+                {"target", target},
+                {"type", type_str}
+            };
+        }
+    });
+
+    registry.register_tool({
         "search_entities",
         "Find entities by name (case-insensitive substring match).",
         make_schema({

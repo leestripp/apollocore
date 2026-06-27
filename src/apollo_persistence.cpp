@@ -429,6 +429,67 @@ bool ApolloCore::delete_document(const std::string& document_id) {
     return true;
 }
 
+std::string ApolloCore::add_entity(
+    const std::string& name,
+    const std::string& type_str,
+    const std::string& chunk_id,
+    const std::string& description,
+    float confidence)
+{
+    if (!is_open_ || !kb_persistence_) return "";
+    if (name.empty() || type_str.empty()) return "";
+
+    // Generate a stable ID based on name + chunk
+    std::string eid;
+    if (!chunk_id.empty()) {
+        eid = chunk_id + "_entity_" + name;
+        // Replace slashes (if any) to keep ID safe
+        for (auto& c : eid) if (c == '/' || c == '\\') c = '_';
+    } else {
+        eid = "entity_" + name;
+    }
+
+    bool ok = kb_persistence_->save_entity(
+        eid, chunk_id, name, type_str, description, confidence);
+    if (!ok) return "";
+
+    return eid;
+}
+
+std::string ApolloCore::add_relationship(
+    const std::string& source,
+    const std::string& target,
+    const std::string& type_str,
+    const std::string& description,
+    float confidence)
+{
+    if (!is_open_ || !kb_persistence_) return "";
+    if (source.empty() || target.empty() || type_str.empty()) return "";
+
+    // Look up the actual entity IDs from names (entities may have been
+    // added with auto-generated IDs like "<chunk>_entity_<name>").
+    auto entities = kb_persistence_->load_all_entities();
+    std::string source_id, target_id;
+    for (const auto& e : entities) {
+        if (e.name == source) source_id = e.id;
+        if (e.name == target) target_id = e.id;
+    }
+
+    // Fallback: use names directly (in case entities haven't been added yet)
+    if (source_id.empty()) source_id = source;
+    if (target_id.empty()) target_id = target;
+
+    // Generate a stable ID for the relationship
+    std::string rid = source_id + "_" + type_str + "_" + target_id;
+    for (auto& c : rid) if (c == '/' || c == '\\' || c == ' ') c = '_';
+
+    bool ok = kb_persistence_->save_relationship(
+        rid, source_id, target_id, type_str, description, confidence);
+    if (!ok) return "";
+
+    return rid;
+}
+
 std::vector<std::pair<std::string, float>> 
 ApolloCore::query(const std::string& query_text, size_t top_k) {
     std::vector<std::pair<std::string, float>> results;
