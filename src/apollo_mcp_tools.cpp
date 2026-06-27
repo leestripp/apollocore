@@ -22,6 +22,7 @@
 #include "apollocore/apollo_mcp_errors.hpp"
 #include "apollocore/apollo_persistence.hpp"
 #include "apollocore/apollo_hybrid_search.hpp"
+#include "apollocore/apollo_codebase_ingest.hpp"
 
 #include <nlohmann/json.hpp>
 #include <stdexcept>
@@ -203,6 +204,37 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
                     {"total_chunks", total_chunks}};
         }
         // async-capable
+    });
+
+    registry.register_tool({
+        "add_files",
+        "Ingest a directory of source files into the KB. Each file becomes a "
+        "document with a path-based ID. Designed for codebases.",
+        make_schema({
+            {"path", "string", "Directory path to ingest (relative or absolute)"},
+            {"extensions", "array", "File extensions to include (default: common code extensions)"},
+            {"max_file_size", "integer", "Skip files larger than this (bytes, default 1MB)"},
+            {"recursive", "boolean", "Walk subdirectories (default true)"}
+        }, {"path"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string path = str_arg(args, "path");
+            if (path.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'path'");
+
+            std::vector<std::string> extensions;
+            if (args.contains("extensions") && args["extensions"].is_array()) {
+                for (const auto& e : args["extensions"]) {
+                    if (e.is_string()) extensions.push_back(e.get<std::string>());
+                }
+            }
+
+            size_t max_file_size = static_cast<size_t>(size_arg(args, "max_file_size", 1000000));
+            bool recursive = args.value("recursive", true);
+
+            return apollocore_v2::ingest_directory(kb, path, extensions,
+                                                   max_file_size, recursive);
+        }
+        // async-capable (can be slow for large codebases)
     });
 
     registry.register_tool({

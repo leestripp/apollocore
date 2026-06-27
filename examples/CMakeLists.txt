@@ -32,6 +32,7 @@ add_executable(apollo_rest_server
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_prompts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_completion.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_codebase_ingest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_hybrid_search.cpp
 )
 
@@ -42,6 +43,7 @@ add_executable(apollo_mcp_stdio_server
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_prompts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_mcp_completion.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_codebase_ingest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_hybrid_search.cpp
 )
 target_include_directories(apollo_mcp_stdio_server PRIVATE
