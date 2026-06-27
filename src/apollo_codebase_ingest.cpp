@@ -145,10 +145,10 @@ nlohmann::json ingest_directory(
                         continue;
                     }
 
-                    // Add as document
+                    // Add as document with path-based ID
                     std::string doc_id = path_to_doc_id(base, entry.path());
                     try {
-                        size_t chunks = kb.add_document(content);
+                        size_t chunks = kb.add_document(content, doc_id);
                         result["files_processed"] = result["files_processed"].get<int>() + 1;
                         result["total_chunks"] = result["total_chunks"].get<int>() + chunks;
                         result["doc_ids"].push_back(doc_id);

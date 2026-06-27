@@ -312,14 +312,26 @@ std::string ApolloCore::get_kb_name() const {
 
 size_t ApolloCore::add_document(
     const std::string& text, size_t chunk_size) {
-    
+
+    // Default: generate doc_N ID
+    return add_document(text, "", chunk_size);
+}
+
+size_t ApolloCore::add_document(
+    const std::string& text, const std::string& custom_doc_id, size_t chunk_size) {
+
     if (!is_open_) {
         std::cerr << "[ApolloCore] No knowledge base open. Call create() or open() first.\n";
         return 0;
     }
-    
-    // Generate IDs
-    std::string doc_id = "doc_" + std::to_string(documents_.size() + 1);
+
+    // Use custom doc_id if provided, otherwise generate
+    std::string doc_id;
+    if (!custom_doc_id.empty()) {
+        doc_id = custom_doc_id;
+    } else {
+        doc_id = "doc_" + std::to_string(documents_.size() + 1);
+    }
     std::string node_id = doc_id;
     
     // Save node

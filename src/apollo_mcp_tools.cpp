@@ -271,26 +271,54 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
 
     registry.register_tool({
         "get_document",
-        "Get a single document by ID.",
+        "Get a single document by ID (returns full content + all chunks + metadata).",
         make_schema({
-            {"document_id", "string", "Document ID"}
+            {"document_id", "string", "Document ID (path-based for codebases)"}
         }, {"document_id"}),
         [&kb](const nlohmann::json& args) -> nlohmann::json {
             require_kb_open(kb);
             std::string doc_id = str_arg(args, "document_id");
-            auto chunks = kb.get_all_chunks();
-            nlohmann::json arr = nlohmann::json::array();
-            std::string prefix = doc_id + "_chunk_";
-            for (const auto& [id, content] : chunks) {
-                if (id.substr(0, prefix.size()) == prefix) {
-                    arr.push_back({{"chunk_id", id}, {"content", content}});
+            if (doc_id.empty()) {
+                throw McpError(ErrorCode::InvalidParams, "Missing 'document_id'");
+            }
+
+            // Find document node (title, content, metadata)
+            auto docs = kb.get_all_documents();
+            std::string title;
+            std::string full_content;
+            bool found = false;
+            for (const auto& [id, content] : docs) {
+                if (id == doc_id) {
+                    title = id;  // title isn't separated in LoadedNode
+                    full_content = content;
+                    found = true;
+                    break;
                 }
             }
-            if (arr.empty()) {
+
+            if (!found) {
                 throw McpError(ErrorCode::ResourceNotFound,
                     "Document not found: " + doc_id);
             }
-            return {{"document_id", doc_id}, {"chunks", arr}};
+
+            // Get all chunks for this document (by chunk_id prefix)
+            auto chunks = kb.get_all_chunks();
+            nlohmann::json chunk_arr = nlohmann::json::array();
+            std::string prefix = doc_id + "_chunk_";
+            for (const auto& [cid, content] : chunks) {
+                if (cid.substr(0, prefix.size()) == prefix) {
+                    chunk_arr.push_back({{"chunk_id", cid}, {"content", content}});
+                }
+            }
+
+            return {
+                {"document_id", doc_id},
+                {"title", title},
+                {"content", full_content},
+                {"content_length", full_content.size()},
+                {"chunks", chunk_arr},
+                {"chunk_count", chunk_arr.size()}
+            };
         }
     });
 
@@ -495,6 +523,128 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
                 });
             }
             return {{"entities", arr}, {"count", arr.size()}};
+        }
+    });
+
+    // =========================================================================
+    // search_symbols — code-symbol-aware exact match (for CodeMax)
+    // =========================================================================
+    // Designed for codebases: prioritize exact name matches and prefix matches
+    // over generic substring matches. Returns chunks containing the symbol.
+    // Useful when I know I want to find all definitions/calls of "authenticate".
+
+    registry.register_tool({
+        "search_symbols",
+        "Find all chunks containing an exact or prefix-matched symbol name. "
+        "Designed for codebases — prioritizes exact matches over substrings. "
+        "Returns chunks (file content snippets) that contain the symbol.",
+        make_schema({
+            {"name", "string", "Symbol name to find (e.g. function, class, variable)"},
+            {"limit", "integer", "Max chunks to return (default 20)"},
+            {"exact_only", "boolean", "Only exact whole-word matches (default false)"}
+        }, {"name"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string name = str_arg(args, "name");
+            size_t limit = size_arg(args, "limit", 20);
+            bool exact_only = args.value("exact_only", false);
+
+            if (name.empty()) {
+                throw McpError(ErrorCode::InvalidParams, "Missing 'name'");
+            }
+
+            // Score each chunk by how well it matches the symbol name
+            struct Match {
+                std::string chunk_id;
+                std::string doc_id;
+                std::string content;
+                int score;  // higher = better match
+            };
+            std::vector<Match> matches;
+
+            // Build doc_id from chunk_id by stripping "_chunk_N"
+            auto chunk_to_doc = [](const std::string& cid) -> std::string {
+                auto pos = cid.rfind("_chunk_");
+                return (pos == std::string::npos) ? cid : cid.substr(0, pos);
+            };
+
+            auto chunks = kb.get_all_chunks();
+            for (const auto& [cid, content] : chunks) {
+                int score = 0;
+
+                if (exact_only) {
+                    // Whole-word match: surrounded by non-identifier chars
+                    // Use simple boundary detection for code symbols
+                    std::string needle = name;
+                    size_t pos = 0;
+                    while ((pos = content.find(needle, pos)) != std::string::npos) {
+                        bool left_ok = (pos == 0) ||
+                            (!std::isalnum(content[pos - 1]) && content[pos - 1] != '_');
+                        bool right_ok = (pos + needle.size() >= content.size()) ||
+                            (!std::isalnum(content[pos + needle.size()]) &&
+                             content[pos + needle.size()] != '_');
+                        if (left_ok && right_ok) {
+                            score++;
+                        }
+                        pos += needle.size();
+                    }
+                } else {
+                    // Prioritized substring match:
+                    //  - exact match: +10
+                    //  - prefix match (FooBar...): +5
+                    //  - substring: +1 per occurrence
+                    if (content.find(name) != std::string::npos) {
+                        // Count occurrences
+                        size_t pos = 0;
+                        size_t count = 0;
+                        while ((pos = content.find(name, pos)) != std::string::npos) {
+                            count++;
+                            pos += name.size();
+                        }
+                        score = static_cast<int>(count);
+                        if (score >= 1) score += 5;  // prefix-of-something bonus
+                    }
+
+                    // Bonus for symbol-like exact match (word boundary)
+                    std::string boundary_pattern = " " + name + "(";  // function call
+                    if (content.find(boundary_pattern) != std::string::npos) score += 10;
+                    boundary_pattern = " " + name + " ";  // declaration
+                    if (content.find(boundary_pattern) != std::string::npos) score += 8;
+                    boundary_pattern = name + "::";  // member access
+                    if (content.find(boundary_pattern) != std::string::npos) score += 6;
+                }
+
+                if (score > 0) {
+                    matches.push_back({cid, chunk_to_doc(cid), content, score});
+                }
+            }
+
+            // Sort by score descending
+            std::sort(matches.begin(), matches.end(),
+                [](const Match& a, const Match& b) { return a.score > b.score; });
+
+            // Limit results
+            if (matches.size() > limit) matches.resize(limit);
+
+            // Build response with content snippets
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& m : matches) {
+                // Include a snippet (first 200 chars) to keep response small
+                std::string snippet = m.content;
+                if (snippet.size() > 200) snippet = snippet.substr(0, 200) + "...";
+                arr.push_back({
+                    {"chunk_id", m.chunk_id},
+                    {"document_id", m.doc_id},
+                    {"score", m.score},
+                    {"snippet", snippet}
+                });
+            }
+            return {
+                {"name", name},
+                {"exact_only", exact_only},
+                {"results", arr},
+                {"count", arr.size()}
+            };
         }
     });
 

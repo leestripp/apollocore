@@ -39,7 +39,14 @@ std::string KnowledgeBasePersistence::get_embeddings_dir() const {
 
 std::string KnowledgeBasePersistence::get_chunk_embedding_path(
     const std::string& chunk_id) const {
-    return get_embeddings_dir() + "/" + chunk_id + ".fbin";
+    // Sanitize: chunk_id may contain slashes (e.g. "src/auth.cpp_chunk_0")
+    // which would create subdirectories. Replace with underscores for the
+    // filesystem path. The SQLite chunk_id keeps the slashes for navigability.
+    std::string safe_id = chunk_id;
+    for (auto& c : safe_id) {
+        if (c == '/' || c == '\\') c = '_';
+    }
+    return get_embeddings_dir() + "/" + safe_id + ".fbin";
 }
 
 bool KnowledgeBasePersistence::create_directory_structure() {

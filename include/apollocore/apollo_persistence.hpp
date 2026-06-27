@@ -135,6 +135,18 @@ public:
     size_t add_document(const std::string& text, size_t chunk_size = 512);
 
     /**
+     * Add a document with a custom ID (e.g., file path for codebases).
+     * If custom_doc_id is empty, generates an auto ID like doc_N.
+     *
+     * @param text The document text
+     * @param custom_doc_id The ID to use (empty = auto-generate)
+     * @param chunk_size Target chunk size in characters
+     * @return Number of chunks created
+     */
+    size_t add_document(const std::string& text, const std::string& custom_doc_id,
+                        size_t chunk_size = 512);
+
+    /**
      * Delete a document by its ID. Removes the document node, all its chunks,
      * all entities extracted from those chunks, and all relationships involving
      * those entities. Also removes .fbin embedding files for the chunks.
