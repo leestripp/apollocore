@@ -127,22 +127,40 @@ message(STATUS "SQLite3 found: ${SQLite3_VERSION}")
 # ============================================================================
 
 add_library(apollo_core STATIC)
-target_sources(apollo_core PRIVATE src/apollocore.cpp src/embedding_model.cpp src/entity_extractor.cpp src/cross_encoder.cpp src/hyde.cpp src/contextual_retrieval.cpp src/persistence.cpp src/fbin.cpp src/kb_persistence.cpp src/apollo_persistence.cpp)
-target_include_directories(apollo_core 
-    PUBLIC 
+target_sources(apollo_core PRIVATE
+    src/apollocore.cpp
+    src/embedding_model.cpp
+    src/entity_extractor.cpp
+    src/cross_encoder.cpp
+    src/hyde.cpp
+    src/contextual_retrieval.cpp
+    src/persistence.cpp
+    src/fbin.cpp
+    src/kb_persistence.cpp
+    src/apollo_persistence.cpp
+    src/apollo_ts_wrapper.cpp   # Phase M3.B: tree-sitter C++ wrapper
+)
+target_include_directories(apollo_core
+    PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${llama_cpp_SOURCE_DIR}/include
+        # Tree-sitter (Phase M3.B)
+        ${tree-sitter_SOURCE_DIR}/lib/include
+        ${tree-sitter-cpp_SOURCE_DIR}/src
 )
-target_link_libraries(apollo_core 
-    PUBLIC 
+target_link_libraries(apollo_core
+    PUBLIC
         nlohmann_json::nlohmann_json
         llama
         SQLite::SQLite3
     PRIVATE
         OmniNet
+        # Tree-sitter (Phase M3.B) - static linking
+        tree-sitter
+        tree-sitter-cpp
 )
 target_compile_features(apollo_core PUBLIC cxx_std_23)
 

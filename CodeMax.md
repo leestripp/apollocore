@@ -2873,3 +2873,419 @@ Current ApolloCore capabilities:
 
 Next session: build tree-sitter, write C++ wrapper, write AST walker, dogfood.
 
+
+---
+
+# 🌍 PHASE M3.C: Multi-Agent + Project Scoping (per prompt.txt)
+
+## Context
+
+From `prompt.txt`:
+
+> Can the mcp server support many AI Agents accessing the knowledge graph, if an AI Agent clears the data will all other Agents work be removed? As AI Agents normally work in Project folders, should we make the data stored be attached to that project, so if an Agent clears its data it ONLY deletes the Agents data that was part of that project?
+>
+> e.g. Lets say I'm working on a Project called vortxGE, my game engine, I scan that project and add it to the knowledge graph, but later, say in 3 days the code has changed a lot, The Agent or I will need to update the knowledge graph for that Project. At the same time another Agent is using the vortxGE game engine in its own project called cubeless, It needs read access to the vortxGE knowledge in the graph, but should not be able to delete that info, understand.
+
+## Goal
+
+**Multiple AI agents share one ApolloCore instance, each operates inside their own
+project namespace, with explicit shared-knowledge references for read-only access.**
+
+## Scope Estimate (hope it's not massive rewrite)
+
+**NOT a massive rewrite** ✓. The changes are:
+
+| Area | Effort | Why |
+|------|--------|-----|
+| DB schema (add `project_id` column) | Small | One new column per table + migration |
+| Query layer (filter by project_id) | Medium | One new filter, applied to all reads |
+| MCP server (project context) | Small | New `--project-name` flag, env var |
+| New tools (register/list shared projects) | Small | 2-3 new tools |
+| Tests | Small | Existing tests + new multi-project tests |
+| **Total** | **~1 day** | Not a rewrite — additive change |
+
+## Current State Audit
+
+**Path verification (per prompt.txt #1):**
+- ✅ Model paths: all via `--embedding-model` CLI arg
+- ✅ Database path: derived from user-supplied `path_`
+- ✅ Embeddings dir: derived from same `path_`
+- ✅ No `/home/lee` or `/opt/apollocore` hardcoded anywhere in code
+- ✅ Only matches in comments (documentation examples)
+
+**ApolloCore CAN be installed to `/opt/apollocore/`** — but the user must:
+1. Pass `--embedding-model /opt/apollocore/models/embed.gguf` at startup
+2. Pass `path` to `create_kb` / `open_kb` pointing at a writable directory
+3. Optionally set `APOLLOCORE_PROJECT` env var for project context (new)
+
+**Recommendation:** Add an `/opt/apollocore/etc/apollo.conf` config file that
+provides defaults so users don't have to specify everything on the CLI.
+
+## Architecture: Single DB + project_id Column
+
+**Decision:** ONE SQLite database with `project_id` column on every row.
+NOT multiple DBs. Why:
+
+- ✅ One connection, one transaction
+- ✅ Easy cross-project queries (just omit filter)
+- ✅ Easy to mark data as "shared" via a project registry
+- ✅ Embeddings stay co-located with their chunks
+- ✅ Backups are one file
+- ❌ One DB does mean large DBs get slower (but we already have this)
+
+**NOT** multiple DBs because:
+- ❌ Can't easily share data across projects
+- ❌ Cross-project queries would need multi-DB transactions
+- ❌ Embeddings scattered across files
+- ❌ More moving parts (file handles, locking)
+
+## New Schema
+
+```sql
+-- New: project registry
+CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_at INTEGER,
+    is_shared INTEGER DEFAULT 0,    -- can other projects read this?
+    owner TEXT,                     -- who created it (agent name or user)
+    metadata TEXT                   -- JSON: extra config
+);
+
+-- Add project_id to all existing tables
+ALTER TABLE documents     ADD COLUMN project_id TEXT DEFAULT 'default';
+ALTER TABLE chunks        ADD COLUMN project_id TEXT DEFAULT 'default';
+ALTER TABLE entities      ADD COLUMN project_id TEXT DEFAULT 'default';
+ALTER TABLE relationships ADD COLUMN project_id TEXT DEFAULT 'default';
+
+CREATE INDEX idx_documents_project     ON documents(project_id);
+CREATE INDEX idx_chunks_project        ON chunks(project_id);
+CREATE INDEX idx_entities_project      ON entities(project_id);
+CREATE INDEX idx_relationships_project ON relationships(project_id);
+```
+
+The `DEFAULT 'default'` ensures existing data (pre-refactor) is preserved
+under the "default" project.
+
+## New Concepts
+
+### 1. Project Context
+
+Every MCP request runs in a project context. Determined by:
+- `--project-name NAME` CLI flag (highest priority)
+- `APOLLOCORE_PROJECT` env var
+- Default: `default`
+
+### 2. Sharing
+
+A project can be marked `is_shared=1`. Other projects can read it but
+not modify/delete it.
+
+```cpp
+// New tools
+register_shared_project({name: "vortxGE", description: "Game engine"})
+unregister_shared_project({name: "vortxGE"})
+list_shared_projects()  // returns all projects marked is_shared=1
+```
+
+### 3. Read Scope
+
+When agent in `cubeless` queries:
+- Default: only see `cubeless` data
+- If `vortxGE` is shared: include `vortxGE` data in search results
+- Search results tagged with `project_id` so caller knows source
+
+### 4. Write/Delete Scope
+
+- `add_document`, `add_files`, `add_entity`, `add_relationship` → only current project
+- `delete_document`, `delete_entity`, `delete_relationship` → only current project
+- `clear_kb` → ONLY clears current project (NOT all data!)
+- New: `delete_project({name})` for explicit project deletion (admin only)
+
+## API Changes
+
+### New CLI flag (server startup)
+
+```bash
+./apollo_mcp_stdio_server \
+    --embedding-model /opt/apollocore/models/embed.gguf \
+    --project-name cubeless                       # NEW
+
+# OR via env
+export APOLLOCORE_PROJECT=cubeless
+./apollo_mcp_stdio_server --embedding-model ...
+```
+
+### Modified tools (subtle behavior change)
+
+```json
+// create_kb — now creates/opens a project, not just a directory
+{
+  "name": "create_kb",
+  "args": {
+    "path": "data/cubeless",
+    "name": "cubeless",
+    "description": "My cube game",     // NEW
+    "is_shared": false                  // NEW
+  }
+}
+
+// add_files — now scoped to current project
+{
+  "name": "add_files",
+  "args": {
+    "path": "/path/to/cubeless/src",
+    "recursive": true
+  }
+}
+// Effect: docs tagged with project_id = "cubeless"
+
+// delete_document — only deletes from current project
+// (no change to API, but now scoped)
+
+// clear_kb — NOW ONLY CLEARS CURRENT PROJECT (BIG behavior change!)
+// Add new "force_clear_all" arg if you really want to wipe everything
+```
+
+### New tools
+
+```json
+// register_shared_project — mark a project as readable by others
+{
+  "name": "register_shared_project",
+  "args": {
+    "project_name": "vortxGE",
+    "description": "Game engine"
+  }
+}
+
+// list_shared_projects — see what's available
+{
+  "name": "list_shared_projects"
+  // returns: [{name, description, owner, created_at, is_shared}]
+}
+
+// unregister_shared_project — unmark
+{
+  "name": "unregister_shared_project",
+  "args": {"project_name": "vortxGE"}
+}
+
+// get_current_project — debug, shows current project context
+{
+  "name": "get_current_project"
+  // returns: {name, path, description, is_shared, ...}
+}
+
+// delete_project — admin operation, removes a project entirely
+{
+  "name": "delete_project",
+  "args": {"project_name": "vortxGE", "confirm": true}
+}
+```
+
+### Modified tool responses (include project_id)
+
+```json
+// list_entities — now includes project_id in each entity
+{
+  "entities": [
+    {"id": "...", "name": "authenticate", "type": "FUNCTION", "project_id": "cubeless"},
+    {"id": "...", "name": "Session",      "type": "CLASS",    "project_id": "vortxGE"}  // shared!
+  ]
+}
+```
+
+## Implementation Steps
+
+### Step 1: Schema migration (1 hour)
+- Add `project_id` column to all tables with `DEFAULT 'default'`
+- Add `projects` registry table
+- Add indexes
+- Backwards-compatible: old DBs still work, all data in "default" project
+
+### Step 2: Project context (1 hour)
+- New `ProjectContext` class (in apollo_persistence.hpp)
+- Set via constructor, CLI flag, or env var
+- Exposed via `kb.current_project()` getter
+- Used internally to filter queries
+
+### Step 3: Query layer (2-3 hours)
+- Modify all `get_*()` methods to filter by project_id (default: current project)
+- Modify all `save_*()` methods to tag with current project_id
+- Modify all `delete_*()` methods to constrain to current project_id
+- Add `include_shared_projects: true` option for read methods
+
+### Step 4: New tools (1 hour)
+- `register_shared_project`, `unregister_shared_project`
+- `list_shared_projects`
+- `get_current_project`
+- `delete_project` (with confirm flag)
+
+### Step 5: Server CLI (30 min)
+- Add `--project-name` flag
+- Read `APOLLOCORE_PROJECT` env var
+- Pass to ApolloCore constructor
+
+### Step 6: Tests (1-2 hours)
+- `tests/test_multi_project.cpp`:
+  - Create 2 projects, verify isolation
+  - Mark project A shared, verify B can read but not delete
+  - Verify delete only removes from current project
+  - Verify migration: old DB loads into "default" project
+
+### Step 7: Documentation (30 min)
+- Update CodeMax.md
+- Add README section: "Multi-Agent Setup"
+- Update `examples/` to show multi-project usage
+
+## Files to Create/Modify
+
+### NEW files
+- `tests/test_multi_project.cpp` — multi-project tests
+- `docs/multi-agent.md` — user-facing guide
+
+### MODIFIED files
+- `src/apollo_persistence.hpp` — add ProjectContext, modify signatures
+- `src/apollo_persistence.cpp` — apply project_id filters everywhere
+- `src/kb_persistence.cpp` — schema migration code
+- `src/apollo_mcp_tools.cpp` — new tools + scope behaviors
+- `src/apollo_mcp_stdio.cpp` — CLI flag
+- `src/apollo_mcp_http.cpp` — HTTP equivalent (or use header)
+- `examples/apollo_mcp_stdio_server.cpp` — CLI flag passthrough
+- `examples/apollo_rest_server.cpp` — CLI flag passthrough
+- `CMakeLists.txt` — add test executable
+
+## Backward Compatibility
+
+✅ Existing single-project usage works unchanged:
+- All old data lives in "default" project
+- If user doesn't pass `--project-name`, current project = "default"
+- All old tools behave as before for "default" project
+
+⚠️ One behavior change to document:
+- `clear_kb` now ONLY clears the current project (not all data)
+- If you want to clear ALL projects, use `delete_project` on each, or
+  call `force_clear_all=true` (new flag)
+
+## Edge Cases to Handle
+
+| Case | Strategy |
+|------|----------|
+| Agent starts without `--project-name` | Use "default" project (backwards-compat) |
+| Two agents in same project simultaneously | SQLite WAL mode handles concurrent reads; writes serialized |
+| Project name conflict | Reject with error; suggest rename |
+| Shared project deleted while agent reading | Read returns 0 results, no error (project gone) |
+| Migration of pre-refactor DB | Auto-migrate: all data → "default" project, "default" marked is_shared=1 |
+| Path conflicts across projects | Each project has unique path; collision → error |
+| Deleting "default" project | Refuse (admin must explicitly confirm + force flag) |
+
+## Verification Tests
+
+```cpp
+// tests/test_multi_project.cpp
+
+void test_isolation() {
+    auto& p1 = kb1; // project "cubeless"
+    auto& p2 = kb2; // project "vortxGE"
+    
+    p1.add_document("cubeless content");
+    p2.add_document("vortxGE content");
+    
+    assert(p1.get_documents().size() == 1);  // only cubeless
+    assert(p2.get_documents().size() == 1);  // only vortxGE
+}
+
+void test_shared_read_only() {
+    kb1.create_project("vortxGE", is_shared=true);
+    kb1.add_document("vortxGE content");
+    
+    // Switch to cubeless
+    kb2.set_current_project("cubeless");
+    kb2.register_shared_project("vortxGE");
+    
+    // Should see vortxGE data when reading
+    assert(kb2.search("vortxGE content").size() > 0);
+    
+    // Should NOT be able to delete vortxGE data
+    assert_throws(kb2.delete_document(vortxGE_doc_id));
+}
+
+void test_clear_scoped() {
+    kb.create_project("p1");
+    kb.create_project("p2");
+    
+    kb.add_document("p1 content");
+    kb.set_current_project("p2");
+    kb.add_document("p2 content");
+    
+    kb.set_current_project("p1");
+    kb.clear_kb();  // Should ONLY clear p1
+    
+    assert(kb.search("p1 content").size() == 0);
+    assert(kb.search("p2 content").size() == 1);  // p2 untouched
+}
+
+void test_migration() {
+    // Open pre-refactor DB (no project_id column)
+    // Should auto-migrate, all data in "default" project
+    auto kb = ApolloCore::open("data/old_kb");
+    assert(kb.current_project() == "default");
+    assert(kb.get_documents().size() > 0);  // old data preserved
+}
+```
+
+## Open Questions (to resolve during implementation)
+
+1. **Should `is_shared` be one-way (read-only) or two-way (read-write)?**
+   - Default: one-way (read-only). Avoids accidental damage.
+
+2. **Can projects be renamed?**
+   - Default: no (rename = delete + create). Simpler.
+
+3. **What's the project name format?**
+   - `[a-zA-Z0-9_-]{1,64}` (validated). Keeps it simple.
+
+4. **Maximum number of projects?**
+   - No hard limit, but warn at >100 (DB performance).
+
+5. **Should agents see OTHER agents' non-shared projects?**
+   - No — only their own project + explicitly shared ones.
+   - Project list is filtered by what current project has registered as shared.
+
+## Related Work
+
+- **M3.B** (tree-sitter) — independent, can be done in parallel
+- **M3.C** (this phase) — independent, can be done in parallel
+- Both are pre-requisites for any production deployment
+
+## Estimated Time
+
+| Step | Time |
+|------|------|
+| 1. Schema migration | 1 hour |
+| 2. Project context | 1 hour |
+| 3. Query layer changes | 2-3 hours |
+| 4. New MCP tools | 1 hour |
+| 5. Server CLI | 30 min |
+| 6. Tests | 1-2 hours |
+| 7. Documentation | 30 min |
+| **Total** | **~7-10 hours** (1-1.5 days) |
+
+## Priority
+
+**HIGH** if deploying to multi-agent setup.
+**MEDIUM** if single-agent.
+**LOW** if local-only.
+
+Given the user explicitly asked, this is HIGH priority.
+
+## Ready to Resume
+
+The next session should:
+1. Start with Step 1 (schema migration)
+2. Verify backwards compat (existing DB loads, all data in "default")
+3. Then Step 2-3 (project context + query layer)
+4. Test multi-project isolation early (Step 6 in parallel)
+
