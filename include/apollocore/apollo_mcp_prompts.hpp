@@ -137,6 +137,17 @@ public:
 
     size_t size() const { return prompts_.size(); }
 
+    /// List names of all registered prompts (for completion).
+    std::vector<std::string> names() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::string> result;
+        result.reserve(prompts_.size());
+        for (const auto& [name, _] : prompts_) {
+            result.push_back(name);
+        }
+        return result;
+    }
+
 private:
     mutable std::mutex mutex_;
     std::unordered_map<std::string, PromptDefinition> prompts_;

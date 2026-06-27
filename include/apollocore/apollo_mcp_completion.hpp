@@ -30,6 +30,8 @@ namespace apollocore_v2::mcp {
  * Provide completion suggestions for an argument value.
  *
  * @param kb ApolloCore instance with KB data
+ * @param tool_names List of all available tool names (for tool name completion)
+ * @param prompt_names List of all available prompt names (for prompt name completion)
  * @param ref_type "ref/tool" or "ref/prompt"
  * @param ref_name Name of the tool or prompt
  * @param arg_name Name of the argument being completed
@@ -40,6 +42,8 @@ namespace apollocore_v2::mcp {
  */
 nlohmann::json provide_completion(
     ApolloCore& kb,
+    const std::vector<std::string>& tool_names,
+    const std::vector<std::string>& prompt_names,
     const std::string& ref_type,
     const std::string& ref_name,
     const std::string& arg_name,

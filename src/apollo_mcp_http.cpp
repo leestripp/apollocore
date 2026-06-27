@@ -155,8 +155,12 @@ void handle_jsonrpc(const onh::Request& req, onh::Response& resp) {
             if (!rest::g_kb) {
                 throw McpError(ErrorCode::KbNotFound, "No KB open");
             }
-            result = provide_completion(*rest::g_kb, ref_type, ref_name,
-                                       arg_name, partial, ctx_args);
+            // Get current tool and prompt names for name completion
+            std::vector<std::string> tool_names = get_registry().names();
+            std::vector<std::string> prompt_names = get_prompt_registry().names();
+            result = provide_completion(*rest::g_kb, tool_names, prompt_names,
+                                       ref_type, ref_name, arg_name,
+                                       partial, ctx_args);
         }
         else if (method == "resources/list") {
             result = {{"resources", get_resources_list()}};

@@ -115,7 +115,9 @@ nlohmann::json handle_jsonrpc_request(
     const nlohmann::json& rpc,
     ToolRegistry& registry,
     PromptRegistry& prompt_registry,
-    ApolloCore& kb)
+    ApolloCore& kb,
+    const std::vector<std::string>& tool_names,
+    const std::vector<std::string>& prompt_names)
 {
     nlohmann::json id = rpc.value("id", json(nullptr));
     std::string method = rpc.value("method", "");
@@ -175,7 +177,8 @@ nlohmann::json handle_jsonrpc_request(
             std::string partial = argument.value("value", "");
             json ctx_args = context.value("arguments", json::object());
 
-            result = provide_completion(kb, ref_type, ref_name, arg_name,
+            result = provide_completion(kb, tool_names, prompt_names,
+                                       ref_type, ref_name, arg_name,
                                        partial, ctx_args);
         }
         else if (method == "ping" || method == "notifications/initialized") {
@@ -213,6 +216,10 @@ int run_stdio_server(ApolloCore& kb) {
     PromptRegistry prompt_registry;
     register_all_prompts(prompt_registry, kb);
 
+    // Build name lists once for completion
+    std::vector<std::string> tool_names = tool_registry.names();
+    std::vector<std::string> prompt_names = prompt_registry.names();
+
     LOGF("ready, %zu tools + %zu prompts registered, reading from stdin...",
          tool_registry.size(), prompt_registry.size());
 
@@ -229,7 +236,8 @@ int run_stdio_server(ApolloCore& kb) {
         // Notifications get no reply (per JSON-RPC spec)
         bool is_notification = !rpc.contains("id");
 
-        json response = handle_jsonrpc_request(rpc, tool_registry, prompt_registry, kb);
+        json response = handle_jsonrpc_request(rpc, tool_registry, prompt_registry, kb,
+                                        tool_names, prompt_names);
 
         if (!is_notification) {
             write_message(response);

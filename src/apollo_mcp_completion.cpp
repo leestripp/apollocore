@@ -131,6 +131,8 @@ json build_response(const std::vector<std::string>& matches, bool has_more) {
 
 nlohmann::json provide_completion(
     ApolloCore& kb,
+    const std::vector<std::string>& tool_names,
+    const std::vector<std::string>& prompt_names,
     const std::string& ref_type,
     const std::string& ref_name,
     const std::string& arg_name,
@@ -138,6 +140,23 @@ nlohmann::json provide_completion(
     const nlohmann::json& /*context_args*/,
     size_t max_results)
 {
+    // ====================================================================
+    // Tool / prompt name completion (MCP standard pattern)
+    // When ref_type=ref/tool|prompt and arg_name="name", complete the
+    // resource name itself. (ref_name will be empty in this case.)
+    // ====================================================================
+    if (arg_name == "name" && (ref_type == "ref/tool" || ref_type == "ref/prompt" ||
+                                ref_type == "ref/resource")) {
+        const std::vector<std::string>* candidates = nullptr;
+        if (ref_type == "ref/tool") candidates = &tool_names;
+        else if (ref_type == "ref/prompt") candidates = &prompt_names;
+        // ref/resource: no list yet, return empty
+        if (candidates) {
+            auto matches = filter_by_prefix(*candidates, partial_value, max_results);
+            return build_response(matches, matches.size() >= max_results);
+        }
+    }
+
     // Entity-type completion (special case based on ref_name)
     if (arg_name == "type") {
         if (ref_name == "explain_entity" || ref_name == "list_entities" ||

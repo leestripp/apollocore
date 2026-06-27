@@ -129,6 +129,17 @@ public:
         return tools_.size();
     }
 
+    /// List names of all registered tools (for completion).
+    std::vector<std::string> names() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::string> result;
+        result.reserve(tools_.size());
+        for (const auto& [name, _] : tools_) {
+            result.push_back(name);
+        }
+        return result;
+    }
+
 private:
     mutable std::mutex mutex_;
     std::unordered_map<std::string, ToolDefinition> tools_;
