@@ -13,6 +13,7 @@
 #include "apollocore/apollo_persistence.hpp"
 #include "apollocore/apollo_rest_api.hpp"  // for g_kb
 #include "apollocore/apollo_mcp_tools.hpp"  // ToolRegistry
+#include "apollocore/apollo_mcp_prompts.hpp"  // PromptRegistry
 #include "apollocore/apollo_mcp_errors.hpp"
 
 #include <nlohmann/json.hpp>
@@ -50,6 +51,17 @@ ToolRegistry& get_registry() {
     static bool initialized = false;
     if (!initialized && rest::g_kb) {
         register_all_tools(registry, *rest::g_kb);
+        initialized = true;
+    }
+    return registry;
+}
+
+// Global prompt registry (initialized once on first use)
+PromptRegistry& get_prompt_registry() {
+    static PromptRegistry registry;
+    static bool initialized = false;
+    if (!initialized && rest::g_kb) {
+        register_all_prompts(registry, *rest::g_kb);
         initialized = true;
     }
     return registry;
@@ -99,7 +111,8 @@ void handle_jsonrpc(const onh::Request& req, onh::Response& resp) {
                 }},
                 {"capabilities", {
                     {"tools", json::object()},
-                    {"resources", json::object()}
+                    {"resources", json::object()},
+                    {"prompts", json::object()}
                 }}
             };
         }
@@ -116,6 +129,14 @@ void handle_jsonrpc(const onh::Request& req, onh::Response& resp) {
                 })},
                 {"isError", false}
             };
+        }
+        else if (method == "prompts/list") {
+            result = get_prompt_registry().list_prompts();
+        }
+        else if (method == "prompts/get") {
+            std::string prompt_name = params.value("name", "");
+            json args = params.value("arguments", json::object());
+            result = get_prompt_registry().get_prompt(prompt_name, args);
         }
         else if (method == "resources/list") {
             result = {{"resources", get_resources_list()}};

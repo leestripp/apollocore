@@ -654,6 +654,23 @@ std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_chunks() {
     return result;
 }
 
+std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_documents() {
+    std::vector<std::pair<std::string, std::string>> result;
+    if (!is_open_ || !kb_persistence_) return result;
+
+    auto nodes = kb_persistence_->load_all_nodes();
+    result.reserve(nodes.size());
+    for (const auto& n : nodes) {
+        // Concatenate title and content for the prompt context
+        std::string body = n.content;
+        if (!n.title.empty()) {
+            body = "[" + n.title + "]\n" + n.content;
+        }
+        result.emplace_back(n.id, body);
+    }
+    return result;
+}
+
 std::vector<Entity> ApolloCore::get_entities(size_t limit) {
     std::vector<Entity> result;
     if (!is_open_) return result;

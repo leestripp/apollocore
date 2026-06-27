@@ -7,6 +7,7 @@
 
 #include "apollocore/apollo_mcp_stdio.hpp"
 #include "apollocore/apollo_mcp_tools.hpp"   // ToolRegistry, register_all_tools
+#include "apollocore/apollo_mcp_prompts.hpp" // PromptRegistry, register_all_prompts
 #include "apollocore/apollo_mcp_errors.hpp"  // make_error, ErrorCode
 #include "apollocore/apollo_persistence.hpp"  // ApolloCore
 
@@ -112,6 +113,7 @@ void write_message(const nlohmann::json& msg) {
 nlohmann::json handle_jsonrpc_request(
     const nlohmann::json& rpc,
     ToolRegistry& registry,
+    PromptRegistry& prompt_registry,
     ApolloCore& kb)
 {
     nlohmann::json id = rpc.value("id", json(nullptr));
@@ -132,7 +134,8 @@ nlohmann::json handle_jsonrpc_request(
                 }},
                 {"capabilities", {
                     {"tools", json::object()},
-                    {"resources", json::object()}
+                    {"resources", json::object()},
+                    {"prompts", json::object()}
                 }}
             };
         }
@@ -149,6 +152,14 @@ nlohmann::json handle_jsonrpc_request(
                 })},
                 {"isError", false}
             };
+        }
+        else if (method == "prompts/list") {
+            result = prompt_registry.list_prompts();
+        }
+        else if (method == "prompts/get") {
+            std::string prompt_name = params.value("name", "");
+            json args = params.value("arguments", json::object());
+            result = prompt_registry.get_prompt(prompt_name, args);
         }
         else if (method == "ping" || method == "notifications/initialized") {
             result = json::object();
@@ -178,13 +189,15 @@ nlohmann::json handle_jsonrpc_request(
 int run_stdio_server(ApolloCore& kb) {
     LOG("starting stdio server (Phase M2.14)");
 
-    // Build a local ToolRegistry and populate it.
-    // No global state — stdio is self-contained.
-    ToolRegistry registry;
-    register_all_tools(registry, kb);
+    // Build local registries — self-contained, no global state.
+    ToolRegistry tool_registry;
+    register_all_tools(tool_registry, kb);
 
-    LOGF("ready, %zu tools registered, reading from stdin...",
-         registry.size());
+    PromptRegistry prompt_registry;
+    register_all_prompts(prompt_registry, kb);
+
+    LOGF("ready, %zu tools + %zu prompts registered, reading from stdin...",
+         tool_registry.size(), prompt_registry.size());
 
     // Main message loop
     while (true) {
@@ -199,7 +212,7 @@ int run_stdio_server(ApolloCore& kb) {
         // Notifications get no reply (per JSON-RPC spec)
         bool is_notification = !rpc.contains("id");
 
-        json response = handle_jsonrpc_request(rpc, registry, kb);
+        json response = handle_jsonrpc_request(rpc, tool_registry, prompt_registry, kb);
 
         if (!is_notification) {
             write_message(response);

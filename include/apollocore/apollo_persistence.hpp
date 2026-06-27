@@ -189,6 +189,11 @@ public:
     std::vector<std::pair<std::string, std::string>> get_all_chunks();
 
     /**
+     * Get all documents (nodes) in the current KB as (id, content) pairs.
+     */
+    std::vector<std::pair<std::string, std::string>> get_all_documents();
+
+    /**
      * Get all entities from the knowledge base.
      * @param limit Max entities to return (0 = all)
      */
