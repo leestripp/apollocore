@@ -490,4 +490,66 @@ KnowledgeBasePersistence::get_disk_stats() {
     return stats;
 }
 
+bool KnowledgeBasePersistence::delete_document(const std::string& document_id) {
+    std::cerr << "[KBP::delete_document] enter doc=" << document_id
+              << " db_open=" << db_.is_open() << std::endl;
+    std::cerr.flush();
+    if (!db_.is_open()) return false;
+
+    // 1. Find chunk IDs for this document
+    std::vector<std::string> chunk_ids;
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id FROM chunks WHERE node_id = ?;"
+    );
+    if (!stmt) return false;
+    db_.bind_string(stmt, 1, document_id);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        chunk_ids.push_back(db_.column_string(stmt, 0));
+    }
+    db_.finalize(stmt);
+
+    // 2. Delete .fbin embedding files for these chunks
+    for (const auto& cid : chunk_ids) {
+        std::string emb_path = get_chunk_embedding_path(cid);
+        std::error_code ec;
+        std::filesystem::remove(emb_path, ec);
+        // Ignore errors — file may not exist
+    }
+
+    // 3. Find entity IDs for these chunks (query one at a time)
+    std::vector<std::string> entity_ids;
+    for (const auto& cid : chunk_ids) {
+        sqlite3_stmt* estmt = db_.prepare(
+            "SELECT id FROM entities WHERE chunk_id = ?;"
+        );
+        if (!estmt) continue;
+        db_.bind_string(estmt, 1, cid);
+        while (sqlite3_step(estmt) == SQLITE_ROW) {
+            entity_ids.push_back(db_.column_string(estmt, 0));
+        }
+        db_.finalize(estmt);
+    }
+
+    // 4. Delete relationships involving these entities
+    for (const auto& eid : entity_ids) {
+        db_.execute(
+            "DELETE FROM relationships WHERE source_id = ? OR target_id = ?;",
+            {eid, eid}
+        );
+    }
+
+    // 5. Delete entities (those that came from these chunks)
+    for (const auto& cid : chunk_ids) {
+        db_.execute("DELETE FROM entities WHERE chunk_id = ?;", {cid});
+    }
+
+    // 6. Delete chunks for this document
+    db_.execute("DELETE FROM chunks WHERE node_id = ?;", {document_id});
+
+    // 7. Delete the document node itself
+    db_.execute("DELETE FROM nodes WHERE id = ?;", {document_id});
+
+    return true;
+}
+
 } // namespace apollocore_v2

@@ -133,7 +133,17 @@ public:
      * @return Number of chunks created
      */
     size_t add_document(const std::string& text, size_t chunk_size = 512);
-    
+
+    /**
+     * Delete a document by its ID. Removes the document node, all its chunks,
+     * all entities extracted from those chunks, and all relationships involving
+     * those entities. Also removes .fbin embedding files for the chunks.
+     *
+     * @param document_id The document/node ID returned by add_document()
+     * @return true if deleted, false if not found or KB not open
+     */
+    bool delete_document(const std::string& document_id);
+
     /**
      * Query the knowledge base
      */

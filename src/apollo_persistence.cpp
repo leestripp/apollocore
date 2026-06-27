@@ -384,10 +384,37 @@ size_t ApolloCore::add_document(
     // Add document to in-memory
     documents_.push_back({doc_id, text});
     
-    std::cout << "[ApolloCore] Added document '" << doc_id << "' with " 
+    std::cout << "[ApolloCore] Added document '" << doc_id << "' with "
               << count << " chunks\n";
-    
+
     return count;
+}
+
+bool ApolloCore::delete_document(const std::string& document_id) {
+    if (!is_open_) {
+        std::cerr << "[ApolloCore] delete_document: KB not open\n";
+        return false;
+    }
+    if (!kb_persistence_) {
+        std::cerr << "[ApolloCore] delete_document: kb_persistence_ null\n";
+        return false;
+    }
+
+    // Delegate to persistence layer (handles all cascading deletes)
+    bool ok = kb_persistence_->delete_document(document_id);
+    if (!ok) return false;
+
+    // Also remove from in-memory caches
+    documents_.erase(
+        std::remove_if(documents_.begin(), documents_.end(),
+            [&](const std::pair<std::string, std::string>& p) {
+                return p.first == document_id;
+            }),
+        documents_.end()
+    );
+
+    std::cout << "[ApolloCore] Deleted document '" << document_id << "'\n";
+    return true;
 }
 
 std::vector<std::pair<std::string, float>> 

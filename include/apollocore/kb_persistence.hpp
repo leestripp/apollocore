@@ -227,7 +227,16 @@ public:
      * Load chunk embedding
      */
     std::vector<float> load_chunk_embedding(const std::string& chunk_id);
-    
+
+    /**
+     * Delete a document and all associated data (chunks, entities, relationships).
+     * Removes .fbin embedding files for the chunks.
+     *
+     * @param document_id The document/node ID to delete
+     * @return true if deleted, false on error or not found
+     */
+    bool delete_document(const std::string& document_id);
+
     // ========================================================================
     // Statistics
     // ========================================================================

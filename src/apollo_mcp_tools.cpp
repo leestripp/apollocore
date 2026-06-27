@@ -26,6 +26,9 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <unordered_set>
+#include <queue>
+#include <algorithm>
+#include <iostream>
 
 namespace apollocore_v2::mcp {
 
@@ -261,17 +264,45 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
 
     registry.register_tool({
         "delete_document",
-        "Delete a document and all its chunks. IRREVERSIBLE.",
+        "Delete a document and all its chunks, entities, and relationships. IRREVERSIBLE.",
         make_schema({
             {"document_id", "string", "Document ID to delete"},
             {"confirm", "boolean", "Must be true"}
         }, {"document_id", "confirm"}),
-        [&kb](const nlohmann::json&) -> nlohmann::json {
-            // Phase 1: not yet implemented in ApolloCore
-            throw McpError(ErrorCode::InternalError,
-                "delete_document not yet implemented in ApolloCore core");
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string doc_id = str_arg(args, "document_id");
+            if (doc_id.empty()) {
+                throw McpError(ErrorCode::InvalidParams, "Missing 'document_id'");
+            }
+            bool confirm = args.value("confirm", false);
+            if (!confirm) {
+                throw McpError(ErrorCode::InvalidParams,
+                    "delete_document requires confirm=true (operation is IRREVERSIBLE)");
+            }
+
+            // Capture counts before deletion for the response
+            auto entities_before = kb.get_entities(100000);
+            auto rels_before = kb.get_relationships(100000);
+
+            bool ok = kb.delete_document(doc_id);
+            if (!ok) {
+                throw McpError(ErrorCode::InternalError,
+                    "Failed to delete document: " + doc_id);
+            }
+
+            auto entities_after = kb.get_entities(100000);
+            auto rels_after = kb.get_relationships(100000);
+
+            return {
+                {"deleted", true},
+                {"document_id", doc_id},
+                {"entities_removed", entities_before.size() - entities_after.size()},
+                {"relationships_removed", rels_before.size() - rels_after.size()},
+                {"remaining_entities", entities_after.size()},
+                {"remaining_relationships", rels_after.size()}
+            };
         }
-        // kb:write scope required (Phase 2)
     });
 
     // =========================================================================
@@ -441,9 +472,24 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
         make_schema({
             {"entity_id", "string", "Entity ID"}
         }, {"entity_id"}),
-        [](const nlohmann::json&) -> nlohmann::json {
-            // Phase 2: implement lookup
-            throw McpError(ErrorCode::InternalError, "get_entity: not yet implemented");
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string entity_id = str_arg(args, "entity_id");
+            if (entity_id.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'entity_id'");
+            auto entities = kb.get_entities(100000);
+            for (const auto& e : entities) {
+                if (e.id == entity_id) {
+                    return {
+                        {"id", e.id},
+                        {"name", e.name},
+                        {"type", entity_type_to_string(e.type)},
+                        {"description", e.description},
+                        {"confidence", e.confidence}
+                    };
+                }
+            }
+            throw McpError(ErrorCode::ResourceNotFound,
+                "Entity not found: " + entity_id);
         }
     });
 
@@ -525,12 +571,39 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
 
     registry.register_tool({
         "get_relationship",
-        "Get a single relationship by ID.",
+        "Get a single relationship by source and target entity names.",
         make_schema({
-            {"relationship_id", "string", "Relationship ID"}
-        }, {"relationship_id"}),
-        [](const nlohmann::json&) -> nlohmann::json {
-            throw McpError(ErrorCode::InternalError, "get_relationship: not yet implemented");
+            {"source", "string", "Source entity name"},
+            {"target", "string", "Target entity name"},
+            {"type", "string", "Optional: relationship type to disambiguate"}
+        }, {"source", "target"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string source_name = str_arg(args, "source");
+            std::string target_name = str_arg(args, "target");
+            if (source_name.empty() || target_name.empty()) {
+                throw McpError(ErrorCode::InvalidParams,
+                    "Missing 'source' or 'target'");
+            }
+            std::string type_filter = str_arg(args, "type", "");
+            auto rels = kb.get_relationships(100000);
+            for (const auto& r : rels) {
+                if (r.source == source_name && r.target == target_name) {
+                    if (!type_filter.empty()) {
+                        std::string rtype = relation_type_to_string(r.type);
+                        if (rtype != type_filter) continue;
+                    }
+                    return {
+                        {"source", r.source},
+                        {"target", r.target},
+                        {"type", relation_type_to_string(r.type)},
+                        {"description", r.description},
+                        {"weight", r.weight}
+                    };
+                }
+            }
+            throw McpError(ErrorCode::ResourceNotFound,
+                "Relationship not found: " + source_name + " -> " + target_name);
         }
     });
 
@@ -580,16 +653,115 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
 
     registry.register_tool({
         "get_paths",
-        "Find paths between two entities in the knowledge graph (BFS).",
+        "Find shortest paths between two entities in the knowledge graph (BFS).",
         make_schema({
-            {"from_entity", "string", "Source entity name"},
-            {"to_entity", "string", "Target entity name"},
+            {"from_entity", "string", "Source entity name (substring match)"},
+            {"to_entity", "string", "Target entity name (substring match)"},
             {"max_hops", "integer", "Max hops (default 3)"}
         }, {"from_entity", "to_entity"}),
-        [](const nlohmann::json&) -> nlohmann::json {
-            // Phase 2: implement BFS pathfinding
-            throw McpError(ErrorCode::InternalError,
-                "get_paths: graph pathfinding not yet implemented");
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string from_name = str_arg(args, "from_entity");
+            std::string to_name = str_arg(args, "to_entity");
+            size_t max_hops = size_arg(args, "max_hops", 3);
+
+            // Resolve names -> entity IDs (case-insensitive substring)
+            auto entities = kb.get_entities(100000);
+            auto rels = kb.get_relationships(100000);
+
+            auto find_by_name = [&](const std::string& name) -> std::vector<std::string> {
+                std::string n_lower = name;
+                std::transform(n_lower.begin(), n_lower.end(), n_lower.begin(), ::tolower);
+                std::vector<std::string> ids;
+                for (const auto& e : entities) {
+                    std::string ename_lower = e.name;
+                    std::transform(ename_lower.begin(), ename_lower.end(),
+                                  ename_lower.begin(), ::tolower);
+                    if (ename_lower.find(n_lower) != std::string::npos) {
+                        ids.push_back(e.id);
+                        if (ids.size() >= 10) break;
+                    }
+                }
+                return ids;
+            };
+
+            auto from_ids = find_by_name(from_name);
+            auto to_ids = find_by_name(to_name);
+            if (from_ids.empty()) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "No entities matching from_entity: " + from_name);
+            }
+            if (to_ids.empty()) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "No entities matching to_entity: " + to_name);
+            }
+            // Map IDs to names for path output
+            std::unordered_map<std::string, std::string> id_to_name;
+            for (const auto& e : entities) id_to_name[e.id] = e.name;
+            std::unordered_set<std::string> to_set(to_ids.begin(), to_ids.end());
+
+            // Build adjacency by NAME: name -> [(neighbor_name, rel)]
+            struct Edge { std::string to_name; std::string rel_type; float weight; };
+            std::unordered_map<std::string, std::vector<Edge>> adj;
+            for (const auto& r : rels) {
+                std::string rel_type_str(r.type == apollocore_v2::RelationType::UNKNOWN
+                    ? "related_to"
+                    : apollocore_v2::relation_type_to_string(r.type));
+                adj[r.source].push_back({r.target, rel_type_str, r.weight});
+                adj[r.target].push_back({r.source, rel_type_str, r.weight});  // undirected
+            }
+
+            // BFS by name
+            nlohmann::json paths = nlohmann::json::array();
+            std::unordered_set<std::string> visited_globally;
+            for (const auto& start_id : from_ids) {
+                std::string start_name = id_to_name[start_id];
+                if (visited_globally.count(start_name)) continue;
+
+                std::queue<std::pair<std::string, std::vector<std::string>>> q;
+                std::unordered_set<std::string> visited;
+                q.push({start_name, {start_name}});
+                visited.insert(start_name);
+                visited_globally.insert(start_name);
+
+                bool found = false;
+                while (!q.empty()) {
+                    auto [cur_name, path_names] = q.front();
+                    q.pop();
+                    if (path_names.size() > max_hops + 1) continue;
+
+                    // Check if cur_name is one of the targets
+                    auto cur_id_it = std::find_if(entities.begin(), entities.end(),
+                        [&](const apollocore_v2::Entity& e) { return e.name == cur_name; });
+                    if (cur_id_it != entities.end() && to_set.count(cur_id_it->id)) {
+                        // Build path output
+                        nlohmann::json path_entities = nlohmann::json::array();
+                        for (const auto& n : path_names) {
+                            path_entities.push_back({{"name", n}});
+                        }
+                        paths.push_back({
+                            {"hops", path_names.size() - 1},
+                            {"path", path_names},
+                            {"entities", path_entities}
+                        });
+                        found = true;
+                        break;
+                    }
+
+                    auto it = adj.find(cur_name);
+                    if (it == adj.end()) continue;
+                    for (const auto& e : it->second) {
+                        if (visited.count(e.to_name)) continue;
+                        visited.insert(e.to_name);
+                        std::vector<std::string> new_path = path_names;
+                        new_path.push_back(e.to_name);
+                        q.push({e.to_name, new_path});
+                    }
+                }
+                if (found) break;
+            }
+
+            return {{"paths", paths}, {"count", paths.size()}};
         }
     });
 
@@ -599,27 +771,207 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
 
     registry.register_tool({
         "get_neighbors",
-        "Get N-hop neighborhood of an entity (entities + relationships).",
+        "Get N-hop neighborhood of an entity (entities + relationships within N hops).",
         make_schema({
-            {"entity_id", "string", "Starting entity ID"},
+            {"entity_id", "string", "Starting entity name or ID"},
             {"hops", "integer", "Max hops (default 1)"}
         }, {"entity_id"}),
-        [](const nlohmann::json&) -> nlohmann::json {
-            throw McpError(ErrorCode::InternalError,
-                "get_neighbors: graph traversal not yet implemented");
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            std::string entity_ref = str_arg(args, "entity_id");
+            size_t hops = size_arg(args, "hops", 1);
+
+            auto entities = kb.get_entities(100000);
+            auto rels = kb.get_relationships(100000);
+
+            // Resolve name -> name (substring match)
+            std::string n_lower = entity_ref;
+            std::transform(n_lower.begin(), n_lower.end(), n_lower.begin(), ::tolower);
+            std::string start_name;
+            for (const auto& e : entities) {
+                std::string ename_lower = e.name;
+                std::transform(ename_lower.begin(), ename_lower.end(),
+                              ename_lower.begin(), ::tolower);
+                if (ename_lower.find(n_lower) != std::string::npos) {
+                    start_name = e.name;
+                    break;
+                }
+            }
+            if (start_name.empty()) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "Entity not found: " + entity_ref);
+            }
+
+            // Build adjacency (undirected) by NAME
+            std::unordered_map<std::string, std::vector<std::string>> adj;
+            for (const auto& r : rels) {
+                adj[r.source].push_back(r.target);
+                adj[r.target].push_back(r.source);
+            }
+
+            // BFS up to N hops
+            std::unordered_set<std::string> visited_names;
+            std::queue<std::pair<std::string, size_t>> q;
+            q.push({start_name, 0});
+            visited_names.insert(start_name);
+            while (!q.empty()) {
+                auto [cur, depth] = q.front();
+                q.pop();
+                if (depth >= hops) continue;
+                auto it = adj.find(cur);
+                if (it == adj.end()) continue;
+                for (const auto& nb : it->second) {
+                    if (!visited_names.count(nb)) {
+                        visited_names.insert(nb);
+                        q.push({nb, depth + 1});
+                    }
+                }
+            }
+
+            // Build node list (entities by name)
+            nlohmann::json nodes = nlohmann::json::array();
+            for (const auto& e : entities) {
+                if (visited_names.count(e.name)) {
+                    nodes.push_back({
+                        {"id", e.id}, {"name", e.name},
+                        {"type", entity_type_to_string(e.type)},
+                        {"description", e.description}
+                    });
+                }
+            }
+            // Build edge list (relationships within visited set)
+            nlohmann::json edges = nlohmann::json::array();
+            for (const auto& r : rels) {
+                if (visited_names.count(r.source) && visited_names.count(r.target)) {
+                    edges.push_back({
+                        {"source", r.source},
+                        {"target", r.target},
+                        {"type", relation_type_to_string(r.type)},
+                        {"weight", r.weight}
+                    });
+                }
+            }
+            return {
+                {"seed", entity_ref},
+                {"hops", hops},
+                {"nodes", nodes},
+                {"edges", edges},
+                {"stats", {{"nodes", nodes.size()}, {"edges", edges.size()}}}
+            };
         }
     });
 
     registry.register_tool({
         "get_subgraph",
-        "Extract a subgraph around the given entity IDs.",
+        "Extract a subgraph around multiple entities (union of N-hop neighborhoods).",
         make_schema({
-            {"entity_ids", "array", "List of entity IDs to include"},
-            {"hops", "integer", "Expand by N hops (default 1)"}
+            {"entity_ids", "array", "List of entity names or IDs to seed from"},
+            {"hops", "integer", "Expand by N hops from each seed (default 1)"}
         }, {"entity_ids"}),
-        [](const nlohmann::json&) -> nlohmann::json {
-            throw McpError(ErrorCode::InternalError,
-                "get_subgraph: not yet implemented");
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            require_kb_open(kb);
+            if (!args.contains("entity_ids") || !args["entity_ids"].is_array() || args["entity_ids"].empty()) {
+                throw McpError(ErrorCode::InvalidParams, "Missing or empty 'entity_ids'");
+            }
+            size_t hops = size_arg(args, "hops", 1);
+
+            auto entities = kb.get_entities(100000);
+            auto rels = kb.get_relationships(100000);
+
+            // Resolve refs -> names
+            std::unordered_set<std::string> seed_names;
+            for (const auto& ref : args["entity_ids"]) {
+                std::string entity_ref = ref.get<std::string>();
+                // First try as exact name match, then substring
+                bool found = false;
+                for (const auto& e : entities) {
+                    if (e.name == entity_ref) {
+                        seed_names.insert(e.name);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std::string n_lower = entity_ref;
+                    std::transform(n_lower.begin(), n_lower.end(), n_lower.begin(), ::tolower);
+                    for (const auto& e : entities) {
+                        std::string ename_lower = e.name;
+                        std::transform(ename_lower.begin(), ename_lower.end(),
+                                      ename_lower.begin(), ::tolower);
+                        if (ename_lower.find(n_lower) != std::string::npos) {
+                            seed_names.insert(e.name);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (seed_names.empty()) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "No seed entities found");
+            }
+
+            // Build adjacency (undirected) by name
+            std::unordered_map<std::string, std::vector<std::string>> adj;
+            for (const auto& r : rels) {
+                adj[r.source].push_back(r.target);
+                adj[r.target].push_back(r.source);
+            }
+
+            // BFS from all seeds
+            std::unordered_set<std::string> visited_names;
+            std::queue<std::pair<std::string, size_t>> q;
+            for (const auto& sn : seed_names) {
+                q.push({sn, 0});
+                visited_names.insert(sn);
+            }
+            while (!q.empty()) {
+                auto [cur, depth] = q.front();
+                q.pop();
+                if (depth >= hops) continue;
+                auto it = adj.find(cur);
+                if (it == adj.end()) continue;
+                for (const auto& nb : it->second) {
+                    if (!visited_names.count(nb)) {
+                        visited_names.insert(nb);
+                        q.push({nb, depth + 1});
+                    }
+                }
+            }
+
+            // Build response
+            nlohmann::json nodes = nlohmann::json::array();
+            for (const auto& e : entities) {
+                if (visited_names.count(e.name)) {
+                    nlohmann::json node = {
+                        {"id", e.id}, {"name", e.name},
+                        {"type", entity_type_to_string(e.type)}
+                    };
+                    if (seed_names.count(e.name)) node["is_seed"] = true;
+                    nodes.push_back(node);
+                }
+            }
+            nlohmann::json edges = nlohmann::json::array();
+            for (const auto& r : rels) {
+                if (visited_names.count(r.source) && visited_names.count(r.target)) {
+                    edges.push_back({
+                        {"source", r.source},
+                        {"target", r.target},
+                        {"type", relation_type_to_string(r.type)},
+                        {"weight", r.weight}
+                    });
+                }
+            }
+            return {
+                {"seeds", args["entity_ids"]},
+                {"hops", hops},
+                {"nodes", nodes},
+                {"edges", edges},
+                {"stats", {
+                    {"seeds", seed_names.size()},
+                    {"nodes", nodes.size()},
+                    {"edges", edges.size()}
+                }}
+            };
         }
     });
 
