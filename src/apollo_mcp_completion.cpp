@@ -99,16 +99,33 @@ bool is_topic_arg(const std::string& name) {
 // Entity type names (from apollocore_v2 namespace)
 std::vector<std::string> entity_type_names() {
     return {
-        "PERSON", "ORG", "LOC", "CONCEPT", "EVENT", "WORK", "UNKNOWN"
+        // General types
+        "PERSON", "ORGANIZATION", "LOCATION", "EVENT", "CONCEPT",
+        "PRODUCT", "DATE", "NUMBER", "DISEASE", "DRUG",
+        "MEDICAL_PROCEDURE", "SCIENTIFIC_TERM",
+        // Code-aware types (for codebases)
+        "FUNCTION", "CLASS", "FILE", "MODULE", "NAMESPACE",
+        "VARIABLE", "ENUM", "MACRO",
+        // Fallback
+        "UNKNOWN"
     };
 }
 
 // Relationship type names
 std::vector<std::string> relation_type_names() {
     return {
-        "founded", "works_for", "located_in", "created", "studied_at",
-        "collaborated_with", "influenced_by", "authored", "owns", "part_of",
-        "related_to", "unknown"
+        // General types
+        "FOUNDED", "DEVELOPED", "PUBLISHED", "WORKED_AT", "LOCATED_IN",
+        "RELATED_TO", "CAUSED", "PART_OF", "TREATS", "DIAGNOSES",
+        "EVALUATES", "USES", "IMPLEMENTS", "DEPENDS_ON", "CAUSED_BY",
+        "SUBTYPE_OF", "SUPERTYPE_OF",
+        // Code-aware types (for codebases)
+        "CALLS", "CALLED_BY", "IMPORTS", "IMPORTED_BY",
+        "INHERITS", "INHERITED_BY", "OVERRIDES", "OVERRIDDEN_BY",
+        "DEFINES", "DEFINED_IN", "CONTAINS", "CONTAINED_IN",
+        "INSTANTIATES", "RETURNS", "ACCEPTS",
+        // Fallback
+        "UNKNOWN"
     };
 }
 

@@ -46,6 +46,15 @@ enum class EntityType {
     DRUG,                 // Medications
     MEDICAL_PROCEDURE,     // Medical treatments
     SCIENTIFIC_TERM,       // Domain-specific scientific concepts
+    // ===== Code-aware types (for codebase knowledge graphs) =====
+    FUNCTION,             // Functions, methods, procedures
+    CLASS,                // Classes, structs, interfaces, traits
+    FILE,                 // Source files
+    MODULE,               // Modules, packages, libraries
+    NAMESPACE,            // Namespaces
+    VARIABLE,             // Variables, fields, properties, constants
+    ENUM,                 // Enums and enum values
+    MACRO,                // Macros, preprocessor directives
     UNKNOWN               // Unclassified entities
 };
 
@@ -64,6 +73,15 @@ inline const char* entity_type_to_string(EntityType type) {
         case EntityType::DRUG: return "DRUG";
         case EntityType::MEDICAL_PROCEDURE: return "MEDICAL_PROCEDURE";
         case EntityType::SCIENTIFIC_TERM: return "SCIENTIFIC_TERM";
+        // Code-aware types
+        case EntityType::FUNCTION: return "FUNCTION";
+        case EntityType::CLASS: return "CLASS";
+        case EntityType::FILE: return "FILE";
+        case EntityType::MODULE: return "MODULE";
+        case EntityType::NAMESPACE: return "NAMESPACE";
+        case EntityType::VARIABLE: return "VARIABLE";
+        case EntityType::ENUM: return "ENUM";
+        case EntityType::MACRO: return "MACRO";
         default: return "UNKNOWN";
     }
 }
@@ -82,6 +100,15 @@ inline EntityType string_to_entity_type(const std::string& str) {
     if (str == "DRUG") return EntityType::DRUG;
     if (str == "MEDICAL_PROCEDURE") return EntityType::MEDICAL_PROCEDURE;
     if (str == "SCIENTIFIC_TERM") return EntityType::SCIENTIFIC_TERM;
+    // Code-aware types
+    if (str == "FUNCTION") return EntityType::FUNCTION;
+    if (str == "CLASS") return EntityType::CLASS;
+    if (str == "FILE") return EntityType::FILE;
+    if (str == "MODULE") return EntityType::MODULE;
+    if (str == "NAMESPACE") return EntityType::NAMESPACE;
+    if (str == "VARIABLE") return EntityType::VARIABLE;
+    if (str == "ENUM") return EntityType::ENUM;
+    if (str == "MACRO") return EntityType::MACRO;
     return EntityType::UNKNOWN;
 }
 
@@ -107,6 +134,22 @@ enum class RelationType {
     CAUSED_BY,           // Reverse causation
     SUBTYPE_OF,          // Taxonomic relationship
     SUPERTYPE_OF,        // Taxonomic relationship
+    // ===== Code-aware relationships (for call graphs, etc.) =====
+    CALLS,               // Function calls another function
+    CALLED_BY,           // Reverse of CALLS
+    IMPORTS,             // File imports another file/module
+    IMPORTED_BY,         // Reverse of IMPORTS
+    INHERITS,            // Class inherits from another class
+    INHERITED_BY,        // Reverse of INHERITS
+    OVERRIDES,           // Method overrides parent's
+    OVERRIDDEN_BY,       // Reverse of OVERRIDES
+    DEFINES,             // File/class defines a function/variable
+    DEFINED_IN,          // Function/variable is defined in file/class
+    CONTAINS,            // Container relationship (namespace contains class, etc.)
+    CONTAINED_IN,        // Reverse of CONTAINS
+    INSTANTIATES,        // Class instantiates another
+    RETURNS,             // Function returns a type
+    ACCEPTS,             // Function accepts a parameter type
     UNKNOWN              // Unclassified
 };
 
@@ -130,6 +173,22 @@ inline const char* relation_type_to_string(RelationType type) {
         case RelationType::CAUSED_BY: return "CAUSED_BY";
         case RelationType::SUBTYPE_OF: return "SUBTYPE_OF";
         case RelationType::SUPERTYPE_OF: return "SUPERTYPE_OF";
+        // Code-aware relationships
+        case RelationType::CALLS: return "CALLS";
+        case RelationType::CALLED_BY: return "CALLED_BY";
+        case RelationType::IMPORTS: return "IMPORTS";
+        case RelationType::IMPORTED_BY: return "IMPORTED_BY";
+        case RelationType::INHERITS: return "INHERITS";
+        case RelationType::INHERITED_BY: return "INHERITED_BY";
+        case RelationType::OVERRIDES: return "OVERRIDES";
+        case RelationType::OVERRIDDEN_BY: return "OVERRIDDEN_BY";
+        case RelationType::DEFINES: return "DEFINES";
+        case RelationType::DEFINED_IN: return "DEFINED_IN";
+        case RelationType::CONTAINS: return "CONTAINS";
+        case RelationType::CONTAINED_IN: return "CONTAINED_IN";
+        case RelationType::INSTANTIATES: return "INSTANTIATES";
+        case RelationType::RETURNS: return "RETURNS";
+        case RelationType::ACCEPTS: return "ACCEPTS";
         default: return "UNKNOWN";
     }
 }
@@ -153,6 +212,22 @@ inline RelationType string_to_relation_type(const std::string& str) {
     if (str == "CAUSED_BY") return RelationType::CAUSED_BY;
     if (str == "SUBTYPE_OF") return RelationType::SUBTYPE_OF;
     if (str == "SUPERTYPE_OF") return RelationType::SUPERTYPE_OF;
+    // Code-aware relationships
+    if (str == "CALLS") return RelationType::CALLS;
+    if (str == "CALLED_BY") return RelationType::CALLED_BY;
+    if (str == "IMPORTS") return RelationType::IMPORTS;
+    if (str == "IMPORTED_BY") return RelationType::IMPORTED_BY;
+    if (str == "INHERITS") return RelationType::INHERITS;
+    if (str == "INHERITED_BY") return RelationType::INHERITED_BY;
+    if (str == "OVERRIDES") return RelationType::OVERRIDES;
+    if (str == "OVERRIDDEN_BY") return RelationType::OVERRIDDEN_BY;
+    if (str == "DEFINES") return RelationType::DEFINES;
+    if (str == "DEFINED_IN") return RelationType::DEFINED_IN;
+    if (str == "CONTAINS") return RelationType::CONTAINS;
+    if (str == "CONTAINED_IN") return RelationType::CONTAINED_IN;
+    if (str == "INSTANTIATES") return RelationType::INSTANTIATES;
+    if (str == "RETURNS") return RelationType::RETURNS;
+    if (str == "ACCEPTS") return RelationType::ACCEPTS;
     return RelationType::UNKNOWN;
 }
 
