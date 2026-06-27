@@ -119,7 +119,8 @@ public:
                    const std::string& content,
                    const std::string& parent_id,
                    const std::string& document_type = "",
-                   const std::string& metadata_json = "");
+                   const std::string& metadata_json = "",
+                   const std::string& project_id = "");
     
     /**
      * Save a chunk
@@ -128,7 +129,8 @@ public:
                     const std::string& node_id,
                     const std::string& content,
                     size_t position,
-                    const std::vector<float>& embedding);
+                    const std::vector<float>& embedding,
+                    const std::string& project_id = "");
     
     /**
      * Save an entity
@@ -138,7 +140,8 @@ public:
                      const std::string& name,
                      const std::string& type,
                      const std::string& description,
-                     float confidence);
+                     float confidence,
+                     const std::string& project_id = "");
     
     /**
      * Save a relationship
@@ -148,7 +151,8 @@ public:
                           const std::string& target_id,
                           const std::string& type,
                           const std::string& description,
-                          float confidence);
+                          float confidence,
+                          const std::string& project_id = "");
     
     // ========================================================================
     // Bulk Operations (for efficiency)
@@ -192,8 +196,11 @@ public:
         std::string type;
         std::string description;
         float confidence;
+        std::string project_id;
+        std::string metadata;
+        std::string created_at;
     };
-    
+
     struct LoadedRelationship {
         std::string id;
         std::string source_id;
@@ -201,6 +208,8 @@ public:
         std::string type;
         std::string description;
         float confidence;
+        std::string project_id;
+        std::string created_at;
     };
     
     /**
@@ -222,6 +231,13 @@ public:
      * Load all relationships
      */
     std::vector<LoadedRelationship> load_all_relationships();
+
+    // Project-filtered variants (Phase M3.C — multi-agent support)
+    // Empty vector means "no filter" (return all).
+    std::vector<LoadedEntity> load_entities_for_projects(
+        const std::vector<std::string>& project_ids, size_t limit = 0);
+    std::vector<LoadedRelationship> load_relationships_for_projects(
+        const std::vector<std::string>& project_ids, size_t limit = 0);
     
     /**
      * Load chunk embedding
@@ -236,6 +252,50 @@ public:
      * @return true if deleted, false on error or not found
      */
     bool delete_document(const std::string& document_id);
+
+    // ========================================================================
+    // Project Management (Phase M3.C — multi-agent support)
+    // ========================================================================
+
+    struct ProjectInfo {
+        std::string id;
+        std::string name;
+        std::string description;
+        std::string path;
+        bool is_shared = false;
+        std::string owner;
+        std::string metadata;  // JSON
+        std::string created_at;
+        std::string updated_at;
+    };
+
+    /**
+     * Register or update a project in the registry.
+     * @return true on success
+     */
+    bool save_project(const ProjectInfo& info);
+
+    /**
+     * Load all registered projects.
+     */
+    std::vector<ProjectInfo> load_all_projects();
+
+    /**
+     * Load a specific project by name.
+     * @return ProjectInfo with empty name if not found
+     */
+    ProjectInfo load_project(const std::string& name);
+
+    /**
+     * Delete a project AND all its data (chunks, entities, relationships, nodes).
+     * @return true on success
+     */
+    bool delete_project_data(const std::string& name);
+
+    /**
+     * Set the is_shared flag on a project.
+     */
+    bool set_project_shared(const std::string& name, bool is_shared);
 
     // ========================================================================
     // Statistics

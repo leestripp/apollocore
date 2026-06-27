@@ -37,6 +37,7 @@ struct Args {
     std::string llm_model;
     std::string kb_path;          // Optional: open existing KB
     std::string kb_name = "stdio KB";
+    std::string project_name;     // Optional: switch to this project on startup (M3.C)
 };
 
 Args parse_args(int argc, char** argv) {
@@ -54,6 +55,7 @@ Args parse_args(int argc, char** argv) {
         else if (arg == "--llm-model")       a.llm_model       = next(arg);
         else if (arg == "--kb")              a.kb_path         = next(arg);
         else if (arg == "--kb-name")         a.kb_name         = next(arg);
+        else if (arg == "--project-name")    a.project_name    = next(arg);
         else if (arg == "-h" || arg == "--help") {
             std::fprintf(stderr,
                 "ApolloCore MCP stdio Server (Phase M2.14)\n"
@@ -65,6 +67,8 @@ Args parse_args(int argc, char** argv) {
                 "  --llm-model PATH        GGUF LLM model for entity extraction\n"
                 "  --kb PATH               Open existing KB on startup\n"
                 "  --kb-name NAME          KB name if creating new\n"
+                "  --project-name NAME     Switch to project NAME on startup (M3.C)\n"
+                "                          Default: 'default'. Env: APOLLOCORE_PROJECT\n"
             );
             std::exit(0);
         } else {
@@ -109,6 +113,23 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "[apollo_mcp_stdio] failed to open KB: %s\n",
                          args.kb_path.c_str());
             return 1;
+        }
+    }
+
+    // M3.C: Apply project context (--project-name or APOLLOCORE_PROJECT env)
+    std::string project_name = args.project_name;
+    if (project_name.empty()) {
+        const char* env_p = std::getenv("APOLLOCORE_PROJECT");
+        if (env_p) project_name = env_p;
+    }
+    if (!project_name.empty() && kb->is_open()) {
+        // If project doesn't exist, auto-register it
+        if (kb->get_project_info(project_name).is_null()) {
+            kb->register_project(project_name, "Auto-created from CLI/env", false, "");
+        }
+        if (kb->set_current_project(project_name)) {
+            std::fprintf(stderr, "[apollo_mcp_stdio] current project: %s\n",
+                         project_name.c_str());
         }
     }
 

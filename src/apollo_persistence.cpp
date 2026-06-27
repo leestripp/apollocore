@@ -218,15 +218,21 @@ bool ApolloCore::kb_exists(const std::string& path) {
 bool ApolloCore::create(
     const std::string& path, const std::string& name) {
     if (is_open_) close();
-    
+
     if (!kb_persistence_->create(path, name)) {
         return false;
     }
-    
+
     // Clear in-memory data
     documents_.clear();
     chunks_.clear();
-    
+
+    // M3.C: Register "default" project for new KB
+    // (User can later switch to a different project via set_current_project)
+    current_project_ = "default";
+    shared_read_sources_.clear();
+    register_project("default", "Default project (auto-created)", false, "");
+
     is_open_ = true;
     std::cout << "[ApolloCore] Created knowledge base: " << path << "\n";
     return true;
@@ -234,15 +240,29 @@ bool ApolloCore::create(
 
 bool ApolloCore::open(const std::string& path) {
     if (is_open_) close();
-    
+
     if (!kb_persistence_->open(path)) {
         return false;
     }
-    
+
     // Load all data into memory
     documents_.clear();
     chunks_.clear();
-    
+
+    // M3.C: Default to "default" project on open
+    // (User can call set_current_project() to switch)
+    current_project_ = "default";
+    shared_read_sources_.clear();
+
+    // Ensure "default" project exists (for backwards-compat with
+    // pre-M3.C databases that may not have it registered)
+    {
+        auto info = get_project_info("default");
+        if (info.is_null()) {
+            register_project("default", "Default project", false, "system");
+        }
+    }
+
     auto loaded_chunks = kb_persistence_->load_all_chunks();
     std::cout << "[ApolloCore] Loaded " << loaded_chunks.size() << " chunks\n";
     
@@ -336,8 +356,8 @@ size_t ApolloCore::add_document(
     
     // Save node
     kb_persistence_->save_node(
-        node_id, doc_id, text.substr(0, 100), 
-        "", "document", ""
+        node_id, doc_id, text.substr(0, 100),
+        "", "document", "", current_project_
     );
     
     // Simple chunking by sentences
@@ -383,8 +403,8 @@ size_t ApolloCore::add_document(
         
         // Save to disk
         if (kb_persistence_->save_chunk(
-            chunk_id, node_id, chunk_texts[i], i, embedding)) {
-            
+            chunk_id, node_id, chunk_texts[i], i, embedding, current_project_)) {
+
             // Add to in-memory store
             chunks_.push_back({chunk_id, embedding});
             count++;
@@ -450,7 +470,8 @@ std::string ApolloCore::add_entity(
     }
 
     bool ok = kb_persistence_->save_entity(
-        eid, chunk_id, name, type_str, description, confidence);
+        eid, chunk_id, name, type_str, description, confidence,
+        current_project_);
     if (!ok) return "";
 
     return eid;
@@ -484,7 +505,8 @@ std::string ApolloCore::add_relationship(
     for (auto& c : rid) if (c == '/' || c == '\\' || c == ' ') c = '_';
 
     bool ok = kb_persistence_->save_relationship(
-        rid, source_id, target_id, type_str, description, confidence);
+        rid, source_id, target_id, type_str, description, confidence,
+        current_project_);
     if (!ok) return "";
 
     return rid;
@@ -621,7 +643,8 @@ size_t ApolloCore::extract_entities_for_chunk(
             entity_id, chunk_id, entity.name,
             entity_type_to_string(entity.type),
             entity.description,
-            entity.confidence
+            entity.confidence,
+            current_project_
         );
         if (ok) saved_entities++;
     }
@@ -646,7 +669,8 @@ size_t ApolloCore::extract_entities_for_chunk(
                 rel_id, source_id, target_id,
                 relation_type_to_string(rel.type),
                 rel.description,
-                rel.weight
+                rel.weight,
+                current_project_
             );
             if (ok) saved_rels++;
         }
@@ -747,10 +771,13 @@ std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_documents()
 std::vector<Entity> ApolloCore::get_entities(size_t limit) {
     std::vector<Entity> result;
     if (!is_open_) return result;
-    
-    auto loaded = kb_persistence_->load_all_entities();
+
+    // M3.C: Filter by current project + any shared read sources
+    auto visible = visible_projects();
+    auto loaded = kb_persistence_->load_entities_for_projects(visible, limit);
+
     result.reserve(loaded.size());
-    
+
     for (const auto& le : loaded) {
         Entity e;
         e.name = le.name;
@@ -760,10 +787,10 @@ std::vector<Entity> ApolloCore::get_entities(size_t limit) {
         e.id = le.id;
         e.sources.push_back(le.chunk_id);
         result.push_back(e);
-        
+
         if (limit > 0 && result.size() >= limit) break;
     }
-    
+
     return result;
 }
 
@@ -792,19 +819,21 @@ std::vector<Entity> ApolloCore::get_entities_for_chunk(
 std::vector<Relationship> ApolloCore::get_relationships(size_t limit) {
     std::vector<Relationship> result;
     if (!is_open_) return result;
-    
-    auto loaded = kb_persistence_->load_all_relationships();
+
+    // M3.C: Filter by current project + any shared read sources
+    auto visible = visible_projects();
+    auto loaded = kb_persistence_->load_relationships_for_projects(visible, limit);
     result.reserve(loaded.size());
-    
+
     for (const auto& lr : loaded) {
-        // Find the entity names from IDs
-        auto entities = kb_persistence_->load_all_entities();
+        // Find the entity names from IDs (use visible entities too)
+        auto entities = kb_persistence_->load_entities_for_projects(visible);
         std::string source_name, target_name;
         for (const auto& e : entities) {
             if (e.id == lr.source_id) source_name = e.name;
             if (e.id == lr.target_id) target_name = e.name;
         }
-        
+
         Relationship r;
         r.source = source_name;
         r.target = target_name;
@@ -812,10 +841,10 @@ std::vector<Relationship> ApolloCore::get_relationships(size_t limit) {
         r.description = lr.description;
         r.weight = lr.confidence;
         result.push_back(r);
-        
+
         if (limit > 0 && result.size() >= limit) break;
     }
-    
+
     return result;
 }
 
@@ -847,8 +876,143 @@ ApolloCore::Stats ApolloCore::get_stats() {
         }
         stats.chunks_with_entities = chunk_ids.size();
     }
-    
+
     return stats;
+}
+
+// ============================================================================
+// Project Scoping (Phase M3.C — multi-agent support)
+// ============================================================================
+
+bool ApolloCore::set_current_project(const std::string& project_name) {
+    if (!is_open_ || !kb_persistence_) return false;
+    if (project_name.empty()) return false;
+
+    // Verify project exists
+    auto info = kb_persistence_->load_project(project_name);
+    if (info.name.empty()) {
+        std::cerr << "[ApolloCore] Project not found: " << project_name << "\n";
+        return false;
+    }
+
+    current_project_ = project_name;
+    std::cout << "[ApolloCore] Current project set to: " << project_name << "\n";
+    return true;
+}
+
+bool ApolloCore::register_project(const std::string& name,
+                                  const std::string& description,
+                                  bool is_shared,
+                                  const std::string& owner) {
+    if (!is_open_ || !kb_persistence_) return false;
+    if (name.empty()) return false;
+
+    KnowledgeBasePersistence::ProjectInfo info;
+    info.id = name;
+    info.name = name;
+    info.description = description;
+    info.path = "";  // KB-level project, not file path
+    info.is_shared = is_shared;
+    info.owner = owner;
+    info.metadata = "{}";
+
+    bool ok = kb_persistence_->save_project(info);
+    if (ok) {
+        std::cout << "[ApolloCore] Registered project: " << name
+                  << (is_shared ? " (shared)" : "") << "\n";
+    }
+    return ok;
+}
+
+bool ApolloCore::set_project_shared(const std::string& name, bool is_shared) {
+    if (!is_open_ || !kb_persistence_) return false;
+    return kb_persistence_->set_project_shared(name, is_shared);
+}
+
+bool ApolloCore::add_shared_read_source(const std::string& project_name) {
+    if (project_name == current_project_) return true;  // own project
+    if (std::find(shared_read_sources_.begin(), shared_read_sources_.end(),
+                  project_name) != shared_read_sources_.end()) {
+        return true;  // already added
+    }
+    shared_read_sources_.push_back(project_name);
+    std::cout << "[ApolloCore] Added shared read source: " << project_name << "\n";
+    return true;
+}
+
+bool ApolloCore::remove_shared_read_source(const std::string& project_name) {
+    auto it = std::find(shared_read_sources_.begin(),
+                        shared_read_sources_.end(), project_name);
+    if (it != shared_read_sources_.end()) {
+        shared_read_sources_.erase(it);
+        return true;
+    }
+    return false;
+}
+
+nlohmann::json ApolloCore::list_projects() const {
+    nlohmann::json arr = nlohmann::json::array();
+    if (!is_open_ || !kb_persistence_) return arr;
+
+    auto projects = kb_persistence_->load_all_projects();
+    for (const auto& p : projects) {
+        arr.push_back({
+            {"name", p.name},
+            {"description", p.description},
+            {"is_shared", p.is_shared},
+            {"owner", p.owner},
+            {"created_at", p.created_at},
+            {"is_current", p.name == current_project_}
+        });
+    }
+    return arr;
+}
+
+nlohmann::json ApolloCore::get_project_info(const std::string& name) const {
+    if (!is_open_ || !kb_persistence_) return nullptr;
+
+    auto p = kb_persistence_->load_project(name);
+    if (p.name.empty()) return nullptr;
+
+    nlohmann::json info = {
+        {"name", p.name},
+        {"description", p.description},
+        {"is_shared", p.is_shared},
+        {"owner", p.owner},
+        {"metadata", p.metadata},
+        {"created_at", p.created_at},
+        {"updated_at", p.updated_at},
+        {"is_current", p.name == current_project_}
+    };
+    return info;
+}
+
+bool ApolloCore::delete_project(const std::string& name, bool confirm) {
+    if (!is_open_ || !kb_persistence_) return false;
+    if (!confirm) {
+        std::cerr << "[ApolloCore] delete_project requires confirm=true\n";
+        return false;
+    }
+    if (name == current_project_) {
+        std::cerr << "[ApolloCore] Cannot delete current project. "
+                     "Switch projects first.\n";
+        return false;
+    }
+    if (name == "default") {
+        std::cerr << "[ApolloCore] Cannot delete 'default' project. "
+                     "Use delete_project with a different name.\n";
+        return false;
+    }
+    return kb_persistence_->delete_project_data(name);
+}
+
+std::vector<std::string> ApolloCore::visible_projects() const {
+    std::vector<std::string> result;
+    result.push_back(current_project_);
+    for (const auto& src : shared_read_sources_) {
+        result.push_back(src);
+    }
+    return result;
 }
 
 } // namespace apollocore_v2

@@ -14,6 +14,7 @@
 #include "apollocore/kb_persistence.hpp"
 #include "apollocore/fbin.hpp"
 #include "apollocore/entity_extractor.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <memory>
@@ -276,7 +277,83 @@ public:
     };
     
     Stats get_stats();
-    
+
+    // ========================================================================
+    // Project Scoping (Phase M3.C — multi-agent support)
+    // ========================================================================
+    // Each ApolloCore instance operates in a "project context". Writes and
+    // deletes are scoped to this project. Reads can optionally include
+    // data from projects marked as "shared" by this project.
+    //
+    // Default project name is "default" (backwards-compatible with v1.x).
+
+    /**
+     * Set the current project context. Must be called after open() or create().
+     * @param project_name Name of the project (must exist or be created via register_project)
+     * @return true if project exists and was set
+     */
+    bool set_current_project(const std::string& project_name);
+
+    /**
+     * Get the current project name.
+     */
+    std::string current_project() const { return current_project_; }
+
+    /**
+     * Register a new project. Called automatically by create() with name=default.
+     * @param name Unique project name (alphanumeric + _ -)
+     * @param description Optional human description
+     * @param is_shared Whether other projects can read this project's data
+     * @param owner Optional owner name (agent name, user, etc.)
+     * @return true on success
+     */
+    bool register_project(const std::string& name,
+                          const std::string& description = "",
+                          bool is_shared = false,
+                          const std::string& owner = "");
+
+    /**
+     * Mark a project as shared (other projects can read it).
+     */
+    bool set_project_shared(const std::string& name, bool is_shared);
+
+    /**
+     * Mark another project as a read source for the current project.
+     * (Other projects' shared data becomes readable from current project.)
+     */
+    bool add_shared_read_source(const std::string& project_name);
+
+    /**
+     * Remove a shared read source.
+     */
+    bool remove_shared_read_source(const std::string& project_name);
+
+    /**
+     * List all registered projects (in current KB).
+     * @return JSON array: [{name, description, path, is_shared, owner, created_at}]
+     */
+    nlohmann::json list_projects() const;
+
+    /**
+     * Get info about a specific project.
+     * @return JSON object or null if not found
+     */
+    nlohmann::json get_project_info(const std::string& name) const;
+
+    /**
+     * Delete a project (removes all its data). Cannot delete current project.
+     * Use set_current_project() to switch first, then delete.
+     * @param name Project name
+     * @param confirm Must be true (safety check)
+     * @return true on success
+     */
+    bool delete_project(const std::string& name, bool confirm);
+
+    /**
+     * Get the set of project names visible to the current project (own + shared sources).
+     */
+    std::vector<std::string> visible_projects() const;
+
 private:
     std::unique_ptr<class Embedder> embedder_;
     std::unique_ptr<EntityExtractor> entity_extractor_;  // For entity extraction
@@ -285,6 +362,10 @@ private:
     std::vector<std::pair<std::string, std::vector<float>>> chunks_;  // id, embedding
     std::string llm_model_path_;  // Path to loaded LLM model
     bool is_open_ = false;
+
+    // Project scoping (Phase M3.C)
+    std::string current_project_ = "default";
+    std::vector<std::string> shared_read_sources_;  // project names
 };
 
 // ============================================================================

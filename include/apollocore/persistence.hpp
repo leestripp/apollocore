@@ -173,6 +173,21 @@ private:
  */
 bool initialize_schema(SQLiteDB& db);
 
+/**
+ * Apply project_id migration (M3.C — multi-agent + project scoping).
+ *
+ * Adds `project_id` column to nodes/chunks/entities/relationships
+ * (defaulting to 'default' for existing data) and creates the
+ * `projects` registry table.
+ *
+ * Backwards-compatible: existing DBs are migrated in place.
+ * Uses PRAGMA user_version for migration tracking.
+ *
+ * @param db SQLite database (must be open)
+ * @return true on success
+ */
+bool apply_project_migrations(SQLiteDB& db);
+
 // ============================================================================
 // Helper Functions
 // ============================================================================

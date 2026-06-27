@@ -245,15 +245,20 @@ bool KnowledgeBasePersistence::save_node(
     const std::string& content,
     const std::string& parent_id,
     const std::string& document_type,
-    const std::string& metadata_json)
+    const std::string& metadata_json,
+    const std::string& project_id)
 {
     if (!db_.is_open()) return false;
-    
+
+    // Default project_id to "default" if not provided (backwards-compat)
+    std::string pid = project_id.empty() ? std::string("default") : project_id;
+
     return db_.execute(
         "INSERT OR REPLACE INTO nodes "
-        "(id, title, content, parent_id, document_type, metadata, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?);",
-        {id, title, content, parent_id, document_type, metadata_json, current_timestamp()}
+        "(id, title, content, parent_id, document_type, metadata, project_id, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+        {id, title, content, parent_id, document_type, metadata_json, pid,
+         current_timestamp()}
     );
 }
 
@@ -262,7 +267,8 @@ bool KnowledgeBasePersistence::save_chunk(
     const std::string& node_id,
     const std::string& content,
     size_t position,
-    const std::vector<float>& embedding)
+    const std::vector<float>& embedding,
+    const std::string& project_id)
 {
     if (!db_.is_open()) return false;
     
@@ -276,9 +282,10 @@ bool KnowledgeBasePersistence::save_chunk(
     // Save chunk metadata to SQLite
     return db_.execute(
         "INSERT OR REPLACE INTO chunks "
-        "(id, node_id, content, position, embedding_file) "
-        "VALUES (?, ?, ?, ?, ?);",
-        {id, node_id, content, std::to_string(position), emb_path}
+        "(id, node_id, content, position, embedding_file, project_id) "
+        "VALUES (?, ?, ?, ?, ?, ?);",
+        {id, node_id, content, std::to_string(position), emb_path,
+         project_id.empty() ? std::string("default") : project_id}
     );
 }
 
@@ -288,15 +295,17 @@ bool KnowledgeBasePersistence::save_entity(
     const std::string& name,
     const std::string& type,
     const std::string& description,
-    float confidence)
+    float confidence,
+    const std::string& project_id)
 {
     if (!db_.is_open()) return false;
     
     return db_.execute(
         "INSERT OR REPLACE INTO entities "
-        "(id, chunk_id, name, type, description, confidence) "
-        "VALUES (?, ?, ?, ?, ?, ?);",
-        {id, chunk_id, name, type, description, std::to_string(confidence)}
+        "(id, chunk_id, name, type, description, confidence, project_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?);",
+        {id, chunk_id, name, type, description, std::to_string(confidence),
+         project_id.empty() ? std::string("default") : project_id}
     );
 }
 
@@ -306,15 +315,17 @@ bool KnowledgeBasePersistence::save_relationship(
     const std::string& target_id,
     const std::string& type,
     const std::string& description,
-    float confidence)
+    float confidence,
+    const std::string& project_id)
 {
     if (!db_.is_open()) return false;
     
     return db_.execute(
         "INSERT OR REPLACE INTO relationships "
-        "(id, source_id, target_id, type, description, confidence) "
-        "VALUES (?, ?, ?, ?, ?, ?);",
-        {id, source_id, target_id, type, description, std::to_string(confidence)}
+        "(id, source_id, target_id, type, description, confidence, project_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?);",
+        {id, source_id, target_id, type, description, std::to_string(confidence),
+         project_id.empty() ? std::string("default") : project_id}
     );
 }
 
@@ -409,11 +420,11 @@ KnowledgeBasePersistence::load_all_entities() {
     if (!db_.is_open()) return result;
     
     sqlite3_stmt* stmt = db_.prepare(
-        "SELECT id, chunk_id, name, type, description, confidence "
+        "SELECT id, chunk_id, name, type, description, confidence, project_id "
         "FROM entities ORDER BY id;"
     );
     if (!stmt) return result;
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         LoadedEntity e;
         e.id = db_.column_string(stmt, 0);
@@ -422,6 +433,7 @@ KnowledgeBasePersistence::load_all_entities() {
         e.type = db_.column_string(stmt, 3);
         e.description = db_.column_string(stmt, 4);
         e.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        e.project_id = db_.column_string(stmt, 6);
         result.push_back(e);
     }
     db_.finalize(stmt);
@@ -435,11 +447,11 @@ KnowledgeBasePersistence::load_all_relationships() {
     if (!db_.is_open()) return result;
     
     sqlite3_stmt* stmt = db_.prepare(
-        "SELECT id, source_id, target_id, type, description, confidence "
+        "SELECT id, source_id, target_id, type, description, confidence, project_id "
         "FROM relationships ORDER BY id;"
     );
     if (!stmt) return result;
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         LoadedRelationship r;
         r.id = db_.column_string(stmt, 0);
@@ -448,10 +460,105 @@ KnowledgeBasePersistence::load_all_relationships() {
         r.type = db_.column_string(stmt, 3);
         r.description = db_.column_string(stmt, 4);
         r.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        r.project_id = db_.column_string(stmt, 6);
         result.push_back(r);
     }
     db_.finalize(stmt);
     
+    return result;
+}
+
+std::vector<KnowledgeBasePersistence::LoadedEntity>
+KnowledgeBasePersistence::load_entities_for_projects(
+    const std::vector<std::string>& project_ids, size_t limit)
+{
+    std::vector<LoadedEntity> result;
+    if (!db_.is_open()) return result;
+
+    std::string sql = "SELECT id, chunk_id, name, type, description, confidence, "
+                      "metadata, project_id, created_at FROM entities";
+
+    if (!project_ids.empty()) {
+        // Build "?, ?, ?" placeholder
+        std::string placeholders;
+        for (size_t i = 0; i < project_ids.size(); ++i) {
+            if (i > 0) placeholders += ", ";
+            placeholders += "?";
+        }
+        sql += " WHERE project_id IN (" + placeholders + ")";
+    }
+    sql += " ORDER BY created_at";
+    if (limit > 0) sql += " LIMIT " + std::to_string(limit);
+
+    sqlite3_stmt* stmt = db_.prepare(sql);
+    if (!stmt) return result;
+
+    if (!project_ids.empty()) {
+        for (size_t i = 0; i < project_ids.size(); ++i) {
+            db_.bind_string(stmt, static_cast<int>(i + 1), project_ids[i]);
+        }
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedEntity e;
+        e.id = db_.column_string(stmt, 0);
+        e.chunk_id = db_.column_string(stmt, 1);
+        e.name = db_.column_string(stmt, 2);
+        e.type = db_.column_string(stmt, 3);
+        e.description = db_.column_string(stmt, 4);
+        e.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        e.metadata = db_.column_string(stmt, 6);
+        e.project_id = db_.column_string(stmt, 7);
+        e.created_at = db_.column_string(stmt, 8);
+        result.push_back(e);
+    }
+    db_.finalize(stmt);
+    return result;
+}
+
+std::vector<KnowledgeBasePersistence::LoadedRelationship>
+KnowledgeBasePersistence::load_relationships_for_projects(
+    const std::vector<std::string>& project_ids, size_t limit)
+{
+    std::vector<LoadedRelationship> result;
+    if (!db_.is_open()) return result;
+
+    std::string sql = "SELECT id, source_id, target_id, type, description, "
+                      "confidence, project_id, created_at FROM relationships";
+
+    if (!project_ids.empty()) {
+        std::string placeholders;
+        for (size_t i = 0; i < project_ids.size(); ++i) {
+            if (i > 0) placeholders += ", ";
+            placeholders += "?";
+        }
+        sql += " WHERE project_id IN (" + placeholders + ")";
+    }
+    sql += " ORDER BY created_at";
+    if (limit > 0) sql += " LIMIT " + std::to_string(limit);
+
+    sqlite3_stmt* stmt = db_.prepare(sql);
+    if (!stmt) return result;
+
+    if (!project_ids.empty()) {
+        for (size_t i = 0; i < project_ids.size(); ++i) {
+            db_.bind_string(stmt, static_cast<int>(i + 1), project_ids[i]);
+        }
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LoadedRelationship r;
+        r.id = db_.column_string(stmt, 0);
+        r.source_id = db_.column_string(stmt, 1);
+        r.target_id = db_.column_string(stmt, 2);
+        r.type = db_.column_string(stmt, 3);
+        r.description = db_.column_string(stmt, 4);
+        r.confidence = static_cast<float>(db_.column_real(stmt, 5));
+        r.project_id = db_.column_string(stmt, 6);
+        r.created_at = db_.column_string(stmt, 7);
+        result.push_back(r);
+    }
+    db_.finalize(stmt);
     return result;
 }
 
@@ -555,6 +662,106 @@ bool KnowledgeBasePersistence::delete_document(const std::string& document_id) {
 
     // 7. Delete the document node itself
     db_.execute("DELETE FROM nodes WHERE id = ?;", {document_id});
+
+    return true;
+}
+
+// ============================================================================
+// Project Management (Phase M3.C — multi-agent support)
+// ============================================================================
+
+bool KnowledgeBasePersistence::save_project(const ProjectInfo& info) {
+    if (!db_.is_open()) return false;
+    return db_.execute(
+        "INSERT OR REPLACE INTO projects "
+        "(id, name, description, path, is_shared, owner, metadata, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);",
+        {
+            info.id.empty() ? info.name : info.id,
+            info.name,
+            info.description,
+            info.path,
+            std::to_string(info.is_shared ? 1 : 0),
+            info.owner,
+            info.metadata
+        }
+    );
+}
+
+std::vector<KnowledgeBasePersistence::ProjectInfo>
+KnowledgeBasePersistence::load_all_projects() {
+    std::vector<ProjectInfo> result;
+    if (!db_.is_open()) return result;
+
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, name, description, path, is_shared, owner, metadata, "
+        "       created_at, updated_at FROM projects ORDER BY name;"
+    );
+    if (!stmt) return result;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ProjectInfo p;
+        p.id = db_.column_string(stmt, 0);
+        p.name = db_.column_string(stmt, 1);
+        p.description = db_.column_string(stmt, 2);
+        p.path = db_.column_string(stmt, 3);
+        p.is_shared = db_.column_int(stmt, 4) != 0;
+        p.owner = db_.column_string(stmt, 5);
+        p.metadata = db_.column_string(stmt, 6);
+        p.created_at = db_.column_string(stmt, 7);
+        p.updated_at = db_.column_string(stmt, 8);
+        result.push_back(p);
+    }
+    db_.finalize(stmt);
+    return result;
+}
+
+KnowledgeBasePersistence::ProjectInfo
+KnowledgeBasePersistence::load_project(const std::string& name) {
+    ProjectInfo p;
+    if (!db_.is_open()) return p;
+
+    sqlite3_stmt* stmt = db_.prepare(
+        "SELECT id, name, description, path, is_shared, owner, metadata, "
+        "       created_at, updated_at FROM projects WHERE name = ?;"
+    );
+    if (!stmt) return p;
+
+    db_.bind_string(stmt, 1, name);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        p.id = db_.column_string(stmt, 0);
+        p.name = db_.column_string(stmt, 1);
+        p.description = db_.column_string(stmt, 2);
+        p.path = db_.column_string(stmt, 3);
+        p.is_shared = db_.column_int(stmt, 4) != 0;
+        p.owner = db_.column_string(stmt, 5);
+        p.metadata = db_.column_string(stmt, 6);
+        p.created_at = db_.column_string(stmt, 7);
+        p.updated_at = db_.column_string(stmt, 8);
+    }
+    db_.finalize(stmt);
+    return p;
+}
+
+bool KnowledgeBasePersistence::set_project_shared(
+    const std::string& name, bool is_shared) {
+    if (!db_.is_open()) return false;
+    return db_.execute(
+        "UPDATE projects SET is_shared = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE name = ?;",
+        {std::to_string(is_shared ? 1 : 0), name}
+    );
+}
+
+bool KnowledgeBasePersistence::delete_project_data(const std::string& name) {
+    if (!db_.is_open()) return false;
+
+    // Delete all rows for this project across all tables
+    db_.execute("DELETE FROM nodes WHERE project_id = ?;", {name});
+    db_.execute("DELETE FROM chunks WHERE project_id = ?;", {name});
+    db_.execute("DELETE FROM entities WHERE project_id = ?;", {name});
+    db_.execute("DELETE FROM relationships WHERE project_id = ?;", {name});
+    db_.execute("DELETE FROM projects WHERE name = ?;", {name});
 
     return true;
 }

@@ -26,12 +26,9 @@
 #include <string_view>
 #include <vector>
 
-// Forward declare C types to avoid polluting namespace
+// Include tree-sitter C API for proper TSNode/TSParser/TSTree types
 extern "C" {
-    struct TSParser;
-    struct TSTree;
-    struct TSNode;
-    struct TSLanguage;
+    #include <tree_sitter/api.h>
 }
 
 namespace apollocore_v2::ts {
@@ -92,8 +89,8 @@ public:
     bool operator==(TSNode other) const;
     bool operator!=(TSNode other) const { return !(*this == other); }
 
-private:
-    ::TSNode node_{};  // TSNode is a small POD, can default-init
+public:
+    ::TSNode node_{};  // TSNode is a small POD, public for direct C API interop
 };
 
 // ============================================================================

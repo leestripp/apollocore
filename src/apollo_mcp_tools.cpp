@@ -130,6 +130,143 @@ void register_all_tools(ToolRegistry& registry, ApolloCore& kb) {
         }
     });
 
+    // =========================================================================
+    // Project Management (Phase M3.C — multi-agent support)
+    // =========================================================================
+
+    registry.register_tool({
+        "get_current_project",
+        "Get info about the current project (write/delete scope).",
+        make_schema({}),
+        [&kb](const nlohmann::json&) -> nlohmann::json {
+            return {
+                {"name", kb.current_project()},
+                {"visible_projects", kb.visible_projects()}
+            };
+        }
+    });
+
+    registry.register_tool({
+        "set_current_project",
+        "Switch to a different project (changes write/delete scope).",
+        make_schema({
+            {"name", "string", "Project name to switch to"}
+        }, {"name"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "name");
+            if (name.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'name'");
+            if (!kb.set_current_project(name)) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "Project not found: " + name);
+            }
+            return {{"success", true}, {"current_project", kb.current_project()}};
+        }
+    });
+
+    registry.register_tool({
+        "register_project",
+        "Register a new project in this KB.",
+        make_schema({
+            {"name", "string", "Project name (alphanumeric + _ -)"},
+            {"description", "string", "Optional description"},
+            {"is_shared", "boolean", "Whether other projects can read this (default false)"},
+            {"owner", "string", "Optional owner name"}
+        }, {"name"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "name");
+            if (name.empty()) throw McpError(ErrorCode::InvalidParams, "Missing 'name'");
+            std::string description = str_arg(args, "description", "");
+            bool is_shared = args.value("is_shared", false);
+            std::string owner = str_arg(args, "owner", "");
+            if (!kb.register_project(name, description, is_shared, owner)) {
+                throw McpError(ErrorCode::InternalError, "Failed to register project");
+            }
+            return {{"success", true}, {"name", name}};
+        }
+    });
+
+    registry.register_tool({
+        "list_projects",
+        "List all registered projects in this KB.",
+        make_schema({}),
+        [&kb](const nlohmann::json&) -> nlohmann::json {
+            return {{"projects", kb.list_projects()}};
+        }
+    });
+
+    registry.register_tool({
+        "set_project_shared",
+        "Mark/unmark a project as shared (readable by other projects).",
+        make_schema({
+            {"name", "string", "Project name"},
+            {"is_shared", "boolean", "True to share, false to unshare"}
+        }, {"name", "is_shared"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "name");
+            bool is_shared = args.value("is_shared", true);
+            if (!kb.set_project_shared(name, is_shared)) {
+                throw McpError(ErrorCode::InternalError,
+                    "Failed to update project: " + name);
+            }
+            return {{"success", true}, {"name", name}, {"is_shared", is_shared}};
+        }
+    });
+
+    registry.register_tool({
+        "add_shared_read_source",
+        "Add another project's shared data as readable from current project.",
+        make_schema({
+            {"project_name", "string", "Shared project name to add as read source"}
+        }, {"project_name"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "project_name");
+            if (!kb.add_shared_read_source(name)) {
+                throw McpError(ErrorCode::InternalError,
+                    "Failed to add read source: " + name);
+            }
+            return {{"success", true}, {"visible_projects", kb.visible_projects()}};
+        }
+    });
+
+    registry.register_tool({
+        "remove_shared_read_source",
+        "Remove a project's shared data as readable from current project.",
+        make_schema({
+            {"project_name", "string", "Shared project name to remove"}
+        }, {"project_name"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "project_name");
+            if (!kb.remove_shared_read_source(name)) {
+                throw McpError(ErrorCode::ResourceNotFound,
+                    "Read source not found: " + name);
+            }
+            return {{"success", true}};
+        }
+    });
+
+    registry.register_tool({
+        "delete_project",
+        "Delete a project and ALL its data. Cannot delete current project. "
+        "MUST set confirm=true to proceed (safety check).",
+        make_schema({
+            {"name", "string", "Project name to delete"},
+            {"confirm", "boolean", "Must be true to confirm deletion"}
+        }, {"name", "confirm"}),
+        [&kb](const nlohmann::json& args) -> nlohmann::json {
+            std::string name = str_arg(args, "name");
+            bool confirm = args.value("confirm", false);
+            if (!confirm) {
+                throw McpError(ErrorCode::InvalidParams,
+                    "Must set confirm=true to delete a project");
+            }
+            if (!kb.delete_project(name, confirm)) {
+                throw McpError(ErrorCode::InternalError,
+                    "Failed to delete project: " + name);
+            }
+            return {{"success", true}, {"deleted", name}};
+        }
+    });
+
     registry.register_tool({
         "close_kb",
         "Close the currently open knowledge base.",

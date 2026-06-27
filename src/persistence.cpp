@@ -270,7 +270,145 @@ bool initialize_schema(SQLiteDB& db) {
         std::cerr << "[Schema] Failed to create tables\n";
         return false;
     }
-    
+
+    // Apply incremental migrations (project_id, etc.)
+    if (!apply_project_migrations(db)) {
+        std::cerr << "[Schema] Project migrations failed\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool apply_project_migrations(SQLiteDB& db) {
+    if (!db.is_open()) {
+        std::cerr << "[Migrations] Database not open\n";
+        return false;
+    }
+
+    // Check current schema version via PRAGMA user_version
+    int current_version = 0;
+    sqlite3_stmt* stmt = db.prepare("PRAGMA user_version;");
+    if (stmt) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            current_version = sqlite3_column_int(stmt, 0);
+        }
+        db.finalize(stmt);
+    }
+
+    // ----- Migration v1: Add project_id column + projects registry -----
+    // (Phase M3.C — multi-agent + project scoping)
+    if (current_version < 1) {
+        std::cerr << "[Migrations] Applying v1 (project_id + projects registry)\n";
+
+        // Helper: check if a column exists in a table
+        auto column_exists = [&](const std::string& table, const std::string& column) -> bool {
+            std::string sql = "PRAGMA table_info(" + table + ");";
+            sqlite3_stmt* s = db.prepare(sql);
+            if (!s) return false;
+            bool found = false;
+            while (sqlite3_step(s) == SQLITE_ROW) {
+                const char* col_name = reinterpret_cast<const char*>(sqlite3_column_text(s, 1));
+                if (col_name && column == col_name) {
+                    found = true;
+                    break;
+                }
+            }
+            db.finalize(s);
+            return found;
+        };
+
+        // Add project_id to nodes
+        if (!column_exists("nodes", "project_id")) {
+            if (!db.execute(
+                "ALTER TABLE nodes ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default';")) {
+                std::cerr << "[Migrations] Failed to add project_id to nodes\n";
+                return false;
+            }
+            std::cerr << "[Migrations] Added project_id column to nodes\n";
+        }
+
+        // Add project_id to chunks
+        if (!column_exists("chunks", "project_id")) {
+            if (!db.execute(
+                "ALTER TABLE chunks ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default';")) {
+                std::cerr << "[Migrations] Failed to add project_id to chunks\n";
+                return false;
+            }
+            std::cerr << "[Migrations] Added project_id column to chunks\n";
+        }
+
+        // Add project_id to entities
+        if (!column_exists("entities", "project_id")) {
+            if (!db.execute(
+                "ALTER TABLE entities ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default';")) {
+                std::cerr << "[Migrations] Failed to add project_id to entities\n";
+                return false;
+            }
+            std::cerr << "[Migrations] Added project_id column to entities\n";
+        }
+
+        // Add project_id to relationships
+        if (!column_exists("relationships", "project_id")) {
+            if (!db.execute(
+                "ALTER TABLE relationships ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default';")) {
+                std::cerr << "[Migrations] Failed to add project_id to relationships\n";
+                return false;
+            }
+            std::cerr << "[Migrations] Added project_id column to relationships\n";
+        }
+
+        // Create projects registry table
+        const char* projects_sql = R"(
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                path TEXT NOT NULL,
+                is_shared INTEGER NOT NULL DEFAULT 0,
+                owner TEXT,
+                metadata TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
+            CREATE INDEX IF NOT EXISTS idx_projects_shared ON projects(is_shared);
+        )";
+        if (!db.execute(projects_sql)) {
+            std::cerr << "[Migrations] Failed to create projects table\n";
+            return false;
+        }
+
+        // Create indexes on project_id
+        if (!db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nodes_project ON nodes(project_id);"
+            "CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project_id);"
+            "CREATE INDEX IF NOT EXISTS idx_entities_project ON entities(project_id);"
+            "CREATE INDEX IF NOT EXISTS idx_rels_project ON relationships(project_id);"
+        )) {
+            std::cerr << "[Migrations] Failed to create project_id indexes\n";
+            return false;
+        }
+
+        // Backfill: register a "default" project for any pre-existing data
+        const char* default_proj = R"(
+            INSERT OR IGNORE INTO projects (id, name, description, path, is_shared, owner)
+            VALUES ('default', 'default', 'Pre-existing data (auto-migrated)', '', 0, 'system');
+        )";
+        if (!db.execute(default_proj)) {
+            std::cerr << "[Migrations] Failed to register default project\n";
+            return false;
+        }
+
+        // Update schema version to 1
+        if (!db.execute("PRAGMA user_version = 1;")) {
+            std::cerr << "[Migrations] Failed to update schema version\n";
+            return false;
+        }
+
+        std::cerr << "[Migrations] v1 complete\n";
+    }
+
     return true;
 }
 
