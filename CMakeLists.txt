@@ -83,6 +83,10 @@ endif()
 # repo providing the tree_sitter_cpp() entry point.
 option(TREE_SITTER_SKIP_FETCH "Use system tree-sitter instead of FetchContent" OFF)
 if(NOT TREE_SITTER_SKIP_FETCH)
+    # Build tree-sitter as static libraries (BUILD_SHARED_LIBS=OFF)
+    # so we can statically link them into apollo_core without
+    # having to ship .so files at runtime.
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         tree-sitter
         GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
