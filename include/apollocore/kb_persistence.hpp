@@ -179,6 +179,7 @@ public:
         std::string parent_id;
         std::string document_type;
         std::string metadata;
+        std::string project_id;
     };
     
     struct LoadedChunk {
@@ -187,6 +188,7 @@ public:
         std::string content;
         size_t position;
         std::vector<float> embedding;
+        std::string project_id;
     };
     
     struct LoadedEntity {

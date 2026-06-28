@@ -270,7 +270,7 @@ bool ApolloCore::open(const std::string& path) {
     std::unordered_map<std::string, std::string> node_content;
     for (const auto& c : loaded_chunks) {
         node_content[c.node_id] += c.content + "\n";
-        chunks_.push_back({c.id, c.embedding});
+        chunks_.push_back({c.id, c.embedding, c.project_id});
     }
     
     // Build documents from chunks
@@ -406,7 +406,7 @@ size_t ApolloCore::add_document(
             chunk_id, node_id, chunk_texts[i], i, embedding, current_project_)) {
 
             // Add to in-memory store
-            chunks_.push_back({chunk_id, embedding});
+            chunks_.push_back({chunk_id, embedding, current_project_});
             count++;
         }
     }
@@ -529,27 +529,35 @@ ApolloCore::query(const std::string& query_text, size_t top_k) {
     // Get chunk content from DB for display
     auto all_chunks = kb_persistence_->load_all_chunks();
     
-    // Cosine similarity with all chunks
+    // M3.C: Pre-compute visible projects for filtering
+    auto visible = visible_projects();
+    std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
+
+    // Cosine similarity with chunks (filtered by visible projects)
     struct ScoredChunk {
         std::string content;
         float score;
     };
     std::vector<ScoredChunk> scored;
-    
+
     for (size_t i = 0; i < chunks_.size(); i++) {
-        const auto& emb = chunks_[i].second;
+        const auto& emb = chunks_[i].embedding;
+
+        // M3.C: Skip chunks not in visible projects
+        if (visible_set.count(chunks_[i].project_id) == 0) continue;
+
         if (emb.size() != query_emb.size()) continue;
-        
+
         float dot = 0.0f;
         float norm_q = 0.0f;
         float norm_c = 0.0f;
-        
+
         for (size_t j = 0; j < query_emb.size(); j++) {
             dot += query_emb[j] * emb[j];
             norm_q += query_emb[j] * query_emb[j];
             norm_c += emb[j] * emb[j];
         }
-        
+
         float denom = std::sqrt(norm_q) * std::sqrt(norm_c);
         float sim = denom > 0.0f ? dot / denom : 0.0f;
         
@@ -744,8 +752,14 @@ std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_chunks() {
     if (!is_open_ || !kb_persistence_) return result;
 
     auto chunks = kb_persistence_->load_all_chunks();
+
+    // M3.C: Filter by visible projects
+    auto visible = visible_projects();
+    std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
+
     result.reserve(chunks.size());
     for (const auto& c : chunks) {
+        if (visible_set.count(c.project_id) == 0) continue;
         result.emplace_back(c.id, c.content);
     }
     return result;
@@ -756,8 +770,15 @@ std::vector<std::pair<std::string, std::string>> ApolloCore::get_all_documents()
     if (!is_open_ || !kb_persistence_) return result;
 
     auto nodes = kb_persistence_->load_all_nodes();
+
+    // M3.C: Filter by visible projects
+    auto visible = visible_projects();
+    std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
+
     result.reserve(nodes.size());
     for (const auto& n : nodes) {
+        if (visible_set.count(n.project_id) == 0) continue;
+
         // Concatenate title and content for the prompt context
         std::string body = n.content;
         if (!n.title.empty()) {

@@ -363,11 +363,11 @@ KnowledgeBasePersistence::load_all_nodes() {
     if (!db_.is_open()) return result;
     
     sqlite3_stmt* stmt = db_.prepare(
-        "SELECT id, title, content, parent_id, document_type, metadata "
+        "SELECT id, title, content, parent_id, document_type, metadata, project_id "
         "FROM nodes ORDER BY id;"
     );
     if (!stmt) return result;
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         LoadedNode n;
         n.id = db_.column_string(stmt, 0);
@@ -376,6 +376,7 @@ KnowledgeBasePersistence::load_all_nodes() {
         n.parent_id = db_.column_string(stmt, 3);
         n.document_type = db_.column_string(stmt, 4);
         n.metadata = db_.column_string(stmt, 5);
+        n.project_id = db_.column_string(stmt, 6);
         result.push_back(n);
     }
     db_.finalize(stmt);
@@ -389,24 +390,26 @@ KnowledgeBasePersistence::load_all_chunks() {
     if (!db_.is_open()) return result;
     
     sqlite3_stmt* stmt = db_.prepare(
-        "SELECT id, node_id, content, position, embedding_file "
+        "SELECT id, node_id, content, position, embedding_file, project_id "
         "FROM chunks ORDER BY node_id, position;"
     );
     if (!stmt) return result;
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         LoadedChunk c;
         c.id = db_.column_string(stmt, 0);
         c.node_id = db_.column_string(stmt, 1);
         c.content = db_.column_string(stmt, 2);
         c.position = static_cast<size_t>(db_.column_int(stmt, 3));
-        
+
         // Load embedding
         std::string emb_path = db_.column_string(stmt, 4);
         if (!emb_path.empty() && fs::exists(emb_path)) {
             c.embedding = load_fbin(emb_path);
         }
-        
+
+        c.project_id = db_.column_string(stmt, 5);
+
         result.push_back(c);
     }
     db_.finalize(stmt);

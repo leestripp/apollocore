@@ -359,7 +359,13 @@ private:
     std::unique_ptr<EntityExtractor> entity_extractor_;  // For entity extraction
     std::unique_ptr<KnowledgeBasePersistence> kb_persistence_;
     std::vector<std::pair<std::string, std::string>> documents_;  // id, content
-    std::vector<std::pair<std::string, std::vector<float>>> chunks_;  // id, embedding
+    // Cached chunks for vector search: (chunk_id, embedding, project_id)
+    struct CachedChunk {
+        std::string id;
+        std::vector<float> embedding;
+        std::string project_id;
+    };
+    std::vector<CachedChunk> chunks_;
     std::string llm_model_path_;  // Path to loaded LLM model
     bool is_open_ = false;
 
