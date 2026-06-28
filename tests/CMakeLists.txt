@@ -133,3 +133,15 @@ target_include_directories(test_entity_extraction_flow PRIVATE
     ${SQLite3_INCLUDE_DIRS}
 )
 target_link_libraries(test_entity_extraction_flow PRIVATE apollo_core)
+
+# M3.C Multi-Project tests (no embedding model required)
+add_executable(test_multi_project
+    test_multi_project.cpp
+)
+target_include_directories(test_multi_project PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    ${SQLite3_INCLUDE_DIRS}
+)
+target_link_libraries(test_multi_project PRIVATE apollo_core)
+add_test(NAME MultiProjectTests COMMAND test_multi_project)
