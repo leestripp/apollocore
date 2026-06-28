@@ -819,11 +819,13 @@ std::vector<Entity> ApolloCore::get_entities_for_chunk(
     const std::string& chunk_id) {
     std::vector<Entity> result;
     if (!is_open_) return result;
-    
-    auto loaded = kb_persistence_->load_all_entities();
+
+    // M3.C: Filter by visible projects
+    auto visible = visible_projects();
+    auto loaded = kb_persistence_->load_entities_for_projects(visible);
     for (const auto& le : loaded) {
         if (le.chunk_id != chunk_id) continue;
-        
+
         Entity e;
         e.name = le.name;
         e.description = le.description;
@@ -879,18 +881,49 @@ EntityExtractor* ApolloCore::get_entity_extractor() {
 
 ApolloCore::Stats ApolloCore::get_stats() {
     Stats stats;
-    
-    stats.document_count = documents_.size();
-    stats.chunk_count = chunks_.size();
-    
+
+    // M3.C: Filter by visible projects
+    auto visible = visible_projects();
+    std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
+
+    // Count documents visible to current project
+    stats.document_count = 0;
+    for (const auto& [id, content] : documents_) {
+        // Check project via KB (need to look up project_id for this doc)
+        // For efficiency, use kb_persistence_->load_all_nodes() once
+    }
+
     if (is_open_) {
+        // Filtered counts from DB
+        auto nodes = kb_persistence_->load_all_nodes();
+        std::unordered_set<std::string> visible_doc_ids;
+        for (const auto& n : nodes) {
+            if (visible_set.count(n.project_id)) {
+                visible_doc_ids.insert(n.id);
+            }
+        }
+        stats.document_count = visible_doc_ids.size();
+
+        // Filtered chunks
+        stats.chunk_count = 0;
+        for (const auto& c : chunks_) {
+            if (visible_set.count(c.project_id)) {
+                stats.chunk_count++;
+            }
+        }
+
+        // Filtered entities
+        auto entities = kb_persistence_->load_entities_for_projects(visible);
+        stats.entity_count = entities.size();
+
+        // Filtered relationships
+        auto rels = kb_persistence_->load_relationships_for_projects(visible);
+        stats.relationship_count = rels.size();
+
         auto disk_stats = kb_persistence_->get_disk_stats();
-        stats.entity_count = disk_stats.total_entities;
-        stats.relationship_count = disk_stats.total_relationships;
         stats.embedding_files_size = disk_stats.embedding_files_size;
-        
-        // Count chunks that have entities extracted
-        auto entities = kb_persistence_->load_all_entities();
+
+        // Count chunks with entities (filtered)
         std::unordered_set<std::string> chunk_ids;
         for (const auto& e : entities) {
             chunk_ids.insert(e.chunk_id);
