@@ -9,6 +9,7 @@ cmake-build-*/
 
 # CodeMax agent internals — never track
 .codemax/
+prompt.txt
 
 # Model files (large, downloaded by CMake)
 models/*.gguf

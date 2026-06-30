@@ -102,6 +102,34 @@ find_package(SQLite3 REQUIRED)
 message(STATUS "SQLite3 found: ${SQLite3_VERSION}")
 
 # ============================================================================
+# OmniNet — MCP server transport (Streamable HTTP over TLS+WS)
+# ============================================================================
+# OmniNet (https://gitlab.com/leestripp/omninet) provides HTTP+WebSocket+TLS
+# in C++23. We use it for the MCP server's Streamable HTTP transport.
+#
+# It pulls in OpenSSL 3, sqlite-vec (optional), and nlohmann/json (we already
+# declare it above — CMake deduplicates). First build takes ~5+ minutes.
+#
+# NOTE: A specific tag is preferred for reproducibility. The repo currently
+# has no public stable tag — we pin to `main` and document this. Upgrade to a
+# tagged release as soon as one ships.
+option(OMNINET_SKIP_FETCH "Use system OmniNet instead of FetchContent" OFF)
+if(NOT OMNINET_SKIP_FETCH)
+    FetchContent_Declare(
+        omninet
+        GIT_REPOSITORY https://gitlab.com/leestripp/omninet.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(omninet)
+else()
+    find_package(OmniNet QUIET)
+    if(NOT OmniNet_FOUND)
+        message(FATAL_ERROR "OMNINET_SKIP_FETCH=ON but find_package failed")
+    endif()
+endif()
+
+# ============================================================================
 # Library
 # ============================================================================
 
@@ -152,6 +180,20 @@ endif()
 # Install
 install(TARGETS apollo_core ARCHIVE DESTINATION lib)
 install(DIRECTORY include/apollocore DESTINATION include)
+
+# ============================================================================
+# MCP Server (new — Phase 4 of the refactor plan)
+# ============================================================================
+# A thin executable that exposes ApolloCore over MCP via OmniNet's HTTP server.
+# Streams JSON-RPC 2.0 over Streamable HTTP transport (MCP spec 2025-11-25).
+#
+# The MCP server is OPT-IN: when APOLLO_BUILD_MCP_SERVER=ON (default), the
+# executable `apollo_mcp_server` is built. This lets downstream consumers
+# continue to link only the static lib if they want.
+option(APOLLO_BUILD_MCP_SERVER "Build the ApolloCore MCP server executable" ON)
+if(APOLLO_BUILD_MCP_SERVER)
+    add_subdirectory(src/mcp_server)
+endif()
 
 # ============================================================================
 # Tests
