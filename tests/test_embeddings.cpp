@@ -14,7 +14,7 @@ int main() {
     ApolloEngine kb;
     
     // Load the embedding model
-    const std::string model_path = "models/nomic-embed-text-v1.5-Q4_K_M.gguf";
+    const std::string model_path = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
     std::cout << "Loading embedding model: " << model_path << "\n";
     
     if (!kb.load_embedding_model(model_path, false)) {  // false = CPU only (no GPU in container)

@@ -1,0 +1,3573 @@
+{
+  "builds": [
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-14T23:13:20Z",
+      "id": "bld_b3268699",
+      "last_used": "2026-06-29T14:43:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 10
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf build && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-14T23:13:35Z",
+      "id": "bld_c56a38f1",
+      "last_used": "2026-06-17T09:30:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 4
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf build",
+      "first_used": "2026-06-14T23:13:59Z",
+      "id": "bld_c762ac9d",
+      "last_used": "2026-06-29T14:40:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "cmake -S [FILTERED_API_KEY] -B [FILTERED_API_KEY] -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-14T23:14:06Z",
+      "id": "bld_8c6d3281",
+      "last_used": "2026-06-15T18:16:34Z",
+      "notes": "",
+      "success": true,
+      "use_count": 12
+    },
+    {
+      "attempts": 1,
+      "command": "cmake --build [FILTERED_API_KEY] -j8",
+      "first_used": "2026-06-14T23:14:19Z",
+      "id": "bld_84af7760",
+      "last_used": "2026-06-15T18:21:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 48
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cmake -S [FILTERED_API_KEY] -B [FILTERED_API_KEY] -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-14T23:14:48Z",
+      "id": "bld_a7050218",
+      "last_used": "2026-06-15T16:47:21Z",
+      "notes": "",
+      "success": true,
+      "use_count": 6
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cmake -S [FILTERED_API_KEY] -B [FILTERED_API_KEY] -DCMAKE_BUILD_TYPE=Release && cmake --build [FILTERED_API_KEY] -j8",
+      "first_used": "2026-06-14T23:15:13Z",
+      "id": "bld_f264ef97",
+      "last_used": "2026-06-14T23:52:19Z",
+      "notes": "",
+      "success": true,
+      "use_count": 9
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY]_core.dir/flags.make",
+      "first_used": "2026-06-14T23:15:39Z",
+      "id": "bld_54440c93",
+      "last_used": "2026-06-14T23:15:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "c++ -std=c++23 -[FILTERED_API_KEY] -[FILTERED_API_KEY]_deps/nlohmann_json-src/include -c [FILTERED_API_KEY].cpp -o /tmp/types.o",
+      "first_used": "2026-06-14T23:16:08Z",
+      "id": "bld_d32da7ea",
+      "last_used": "2026-06-14T23:16:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY]",
+      "first_used": "2026-06-14T23:41:31Z",
+      "id": "bld_34b28365",
+      "last_used": "2026-06-15T00:06:46Z",
+      "notes": "",
+      "success": true,
+      "use_count": 4
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_apollo_tests",
+      "first_used": "2026-06-14T23:52:53Z",
+      "id": "bld_df9b1df2",
+      "last_used": "2026-06-15T11:11:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 4
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_usage",
+      "first_used": "2026-06-14T23:52:58Z",
+      "id": "bld_adf97aef",
+      "last_used": "2026-06-15T11:11:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ctest --output-on-failure",
+      "first_used": "2026-06-14T23:53:05Z",
+      "id": "bld_629522b4",
+      "last_used": "2026-06-14T23:53:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_batch\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -20",
+      "first_used": "2026-06-15T00:10:25Z",
+      "id": "bld_b381973b",
+      "last_used": "2026-06-15T00:10:25Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_get_embeddings\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T00:10:33Z",
+      "id": "bld_a10c525d",
+      "last_used": "2026-06-15T00:10:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/llama_cpp-build/bin/",
+      "first_used": "2026-06-15T00:11:17Z",
+      "id": "bld_ba88bd84",
+      "last_used": "2026-06-15T00:11:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY] -name \"*.a\" -o -name \"*.so\" 2>/dev/null",
+      "first_used": "2026-06-15T00:11:24Z",
+      "id": "bld_1c2b93eb",
+      "last_used": "2026-06-15T00:11:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find . -type f \\( -name \"*.cpp\" -o -name \"*.hpp\" -o -name \"*.h\" -o -name \"CMakeLists.txt\" -o -name \"*.md\" \\) | grep -v build | grep -v deps | sort",
+      "first_used": "2026-06-15T10:51:51Z",
+      "id": "bld_5921330e",
+      "last_used": "2026-06-15T10:51:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ls build 2>/dev/null && ls -la build/examples 2>/dev/null || echo \"Build dir status checked\"",
+      "first_used": "2026-06-15T10:52:09Z",
+      "id": "bld_8b245975",
+      "last_used": "2026-06-15T10:52:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build -type f -name \"*.a\" -o -type f -executable 2>/dev/null | head -20",
+      "first_used": "2026-06-15T10:52:14Z",
+      "id": "bld_0fbcfe46",
+      "last_used": "2026-06-15T10:52:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_v2",
+      "first_used": "2026-06-15T11:11:33Z",
+      "id": "bld_5cb0534c",
+      "last_used": "2026-06-15T11:11:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cmake --build [FILTERED_API_KEY] -j8 && cmake --build [FILTERED_API_KEY] --target test_embeddings",
+      "first_used": "2026-06-15T11:20:50Z",
+      "id": "bld_52dacdac",
+      "last_used": "2026-06-15T11:20:50Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_embeddings",
+      "first_used": "2026-06-15T11:21:03Z",
+      "id": "bld_0ea92631",
+      "last_used": "2026-06-15T13:39:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "grep -rn \"llama_get_embeddings\\|llama_encode\\|embedding\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h 2>/dev/null | head -40",
+      "first_used": "2026-06-15T11:21:35Z",
+      "id": "bld_f1dba9d6",
+      "last_used": "2026-06-15T11:21:35Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"has_encoder\\|llama_encode\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:21:47Z",
+      "id": "bld_75792e8e",
+      "last_used": "2026-06-15T11:21:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_batch_init\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:24:37Z",
+      "id": "bld_afe52dd2",
+      "last_used": "2026-06-15T11:24:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A5 \"LLAMA_API struct llama_batch llama_batch_init\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:24:47Z",
+      "id": "bld_98546711",
+      "last_used": "2026-06-15T11:24:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"pool\\|mean\\|avg\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -30",
+      "first_used": "2026-06-15T11:26:57Z",
+      "id": "bld_f6c336f5",
+      "last_used": "2026-06-15T11:26:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B2 -A10 \"llama_get_embeddings_seq\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:27:09Z",
+      "id": "bld_8fc7c782",
+      "last_used": "2026-06-15T11:27:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"LLAMA_POOLING_TYPE\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:27:26Z",
+      "id": "bld_6f46531d",
+      "last_used": "2026-06-15T11:27:26Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cmake --build [FILTERED_API_KEY] -j8 && cd [FILTERED_API_KEY] && ./build/tests/test_embeddings",
+      "first_used": "2026-06-15T11:28:43Z",
+      "id": "bld_d49f7fe0",
+      "last_used": "2026-06-15T11:34:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"has_encoder\\|encoder\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -20",
+      "first_used": "2026-06-15T11:29:05Z",
+      "id": "bld_b0dcdecb",
+      "last_used": "2026-06-15T11:29:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_pooling_type\\|pooling_type\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T11:29:24Z",
+      "id": "bld_a40f5b9e",
+      "last_used": "2026-06-15T11:29:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY]_deps/llama_cpp-src && git log --oneline -1",
+      "first_used": "2026-06-15T11:29:42Z",
+      "id": "bld_7ba6acd9",
+      "last_used": "2026-06-15T11:29:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/run_apollo_tests && ./build/tests/test_v2 && ./build/tests/test_embeddings",
+      "first_used": "2026-06-15T11:35:55Z",
+      "id": "bld_1b83a46d",
+      "last_used": "2026-06-15T11:35:55Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_init_from_model\\|llama_context_params\\|llama_tokenize\\|llama_token_eos\\|llama_sample\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -40",
+      "first_used": "2026-06-15T13:31:37Z",
+      "id": "bld_29e50519",
+      "last_used": "2026-06-15T13:31:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_entity_extraction",
+      "first_used": "2026-06-15T13:38:46Z",
+      "id": "bld_b2d5a076",
+      "last_used": "2026-06-15T13:38:46Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/run_apollo_tests",
+      "first_used": "2026-06-15T13:38:57Z",
+      "id": "bld_eeb9aa7f",
+      "last_used": "2026-06-15T13:38:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_init_from_model\\|llama_context_default_params\\|llama_tokenize\\|llama_batch\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -30",
+      "first_used": "2026-06-15T13:55:02Z",
+      "id": "bld_19b51a3d",
+      "last_used": "2026-06-15T13:55:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_vocab\\|llama_model\\|llama_get_logits\\|llama_sample\\|llama_decode\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -40",
+      "first_used": "2026-06-15T13:55:13Z",
+      "id": "bld_f0fe93e7",
+      "last_used": "2026-06-15T13:55:13Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"^    LLAMA_API\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | grep -E \"llama_|ggml_\" | head -50",
+      "first_used": "2026-06-15T13:55:23Z",
+      "id": "bld_b3eae881",
+      "last_used": "2026-06-15T13:55:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_sampler\\|llama_token_data\\|llama_decode\\|llama_token_to_piece\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -30",
+      "first_used": "2026-06-15T13:55:33Z",
+      "id": "bld_4bd41f57",
+      "last_used": "2026-06-15T13:55:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_token_data_array\\|llama_vocab_eos\\|llama_token_to_piece\\|llama_model_n_vocab\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:56:32Z",
+      "id": "bld_ecb60fab",
+      "last_used": "2026-06-15T13:56:32Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_tokenize\\|llama_model_n\\|llama_n_\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -20",
+      "first_used": "2026-06-15T13:56:47Z",
+      "id": "bld_2e81e2bd",
+      "last_used": "2026-06-15T13:56:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_vocab_n_tokens\\|llama_tokenize(\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:56:57Z",
+      "id": "bld_97739ac9",
+      "last_used": "2026-06-15T13:56:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_get_logits\\|llama_vocab\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h | head -20",
+      "first_used": "2026-06-15T13:57:08Z",
+      "id": "bld_27347e8e",
+      "last_used": "2026-06-15T13:57:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A10 \"LLAMA_API int32_t llama_tokenize\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:57:18Z",
+      "id": "bld_cf1d355b",
+      "last_used": "2026-06-15T13:57:18Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A10 \"LLAMA_API int32_t llama_token_to_piece\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:57:27Z",
+      "id": "bld_c38abbd9",
+      "last_used": "2026-06-15T13:57:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B2 -A10 \"llama_token_data_array {\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:57:37Z",
+      "id": "bld_532e5525",
+      "last_used": "2026-06-15T13:57:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"llama_sampler_init_greedy\\|llama_sampler_sample\" [FILTERED_API_KEY]_deps/llama_cpp-src/include/llama.h",
+      "first_used": "2026-06-15T13:57:48Z",
+      "id": "bld_b6ad3e1d",
+      "last_used": "2026-06-15T13:57:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cmake --build [FILTERED_API_KEY] -j8 && cd [FILTERED_API_KEY] && ./build/tests/test_llm_extraction",
+      "first_used": "2026-06-15T14:02:58Z",
+      "id": "bld_c27bc1c2",
+      "last_used": "2026-06-15T14:02:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_llm_extraction",
+      "first_used": "2026-06-15T14:08:16Z",
+      "id": "bld_e5bb4535",
+      "last_used": "2026-06-15T14:08:16Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_cross_encoder",
+      "first_used": "2026-06-15T14:57:47Z",
+      "id": "bld_4d48f749",
+      "last_used": "2026-06-15T14:57:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_cross_encoder && ./build/tests/test_entity_extraction",
+      "first_used": "2026-06-15T14:58:00Z",
+      "id": "bld_6a838c0e",
+      "last_used": "2026-06-15T14:58:00Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_hyde",
+      "first_used": "2026-06-15T15:05:20Z",
+      "id": "bld_6f936956",
+      "last_used": "2026-06-15T15:05:20Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_hyde && ./build/tests/test_cross_encoder && ./build/tests/test_entity_extraction",
+      "first_used": "2026-06-15T15:05:52Z",
+      "id": "bld_6b3eb0a0",
+      "last_used": "2026-06-15T15:05:52Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_contextual_retrieval",
+      "first_used": "2026-06-15T15:34:02Z",
+      "id": "bld_6c4d0be9",
+      "last_used": "2026-06-15T15:34:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_contextual_retrieval && ./build/tests/test_hyde && ./build/tests/test_cross_encoder && ./build/tests/test_entity_extraction",
+      "first_used": "2026-06-15T15:34:10Z",
+      "id": "bld_5896b1a0",
+      "last_used": "2026-06-15T15:34:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/examples/simple_usage",
+      "first_used": "2026-06-15T15:37:44Z",
+      "id": "bld_d78cc02b",
+      "last_used": "2026-06-15T15:39:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_persistence",
+      "first_used": "2026-06-15T16:50:09Z",
+      "id": "bld_adcc332d",
+      "last_used": "2026-06-15T16:50:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_fbin",
+      "first_used": "2026-06-15T17:38:06Z",
+      "id": "bld_45a71720",
+      "last_used": "2026-06-15T17:38:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_fbin 2>/dev/null | head -30",
+      "first_used": "2026-06-15T17:41:40Z",
+      "id": "bld_254f15f7",
+      "last_used": "2026-06-15T17:41:40Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_fbin 2>/dev/null | head -40",
+      "first_used": "2026-06-15T17:42:48Z",
+      "id": "bld_3d29ed46",
+      "last_used": "2026-06-15T17:42:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_kb_persistence 2>/dev/null",
+      "first_used": "2026-06-15T17:58:21Z",
+      "id": "bld_0ff07487",
+      "last_used": "2026-06-15T18:00:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_apollo_persistence 2>/dev/null",
+      "first_used": "2026-06-15T18:22:08Z",
+      "id": "bld_1d62ef70",
+      "last_used": "2026-06-15T18:22:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf build models/*.gguf && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-17T09:34:29Z",
+      "id": "bld_8847ba5f",
+      "last_used": "2026-06-17T09:34:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build -j8",
+      "first_used": "2026-06-17T09:36:20Z",
+      "id": "bld_3abbc0f4",
+      "last_used": "2026-06-29T14:47:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 5
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ls build/tests/ 2>/dev/null && echo \"---\" && ls build/examples/ 2>/dev/null",
+      "first_used": "2026-06-17T20:03:39Z",
+      "id": "bld_f0c591a6",
+      "last_used": "2026-06-17T20:03:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target full_demo -j8",
+      "first_used": "2026-06-17T20:24:52Z",
+      "id": "bld_92960238",
+      "last_used": "2026-06-18T08:41:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 19
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/examples/full_demo",
+      "first_used": "2026-06-17T20:25:03Z",
+      "id": "bld_2258ce27",
+      "last_used": "2026-06-17T20:25:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/examples/full_demo 2>/dev/null | grep -A2 \"Query:\" | head -30",
+      "first_used": "2026-06-17T20:27:48Z",
+      "id": "bld_40be7646",
+      "last_used": "2026-06-17T20:27:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_output.txt",
+      "first_used": "2026-06-17T20:29:23Z",
+      "id": "bld_0fde452a",
+      "last_used": "2026-06-17T20:41:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 7
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_output.txt",
+      "first_used": "2026-06-17T20:42:22Z",
+      "id": "bld_9f1b3910",
+      "last_used": "2026-06-18T07:26:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 4
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target apollo_core -j8",
+      "first_used": "2026-06-18T07:12:41Z",
+      "id": "bld_01d53dd8",
+      "last_used": "2026-06-22T15:00:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 6
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target test_entity_extraction_flow -j8",
+      "first_used": "2026-06-18T07:34:14Z",
+      "id": "bld_e655f894",
+      "last_used": "2026-06-18T08:58:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_entity_extraction_flow > /tmp/g1_output.txt",
+      "first_used": "2026-06-18T07:35:53Z",
+      "id": "bld_7fcf4822",
+      "last_used": "2026-06-18T07:35:53Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_fbin > /tmp/test_fbin.txt",
+      "first_used": "2026-06-18T07:37:23Z",
+      "id": "bld_2008ffdf",
+      "last_used": "2026-06-18T07:37:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_persistence > /tmp/test_persistence.txt",
+      "first_used": "2026-06-18T07:37:52Z",
+      "id": "bld_0ecdf29e",
+      "last_used": "2026-06-18T07:37:52Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_kb_persistence > /tmp/test_kb.txt",
+      "first_used": "2026-06-18T07:38:21Z",
+      "id": "bld_ccc03d33",
+      "last_used": "2026-06-18T07:38:21Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_apollo_persistence > /tmp/test_apollo.txt",
+      "first_used": "2026-06-18T07:39:01Z",
+      "id": "bld_3bf8b4c5",
+      "last_used": "2026-06-18T07:39:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_final.txt",
+      "first_used": "2026-06-18T07:41:07Z",
+      "id": "bld_664e25af",
+      "last_used": "2026-06-18T07:41:07Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm [FILTERED_API_KEY].5-0.5b-instruct-q4_k_m.gguf && cd [FILTERED_API_KEY] && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-18T08:21:17Z",
+      "id": "bld_aae9c154",
+      "last_used": "2026-06-18T08:21:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_3b.txt",
+      "first_used": "2026-06-18T08:25:59Z",
+      "id": "bld_02b8e505",
+      "last_used": "2026-06-18T08:25:59Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_3b_v.txt",
+      "first_used": "2026-06-18T08:32:08Z",
+      "id": "bld_f2e0c3bd",
+      "last_used": "2026-06-18T08:32:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_3b_v2.txt",
+      "first_used": "2026-06-18T08:38:29Z",
+      "id": "bld_c0df9320",
+      "last_used": "2026-06-18T08:38:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_3b_fixed.txt",
+      "first_used": "2026-06-18T08:46:58Z",
+      "id": "bld_412e784f",
+      "last_used": "2026-06-18T08:46:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target full_demo test_entity_extraction_flow -j8",
+      "first_used": "2026-06-18T08:51:08Z",
+      "id": "bld_1d53a07d",
+      "last_used": "2026-06-18T09:11:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_final2.txt",
+      "first_used": "2026-06-18T08:56:31Z",
+      "id": "bld_cf6a8ea2",
+      "last_used": "2026-06-18T08:56:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_entity_extraction_flow > /tmp/g1_final.txt",
+      "first_used": "2026-06-18T08:57:19Z",
+      "id": "bld_01b3e127",
+      "last_used": "2026-06-18T08:57:19Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_entity_extraction_flow > /tmp/g1_3b.txt",
+      "first_used": "2026-06-18T09:02:56Z",
+      "id": "bld_cc727c15",
+      "last_used": "2026-06-18T09:02:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm [FILTERED_API_KEY].5-3b-instruct-q4_k_m.gguf && cd [FILTERED_API_KEY] && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+      "first_used": "2026-06-18T09:11:08Z",
+      "id": "bld_c5659149",
+      "last_used": "2026-06-18T09:11:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "rm -rf [FILTERED_API_KEY] && cd [FILTERED_API_KEY] && ./build/examples/full_demo > /tmp/demo_05b_fixed.txt",
+      "first_used": "2026-06-18T09:13:03Z",
+      "id": "bld_dcf61b08",
+      "last_used": "2026-06-18T09:13:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && /home/lee/.[FILTERED_API_KEY] -c \"\nimport sys, json\nfrom graphify.build import build_from_json\nfrom graphify.cluster import cluster, score_all\nfrom graphify.analyze import god_nodes, surprising_connections, suggest_questions\nfrom graphify.report import generate\nfrom graphify.export import to_json\nfrom pathlib import Path\n\nextraction = json.loads(Path('graphify-out/.graphify_extract.json').read_text(encoding='utf-8'))\ndetection  = json.loads(Path('graphify-out/.graphify_detect.json').read_text(encoding='utf-8'))\n\nG = build_from_json(extraction, root='.', directed=False)\nif G.number_of_nodes() == 0:\n    print('ERROR: Graph is empty')\n    raise SystemExit(1)\ncommunities = cluster(G)\ncohesion = score_all(G, communities)\ntokens = {'input': extraction.get('input_tokens', 0), 'output': extraction.get('output_tokens', 0)}\ngods = god_nodes(G)\nsurprises = surprising_connections(G, communities)\nlabels = {cid: 'Community ' + str(cid) for cid in communities}\nquestions = suggest_questions(G, communities, labels)\n\nwrote = to_json(G, communities, 'graphify-out/graph.json')\nif not wrote:\n    print('ERROR: refused to shrink graph.json')\n    raise SystemExit(1)\nreport = generate(G, communities, cohesion, labels, gods, surprises, detection, tokens, '.', suggested_questions=questions)\nPath('graphify-out/GRAPH_REPORT.md').write_text(report, encoding='utf-8')\nanalysis = {\n    'communities': {str(k): v for k, v in communities.items()},\n    'cohesion': {str(k): v for k, v in cohesion.items()},\n    'gods': gods,\n    'surprises': surprises,\n    'questions': questions,\n}\nPath('graphify-out/.graphify_analysis.json').write_text(json.dumps(analysis, indent=2, ensure_ascii=False), encoding='utf-8')\nprint(f'Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(communities)} communities')\n\"",
+      "first_used": "2026-06-22T14:29:19Z",
+      "id": "bld_57bb346a",
+      "last_used": "2026-06-22T14:29:19Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "curl -s \"https://gitlab.com/api/v4/projects/leestripp%[FILTERED_API_KEY].txt/raw?ref=main\" 2>/dev/null | head -100",
+      "first_used": "2026-06-22T14:53:56Z",
+      "id": "bld_baac0fbe",
+      "last_used": "2026-06-22T14:53:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "curl -s \"https://gitlab.com/api/v4/projects/leestripp%[FILTERED_API_KEY].txt/raw?ref=main\" 2>/dev/null | sed -n '100,200p'",
+      "first_used": "2026-06-22T14:54:06Z",
+      "id": "bld_3a147133",
+      "last_used": "2026-06-22T14:54:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/omninet-build/libOmniNet.a 2>/dev/null && echo \"OmniNet static lib EXISTS\" || echo \"MISSING\"",
+      "first_used": "2026-06-22T15:00:14Z",
+      "id": "bld_5fb2dbe3",
+      "last_used": "2026-06-22T15:00:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target test_fbin -j8",
+      "first_used": "2026-06-22T15:00:29Z",
+      "id": "bld_daa4ee63",
+      "last_used": "2026-06-22T15:00:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ./build/tests/test_fbin > /tmp/test_fbin_o1.txt",
+      "first_used": "2026-06-22T15:00:37Z",
+      "id": "bld_35c982c5",
+      "last_used": "2026-06-22T15:00:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target omninet_hello -j8",
+      "first_used": "2026-06-22T15:01:40Z",
+      "id": "bld_a5016bd3",
+      "last_used": "2026-06-22T15:02:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target apollo_rest_server -j8",
+      "first_used": "2026-06-22T15:12:49Z",
+      "id": "bld_b28ef43b",
+      "last_used": "2026-06-24T02:31:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 8
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"getQueryParam\\|queryParam\\|public:\\|class Server\" [FILTERED_API_KEY]_deps/omninet-src/src/http/HttpRequest.h | head -20",
+      "first_used": "2026-06-22T15:13:02Z",
+      "id": "bld_6404c705",
+      "last_used": "2026-06-22T15:13:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"public:\\|std::optional\\|Query\\|method\" [FILTERED_API_KEY]_deps/omninet-src/src/http/HttpRequest.h | head -30",
+      "first_used": "2026-06-22T15:13:15Z",
+      "id": "bld_cfa7ca71",
+      "last_used": "2026-06-22T15:13:15Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"del\\|DELETE\\|addRoute\\|registerRoute\\|onRequest\" [FILTERED_API_KEY]_deps/omninet-src/src/http/HttpServer.h | head -20",
+      "first_used": "2026-06-22T15:13:33Z",
+      "id": "bld_4223ffbb",
+      "last_used": "2026-06-22T15:13:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target apollo_rest_server -j8 2>build.log",
+      "first_used": "2026-06-24T02:31:38Z",
+      "id": "bld_d32480b5",
+      "last_used": "2026-06-24T02:31:38Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" [FILTERED_API_KEY].log | head -10",
+      "first_used": "2026-06-24T02:31:49Z",
+      "id": "bld_2957ea8b",
+      "last_used": "2026-06-24T02:31:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls -la [FILTERED_API_KEY]_rest_server 2>/dev/null && echo \"BUILD SUCCEEDED\"",
+      "first_used": "2026-06-24T02:32:01Z",
+      "id": "bld_9db91a84",
+      "last_used": "2026-06-24T02:32:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_*.o && cmake --build build --target apollo_rest_server -j8 2>build.log",
+      "first_used": "2026-06-24T02:35:27Z",
+      "id": "bld_9d5a0338",
+      "last_used": "2026-06-24T02:35:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" [FILTERED_API_KEY].log",
+      "first_used": "2026-06-24T02:35:47Z",
+      "id": "bld_4c2032c3",
+      "last_used": "2026-06-24T02:35:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"Error|error|FAILED\" [FILTERED_API_KEY].log | head -20",
+      "first_used": "2026-06-24T02:36:07Z",
+      "id": "bld_cc35b861",
+      "last_used": "2026-06-24T02:36:07Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -40 [FILTERED_API_KEY].log",
+      "first_used": "2026-06-24T02:36:26Z",
+      "id": "bld_5ca90b14",
+      "last_used": "2026-06-24T02:36:26Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "wc -l [FILTERED_API_KEY].log && tail -5 [FILTERED_API_KEY].log",
+      "first_used": "2026-06-24T02:36:47Z",
+      "id": "bld_e6f05d8a",
+      "last_used": "2026-06-24T02:36:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cmake --build build --target apollo_rest_server -j8 > /tmp/build_stdout.log 2> /tmp/build_stderr.log; echo \"EXIT: $?\"",
+      "first_used": "2026-06-24T02:37:09Z",
+      "id": "bld_e21901e5",
+      "last_used": "2026-06-24T14:15:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" /tmp/build_stderr.log | head -10",
+      "first_used": "2026-06-24T02:37:30Z",
+      "id": "bld_d78b91df",
+      "last_used": "2026-06-24T14:19:30Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"undefined reference|ld returned\" /tmp/build_stderr.log | head -10",
+      "first_used": "2026-06-24T14:16:03Z",
+      "id": "bld_b11ff4a6",
+      "last_used": "2026-06-24T14:16:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"apollo_mcp_tools|register_all_tools\" /tmp/build_stderr.log | head -5",
+      "first_used": "2026-06-24T14:16:26Z",
+      "id": "bld_fa606f65",
+      "last_used": "2026-06-24T14:16:26Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls -la [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null && echo \"EXISTS\" || echo \"MISSING\"",
+      "first_used": "2026-06-24T14:16:43Z",
+      "id": "bld_36ef7af1",
+      "last_used": "2026-06-24T14:16:43Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "nm [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null | head -10",
+      "first_used": "2026-06-24T14:17:07Z",
+      "id": "bld_dcd0a6f4",
+      "last_used": "2026-06-24T14:17:07Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o && /home/lee/.[FILTERED_API_KEY] /home/lee/.[FILTERED_API_KEY] -c \"import subprocess; r=subprocess.run(['g++', '-c', '-std=c++23', '-I', 'include', '-I', 'build/_deps/nlohmann_json-src/include', '-I', 'build/_deps/llama_cpp-src/include', '-I', 'build/_deps/omninet-src/include', '-I', 'build/_deps/omninet-src/src', 'src/apollo_mcp_tools.cpp', '-o', '/tmp/test_mcp_tools.o'], capture_output=True, text=True); print('STDOUT:', r.stdout[-2000:]); print('STDERR:', r.stderr[-3000:])\"",
+      "first_used": "2026-06-24T14:17:32Z",
+      "id": "bld_85c6fa9c",
+      "last_used": "2026-06-24T14:17:32Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && /home/lee/.[FILTERED_API_KEY] /tmp/test_compile.py",
+      "first_used": "2026-06-24T14:18:17Z",
+      "id": "bld_7ab274ac",
+      "last_used": "2026-06-24T14:18:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -f [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_*.o && cmake --build build --target apollo_rest_server -j8 > /tmp/build_stdout.log 2> /tmp/build_stderr.log; echo \"EXIT: $?\"",
+      "first_used": "2026-06-24T14:19:10Z",
+      "id": "bld_590fb65e",
+      "last_used": "2026-06-24T14:19:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls -la [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null && nm [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null | grep -c register",
+      "first_used": "2026-06-24T14:19:50Z",
+      "id": "bld_7a3aac19",
+      "last_used": "2026-06-24T14:19:50Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A3 \"apollo_mcp_tools.cpp.o\" [FILTERED_API_KEY]_rest_server.dir/build.make | head -10",
+      "first_used": "2026-06-24T14:20:09Z",
+      "id": "bld_a0cde42a",
+      "last_used": "2026-06-24T14:20:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY]_rest_server.dir/flags.make",
+      "first_used": "2026-06-24T14:20:29Z",
+      "id": "bld_b7881f4b",
+      "last_used": "2026-06-24T14:20:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && touch src/apollo_mcp_tools.cpp && cmake --build build --target apollo_rest_server -j8 > /tmp/build_stdout.log 2> /tmp/build_stderr.log; echo \"EXIT: $?\"",
+      "first_used": "2026-06-24T14:21:03Z",
+      "id": "bld_23d48f6f",
+      "last_used": "2026-06-24T14:21:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/serial_build.sh",
+      "first_used": "2026-06-24T14:22:43Z",
+      "id": "bld_b71384a5",
+      "last_used": "2026-06-24T14:22:43Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"apollo_mcp_tools|error:\" /tmp/serial_build.log | head -20",
+      "first_used": "2026-06-24T14:23:04Z",
+      "id": "bld_0b076bb1",
+      "last_used": "2026-06-24T14:23:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" /tmp/serial_build.log | head -20",
+      "first_used": "2026-06-24T14:23:25Z",
+      "id": "bld_1547ea28",
+      "last_used": "2026-06-24T14:23:25Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"undefined reference|relocation\" /tmp/serial_build.log | head -5",
+      "first_used": "2026-06-24T14:23:44Z",
+      "id": "bld_a25a91d0",
+      "last_used": "2026-06-24T14:23:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "objdump -d [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null | head -20",
+      "first_used": "2026-06-24T14:24:04Z",
+      "id": "bld_466a7111",
+      "last_used": "2026-06-24T14:24:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/manual_build.sh",
+      "first_used": "2026-06-24T14:24:58Z",
+      "id": "bld_145681a7",
+      "last_used": "2026-06-24T14:24:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/verbose_build.sh",
+      "first_used": "2026-06-24T14:27:13Z",
+      "id": "bld_6494d255",
+      "last_used": "2026-06-24T14:27:13Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_check.sh",
+      "first_used": "2026-06-24T14:31:28Z",
+      "id": "bld_f1a38ae9",
+      "last_used": "2026-06-24T14:31:28Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls -la [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o && nm [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null | wc -l",
+      "first_used": "2026-06-24T14:31:49Z",
+      "id": "bld_b7943ef9",
+      "last_used": "2026-06-24T14:31:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "nm [FILTERED_API_KEY]_rest_server.dir/__/src/apollo_mcp_tools.cpp.o 2>/dev/null | grep -i \"register_all\" | head -5",
+      "first_used": "2026-06-24T14:32:01Z",
+      "id": "bld_f8083cdb",
+      "last_used": "2026-06-24T14:32:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_run.sh",
+      "first_used": "2026-06-24T14:33:04Z",
+      "id": "bld_8cf0880a",
+      "last_used": "2026-06-24T14:33:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A 8 \"llama_cpp\" [FILTERED_API_KEY].txt | head -15",
+      "first_used": "2026-06-25T01:11:26Z",
+      "id": "bld_a3305cec",
+      "last_used": "2026-06-25T01:11:26Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build/_deps/llama_cpp-build -name \"*.so\" -o -name \"*.a\" 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:11:50Z",
+      "id": "bld_45d3236b",
+      "last_used": "2026-06-25T01:11:50Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build -name \"libllama*\" -o -name \"libggml*\" 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:12:11Z",
+      "id": "bld_6c87227d",
+      "last_used": "2026-06-25T01:12:11Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"Vulkan|VULKAN\" build/_deps/llama_cpp-build/CMakeCache.txt 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:12:32Z",
+      "id": "bld_5a370861",
+      "last_used": "2026-06-25T01:12:32Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ls build/_deps/llama_cpp-build/ | head -10 && echo \"---\" && grep -ri \"Vulkan\" build/_deps/llama_cpp-build/CMakeFiles/ggml-base.dir/flags.make 2>/dev/null | head -5",
+      "first_used": "2026-06-25T01:12:54Z",
+      "id": "bld_c66493f4",
+      "last_used": "2026-06-25T01:12:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -A2 -B2 \"VULKAN\\|Vulkan\" build/_deps/llama_cpp-[FILTERED_API_KEY].yaml 2>/dev/null | head -20",
+      "first_used": "2026-06-25T01:13:16Z",
+      "id": "bld_442eeb0b",
+      "last_used": "2026-06-25T01:13:16Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build -name \"libggml*\" -type f 2>/dev/null",
+      "first_used": "2026-06-25T01:13:39Z",
+      "id": "bld_27a84db2",
+      "last_used": "2026-06-25T01:13:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"GGML_VULKAN|GGML_BACKEND\" build/_deps/llama_cpp-build/CMakeCache.txt 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:14:03Z",
+      "id": "bld_b8f47cb3",
+      "last_used": "2026-06-25T01:14:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"VULKAN|Vulkan\" [FILTERED_API_KEY]_deps/llama_cpp-src/ggml/CMakeLists.txt 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:14:23Z",
+      "id": "bld_a01b84c1",
+      "last_used": "2026-06-25T01:14:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"GGML_VULKAN|GGML_BACKEND\" build/_deps/llama_cpp-build/CMakeCache.txt 2>/dev/null | head -5",
+      "first_used": "2026-06-25T01:16:13Z",
+      "id": "bld_ab270e5f",
+      "last_used": "2026-06-25T01:16:13Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -i \"vulkan\\|vulkan_check\\|VULKAN\" build/_deps/llama_cpp-build/CMakeCache.txt | head -10",
+      "first_used": "2026-06-25T01:16:33Z",
+      "id": "bld_4e32215b",
+      "last_used": "2026-06-25T01:16:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ls build/_deps/llama_cpp-build/ 2>/dev/null | head -10",
+      "first_used": "2026-06-25T01:16:56Z",
+      "id": "bld_73fd63d8",
+      "last_used": "2026-06-25T01:16:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build/_deps/llama_cpp-build -name \"CMakeCache.txt\" 2>/dev/null",
+      "first_used": "2026-06-25T01:17:18Z",
+      "id": "bld_124c881c",
+      "last_used": "2026-06-25T01:17:18Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build -name \"CMakeCache.txt\" -not -path \"*/CMakeFiles/*\" | head -5",
+      "first_used": "2026-06-25T01:17:38Z",
+      "id": "bld_ad382006",
+      "last_used": "2026-06-25T01:17:38Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -i \"vulkan\" [FILTERED_API_KEY]_deps/llama_cpp-subbuild/CMakeCache.txt | head -5",
+      "first_used": "2026-06-25T01:17:57Z",
+      "id": "bld_e5b6cf1d",
+      "last_used": "2026-06-25T01:17:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build/_deps/llama_cpp-build -name \"*.cmake\" -path \"*ggml*\" -exec grep -l -i vulkan {} \\; 2>/dev/null | head -3",
+      "first_used": "2026-06-25T01:18:21Z",
+      "id": "bld_b5ec850e",
+      "last_used": "2026-06-25T01:18:21Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -B2 -A5 \"Adding.*backend\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt | head -20",
+      "first_used": "2026-06-25T01:18:41Z",
+      "id": "bld_514ceac4",
+      "last_used": "2026-06-25T01:18:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -B2 -A3 \"ggml-cpu\\|ggml-vulkan\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt | head -30",
+      "first_used": "2026-06-25T01:19:04Z",
+      "id": "bld_c0927248",
+      "last_used": "2026-06-25T01:19:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -B2 -A10 \"configure_target\\|create_ggml_backend\\|ggml_add_backend\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt | head -40",
+      "first_used": "2026-06-25T01:19:28Z",
+      "id": "bld_1200a01d",
+      "last_used": "2026-06-25T01:19:28Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"^\\s*(if|elseif|endif).*VULKAN|configure_ggml_backend|ggml_build_\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt | head -20",
+      "first_used": "2026-06-25T01:19:51Z",
+      "id": "bld_9c22fa64",
+      "last_used": "2026-06-25T01:19:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && wc -l build/_deps/llama_cpp-src/ggml/CMakeLists.txt && grep -n \"VULKAN\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt | head -10",
+      "first_used": "2026-06-25T01:20:13Z",
+      "id": "bld_7c785514",
+      "last_used": "2026-06-25T01:20:13Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -n \"GGML_VULKAN\\b\" build/_deps/llama_cpp-src/ggml/CMakeLists.txt",
+      "first_used": "2026-06-25T01:20:32Z",
+      "id": "bld_1453013e",
+      "last_used": "2026-06-25T01:20:32Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build/_deps/llama_cpp-src -name \"*.txt\" -exec grep -l \"VULKAN\" {} \\; 2>/dev/null | head -5",
+      "first_used": "2026-06-25T01:20:57Z",
+      "id": "bld_73e711b2",
+      "last_used": "2026-06-25T01:20:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cat build/_deps/llama_cpp-src/ggml/src/ggml-vulkan/CMakeLists.txt | head -20",
+      "first_used": "2026-06-25T01:21:25Z",
+      "id": "bld_c0296a2c",
+      "last_used": "2026-06-25T01:21:25Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "llama.cpp master has GGML_VULKAN option declared but never read in ggml/CMakeLists.txt. Vulkan backend source exists at ggml/src/ggml-vulkan/ but is never included. Workaround: patch ggml/CMakeLists.txt to add `if(GGML_VULKAN) add_subdirectory(src/ggml-vulkan) endif()`. Check for upstream fix periodically by querying https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+      "first_used": "2026-06-25T01:29:14Z",
+      "id": "bld_ae37c888",
+      "last_used": "2026-06-25T01:29:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && sed -n '260,320p' build/_deps/llama_cpp-src/ggml/CMakeLists.txt",
+      "first_used": "2026-06-25T01:30:28Z",
+      "id": "bld_21c002c5",
+      "last_used": "2026-06-25T01:30:28Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cat build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt | head -60",
+      "first_used": "2026-06-25T01:30:42Z",
+      "id": "bld_009cdb99",
+      "last_used": "2026-06-25T01:30:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -n \"VULKAN\\|vulkan\\|add_subdirectory\" build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt | head -20",
+      "first_used": "2026-06-25T01:30:55Z",
+      "id": "bld_0d87faed",
+      "last_used": "2026-06-25T01:30:55Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && sed -n '280,330p' build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt",
+      "first_used": "2026-06-25T01:31:08Z",
+      "id": "bld_787c4336",
+      "last_used": "2026-06-25T01:31:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -n \"ggml_add_backend\\|ggml_add_cpu_backend\" build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt | head -20",
+      "first_used": "2026-06-25T01:31:30Z",
+      "id": "bld_0955edd4",
+      "last_used": "2026-06-25T01:31:30Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && sed -n '365,375p' build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt",
+      "first_used": "2026-06-25T01:31:44Z",
+      "id": "bld_6c856878",
+      "last_used": "2026-06-25T01:31:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A3 \"ggml_add_backend(CPU)\" [FILTERED_API_KEY]_deps/llama_cpp-src/ggml/src/CMakeLists.txt | head -10",
+      "first_used": "2026-06-25T01:33:34Z",
+      "id": "bld_4b4f224e",
+      "last_used": "2026-06-25T01:33:34Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -A3 \"ggml_add_backend(CPU)\" [FILTERED_API_KEY]_deps/llama_cpp-src/ggml/src/CMakeLists.txt 2>/dev/null | head -5",
+      "first_used": "2026-06-25T01:35:57Z",
+      "id": "bld_cec3e2df",
+      "last_used": "2026-06-25T01:35:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -A5 \"ggml_add_backend(CPU)\" build/_deps/llama_cpp-src/ggml/src/CMakeLists.txt | head -10",
+      "first_used": "2026-06-25T01:38:42Z",
+      "id": "bld_9ea613c5",
+      "last_used": "2026-06-25T01:38:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -r \"GGML_VULKAN\" build/_deps/llama_cpp-build/ 2>/dev/null | head -5",
+      "first_used": "2026-06-25T01:39:13Z",
+      "id": "bld_2799e2f3",
+      "last_used": "2026-06-25T01:39:13Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && find build/_deps/llama_cpp-build -name \"CMakeCache.txt\" -exec grep -H GGML_VULKAN {} \\;",
+      "first_used": "2026-06-25T01:39:47Z",
+      "id": "bld_21147208",
+      "last_used": "2026-06-25T01:39:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY] -name \"CMakeCache.txt\" -exec grep -l \"VULKAN\\|GGML\" {} \\;",
+      "first_used": "2026-06-25T01:40:07Z",
+      "id": "bld_c062bf1b",
+      "last_used": "2026-06-25T01:40:07Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -i \"vulkan\\|GGML\" [FILTERED_API_KEY].txt | head -10",
+      "first_used": "2026-06-25T01:40:30Z",
+      "id": "bld_d3ec9eb7",
+      "last_used": "2026-06-25T01:40:30Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"GGML_VULKAN\" [FILTERED_API_KEY].txt | head -10",
+      "first_used": "2026-06-25T01:40:49Z",
+      "id": "bld_b58667ef",
+      "last_used": "2026-06-25T01:40:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/vulkan_build.sh",
+      "first_used": "2026-06-25T01:48:11Z",
+      "id": "bld_2559633e",
+      "last_used": "2026-06-25T01:48:11Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/full_build.sh",
+      "first_used": "2026-06-25T01:49:20Z",
+      "id": "bld_bd23c8d8",
+      "last_used": "2026-06-25T01:51:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"error:\" /tmp/full_build.log | head -10",
+      "first_used": "2026-06-25T01:49:44Z",
+      "id": "bld_c6e92e2c",
+      "last_used": "2026-06-25T01:49:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"undefined reference\" /tmp/full_build.log | head -5",
+      "first_used": "2026-06-25T01:50:06Z",
+      "id": "bld_7d070354",
+      "last_used": "2026-06-25T01:50:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -f build.log && git add . && git status --short",
+      "first_used": "2026-06-25T01:53:51Z",
+      "id": "bld_6ab89a63",
+      "last_used": "2026-06-25T01:53:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/stdio_build.sh",
+      "first_used": "2026-06-25T02:05:44Z",
+      "id": "bld_fa421321",
+      "last_used": "2026-06-25T02:05:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -i \"error\\|cmake error\" /tmp/reconfig5.log | head -10 && echo \"---\" && grep \"error:\" /tmp/stdio_build.log | head -10",
+      "first_used": "2026-06-25T02:06:23Z",
+      "id": "bld_3dadc7e0",
+      "last_used": "2026-06-25T02:06:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B2 -A5 \"add_subdirectory\\|CMake Error\" /tmp/reconfig5.log | head -30",
+      "first_used": "2026-06-25T02:06:58Z",
+      "id": "bld_3982fbfc",
+      "last_used": "2026-06-25T02:06:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/stdio_build2.sh",
+      "first_used": "2026-06-25T02:14:51Z",
+      "id": "bld_620454ae",
+      "last_used": "2026-06-25T02:33:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 7
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/wireup_build.sh",
+      "first_used": "2026-06-25T02:59:47Z",
+      "id": "bld_20a409b5",
+      "last_used": "2026-06-25T03:04:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 3
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/dbg_build.sh",
+      "first_used": "2026-06-25T03:22:43Z",
+      "id": "bld_0a2c8d18",
+      "last_used": "2026-06-25T03:32:00Z",
+      "notes": "",
+      "success": true,
+      "use_count": 5
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" /tmp/dbg_build.log | head -5",
+      "first_used": "2026-06-25T03:22:52Z",
+      "id": "bld_90e4befb",
+      "last_used": "2026-06-25T03:22:52Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/omninet-src/include/ 2>/dev/null | head -10",
+      "first_used": "2026-06-25T04:44:47Z",
+      "id": "bld_2f4862d2",
+      "last_used": "2026-06-25T04:44:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/omninet-src/include/OmniNet/",
+      "first_used": "2026-06-25T04:44:56Z",
+      "id": "bld_b1d1642a",
+      "last_used": "2026-06-25T04:44:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/omninet-src -type f \\( -name \"*.h\" -o -name \"*.hpp\" -o -name \"*.cpp\" \\) | head -10",
+      "first_used": "2026-06-25T04:45:06Z",
+      "id": "bld_ee69e255",
+      "last_used": "2026-06-25T04:45:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/omninet-src -name \"omninet.h\" -o -name \"OmniNet.h\" 2>/dev/null | head -5",
+      "first_used": "2026-06-25T04:45:16Z",
+      "id": "bld_5098b8e5",
+      "last_used": "2026-06-25T04:45:16Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -rE \"TODO|FIXME|XXX|HACK|BUG\" [FILTERED_API_KEY]_deps/omninet-src/src/ 2>/dev/null | head -15",
+      "first_used": "2026-06-25T04:45:27Z",
+      "id": "bld_8a56c523",
+      "last_used": "2026-06-25T04:45:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"query\\|delete_\\|string_view\\|get_parameter\\|get_header\" [FILTERED_API_KEY]_deps/omninet-src/src/OmniNet.h | head -10",
+      "first_used": "2026-06-25T04:45:40Z",
+      "id": "bld_86bfbeca",
+      "last_used": "2026-06-25T04:45:40Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -rE \"Request|Response\" [FILTERED_API_KEY]_deps/omninet-src/src/http/HttpRequest.h 2>/dev/null | grep -E \"delete|query|get_parameter|class|public:\" | head -15",
+      "first_used": "2026-06-25T04:45:51Z",
+      "id": "bld_de359773",
+      "last_used": "2026-06-25T04:45:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/omninet-src/src -type f | xargs grep -l \"TODO\\|FIXME\\|XXX\\|HACK\" 2>/dev/null | head -10",
+      "first_used": "2026-06-25T04:46:06Z",
+      "id": "bld_6ec861c2",
+      "last_used": "2026-06-25T04:46:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/omninet-src/src/http/",
+      "first_used": "2026-06-25T04:46:22Z",
+      "id": "bld_ad8d3ac3",
+      "last_used": "2026-06-25T04:46:22Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"method\\|route\\|delete_\\|GET\\|POST\" [FILTERED_API_KEY]_deps/omninet-src/src/http/Router.h | head -10",
+      "first_used": "2026-06-25T04:46:33Z",
+      "id": "bld_191d09ad",
+      "last_used": "2026-06-25T04:46:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"error|Error|CMake Error\" /tmp/reconfig_omni.log | head -10",
+      "first_used": "2026-06-25T06:00:52Z",
+      "id": "bld_ec9a1041",
+      "last_used": "2026-06-25T06:00:52Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/omni_build.sh",
+      "first_used": "2026-06-25T06:07:24Z",
+      "id": "bld_21ccc9dd",
+      "last_used": "2026-06-25T06:07:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"VERSION|version\" build/_deps/omninet-src/CMakeLists.txt | head -5 && echo \"---\" && cat build/_deps/omninet-build/CMakeCache.txt 2>/dev/null | grep -i \"OMNINET_VERSION\" | head -5",
+      "first_used": "2026-06-25T06:07:38Z",
+      "id": "bld_4909dc1f",
+      "last_used": "2026-06-25T06:07:38Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && timeout 30 ./build/examples/apollo_mcp_stdio_server --embedding-model models/nomic-embed-text-v1.5.Q4_K_M.gguf <<< $'Content-Length: 87\\r\\n\\r\\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\"}}' > /tmp/smoke_resp.bin 2> /tmp/smoke_log.txt\necho \"Exit: $?\"\necho \"--- Server log highlights ---\"\ngrep -E \"ready|loaded|Error|loaded meta\" /tmp/smoke_log.txt | tail -3\necho \"--- Response ---\"\ncat /tmp/smoke_resp.bin",
+      "first_used": "2026-06-25T06:07:51Z",
+      "id": "bld_7ffdfdca",
+      "last_used": "2026-06-25T06:07:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/prompts_build.sh",
+      "first_used": "2026-06-25T06:19:29Z",
+      "id": "bld_375318d5",
+      "last_used": "2026-06-25T06:19:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -30 /tmp/prompts_build.log",
+      "first_used": "2026-06-25T06:19:44Z",
+      "id": "bld_23f8cf02",
+      "last_used": "2026-06-25T06:19:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B2 -A5 \"CMake Error\\|error:\" /tmp/prompts_build.log | head -30",
+      "first_used": "2026-06-25T06:20:09Z",
+      "id": "bld_d1839874",
+      "last_used": "2026-06-25T06:20:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/prompts_build3.sh",
+      "first_used": "2026-06-25T06:26:50Z",
+      "id": "bld_40bd7203",
+      "last_used": "2026-06-25T06:56:13Z",
+      "notes": "",
+      "success": false,
+      "use_count": 4
+    },
+    {
+      "attempts": 1,
+      "command": "tail -20 /tmp/prompts_build4.log 2>/dev/null && echo \"---\" && ls -la build/examples/apollo_mcp_stdio_server build/examples/apollo_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T06:47:17Z",
+      "id": "bld_f1728dd9",
+      "last_used": "2026-06-25T06:47:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 120 && tail -20 /tmp/prompts_build4.log && echo \"---\" && ls -la build/examples/apollo_mcp_stdio_server build/examples/apollo_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T06:49:32Z",
+      "id": "bld_28152773",
+      "last_used": "2026-06-25T06:49:32Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 90 && tail -10 /tmp/prompts_build5.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T06:58:27Z",
+      "id": "bld_79c60c95",
+      "last_used": "2026-06-25T06:58:27Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 120 && tail -15 /tmp/prompts_build5.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T07:00:43Z",
+      "id": "bld_952d8cfd",
+      "last_used": "2026-06-25T07:02:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 120 && tail -15 /tmp/prompts_build6.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T07:06:43Z",
+      "id": "bld_602cfd17",
+      "last_used": "2026-06-25T07:09:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "ps aux | grep -E \"cmake|c\\+\\+|g\\+\\+|cc1plus\" | grep -v grep | head -5 && echo \"---\" && tail -5 /tmp/prompts_build6.log",
+      "first_used": "2026-06-25T07:09:15Z",
+      "id": "bld_cb4bef85",
+      "last_used": "2026-06-25T07:09:15Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -15 /tmp/prompts_build6.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T07:12:31Z",
+      "id": "bld_fc593714",
+      "last_used": "2026-06-25T07:12:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/stdio_rebuild.sh",
+      "first_used": "2026-06-25T07:13:36Z",
+      "id": "bld_e76efadb",
+      "last_used": "2026-06-25T07:13:36Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/completion_build.sh",
+      "first_used": "2026-06-25T07:46:22Z",
+      "id": "bld_d3e69274",
+      "last_used": "2026-06-25T07:53:44Z",
+      "notes": "",
+      "success": false,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/c_compile.sh",
+      "first_used": "2026-06-25T07:48:24Z",
+      "id": "bld_08f402a6",
+      "last_used": "2026-06-25T07:48:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -15 /tmp/completion_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T07:57:21Z",
+      "id": "bld_2d98ec51",
+      "last_used": "2026-06-25T08:00:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY].txt | grep -A1 \"apollo_mcp_completion\"",
+      "first_used": "2026-06-25T08:06:03Z",
+      "id": "bld_9927b43b",
+      "last_used": "2026-06-25T08:06:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && sed -i '/apollo_mcp_completion.cpp/a\\    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_codebase_ingest.cpp' examples/CMakeLists.txt && grep -A1 \"apollo_mcp_completion\" examples/CMakeLists.txt",
+      "first_used": "2026-06-25T08:06:20Z",
+      "id": "bld_ad3d6f39",
+      "last_used": "2026-06-25T08:06:20Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/ingest_build.sh",
+      "first_used": "2026-06-25T08:12:06Z",
+      "id": "bld_c0dfe5f5",
+      "last_used": "2026-06-25T10:33:53Z",
+      "notes": "",
+      "success": false,
+      "use_count": 9
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -20 /tmp/ingest_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T08:16:39Z",
+      "id": "bld_bc587c8b",
+      "last_used": "2026-06-25T08:16:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -20 /tmp/ingest_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T08:20:10Z",
+      "id": "bld_ef318cc6",
+      "last_used": "2026-06-25T08:20:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -20 /tmp/sym_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T08:33:49Z",
+      "id": "bld_f4c962ac",
+      "last_used": "2026-06-25T08:37:07Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/sym_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T08:49:08Z",
+      "id": "bld_f8d90bf3",
+      "last_used": "2026-06-25T08:49:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/sym_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T08:52:31Z",
+      "id": "bld_295fd926",
+      "last_used": "2026-06-25T08:52:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/sym_build3.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T09:07:24Z",
+      "id": "bld_657753ac",
+      "last_used": "2026-06-25T09:07:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/sym_build3.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T09:10:44Z",
+      "id": "bld_3cb6f820",
+      "last_used": "2026-06-25T09:10:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/name_comp_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T09:26:04Z",
+      "id": "bld_a377993e",
+      "last_used": "2026-06-25T09:29:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/name_comp_build2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T09:39:15Z",
+      "id": "bld_4efac212",
+      "last_used": "2026-06-25T09:42:34Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/code_types_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T10:00:02Z",
+      "id": "bld_7ce6d75e",
+      "last_used": "2026-06-25T10:00:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/code_types_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T10:03:20Z",
+      "id": "bld_84069133",
+      "last_used": "2026-06-25T10:03:20Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/add_entity_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T10:21:34Z",
+      "id": "bld_e5e47371",
+      "last_used": "2026-06-25T10:21:34Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -10 /tmp/add_entity_build.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null",
+      "first_used": "2026-06-25T10:24:55Z",
+      "id": "bld_0ae5c62e",
+      "last_used": "2026-06-25T10:24:55Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls -la [FILTERED_API_KEY]_mcp_stdio_server [FILTERED_API_KEY]_rest_server 2>/dev/null && echo \"---\" && ps aux | grep -E \"cc1plus|cmake\" | grep -v grep | head -3",
+      "first_used": "2026-06-25T10:35:58Z",
+      "id": "bld_653071f0",
+      "last_used": "2026-06-25T10:35:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/incr_build.sh",
+      "first_used": "2026-06-25T10:37:21Z",
+      "id": "bld_b2baad7d",
+      "last_used": "2026-06-26T17:43:12Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"FetchContent_Declare\" [FILTERED_API_KEY].txt | head -5",
+      "first_used": "2026-06-25T11:00:08Z",
+      "id": "bld_a4009b50",
+      "last_used": "2026-06-25T11:00:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '55,75p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-25T11:00:39Z",
+      "id": "bld_09e7d4d9",
+      "last_used": "2026-06-25T11:00:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"^# \\|^endif\" [FILTERED_API_KEY].txt | head -20",
+      "first_used": "2026-06-25T11:02:08Z",
+      "id": "bld_15b3927c",
+      "last_used": "2026-06-25T11:02:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && cat > /tmp/ts_block.txt << 'EOF'\n\n# [FILTERED_API_KEY]\n# Tree-sitter — proper AST parsing for code (M3.B)\n# [FILTERED_API_KEY]\n# MIT-licensed, modern (v0.26.9, May 2026), used by Neovim/Helix/GitHub.\n# Used for auto-extracting code-aware entities (FUNCTION, CLASS, etc.)\n# from ingested source files. Replaces regex hacks.\n#\n# Core is a C library (linked statically). The C++ grammar is a separate\n# repo providing the tree_sitter_cpp() entry point.\noption(TREE_SITTER_SKIP_FETCH \"Use system tree-sitter instead of FetchContent\" OFF)\nif(NOT TREE_SITTER_SKIP_FETCH)\n    FetchContent_Declare(\n        tree-sitter\n        GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git\n        GIT_TAG        v0.26.9\n        GIT_SHALLOW    TRUE\n    )\n    FetchContent_Declare(\n        tree-sitter-cpp\n        GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git\n        GIT_TAG        master\n        GIT_SHALLOW    TRUE\n    )\n    FetchContent_MakeAvailable(tree-sitter)\n    FetchContent_MakeAvailable(tree-sitter-cpp)\nelse()\n    find_package(tree-sitter QUIET)\n    if(NOT tree-sitter_FOUND)\n        message(FATAL_ERROR \"TREE_SITTER_SKIP_FETCH=ON but find_package failed\")\n    endif()\nendif()\n\nEOF\n# Insert after line 73 (after OmniNet endif)\nsed -i '73r /tmp/ts_block.txt' CMakeLists.txt\nsed -n '70,105p' CMakeLists.txt",
+      "first_used": "2026-06-25T11:02:41Z",
+      "id": "bld_5cded0d1",
+      "last_used": "2026-06-25T11:02:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "ls [FILTERED_API_KEY]_deps/ 2>/dev/null | grep -i tree",
+      "first_used": "2026-06-26T06:29:04Z",
+      "id": "bld_115bbcc8",
+      "last_used": "2026-06-26T06:29:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/tree-sitter* -name \"*.a\" -o -name \"*.so\" 2>/dev/null | head -10",
+      "first_used": "2026-06-26T06:29:29Z",
+      "id": "bld_d36e2bca",
+      "last_used": "2026-06-26T06:29:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -E \"add_library|set_target\" [FILTERED_API_KEY]_deps/tree-sitter-src/CMakeLists.txt | head -10",
+      "first_used": "2026-06-26T06:29:56Z",
+      "id": "bld_56a912d4",
+      "last_used": "2026-06-26T06:29:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_ts.sh",
+      "first_used": "2026-06-26T06:30:42Z",
+      "id": "bld_fb16fcd8",
+      "last_used": "2026-06-26T06:30:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_ts_cpp.sh",
+      "first_used": "2026-06-26T06:31:10Z",
+      "id": "bld_1e2a6125",
+      "last_used": "2026-06-26T06:31:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "head -20 /tmp/test_build.log",
+      "first_used": "2026-06-26T06:32:54Z",
+      "id": "bld_fdf59328",
+      "last_used": "2026-06-26T06:32:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "nm -D [FILTERED_API_KEY]_deps/tree-sitter-cpp-build/libtree-sitter-cpp.so | grep tree_sitter_cpp",
+      "first_used": "2026-06-26T06:33:09Z",
+      "id": "bld_88153ca8",
+      "last_used": "2026-06-26T06:33:09Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -10 /tmp/test_build.log",
+      "first_used": "2026-06-26T06:34:35Z",
+      "id": "bld_fd04859d",
+      "last_used": "2026-06-26T06:34:35Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/tree-sitter* -name \"*.a\" 2>/dev/null && echo \"---\" && find [FILTERED_API_KEY]_deps/tree-sitter* -name \"*.so\" 2>/dev/null",
+      "first_used": "2026-06-26T06:34:56Z",
+      "id": "bld_4c8323f5",
+      "last_used": "2026-06-26T06:34:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -5 /tmp/test_build.log",
+      "first_used": "2026-06-26T06:36:19Z",
+      "id": "bld_d99d9d29",
+      "last_used": "2026-06-26T06:36:19Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "objdump -T [FILTERED_API_KEY]_deps/tree-sitter-cpp-build/libtree-sitter-cpp.so 2>/dev/null | grep tree_sitter_cpp",
+      "first_used": "2026-06-26T06:36:46Z",
+      "id": "bld_20d2adfc",
+      "last_used": "2026-06-26T06:36:46Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY]_deps/tree-sitter-cpp-build -name \"*.o\" 2>/dev/null && echo \"---\" && find [FILTERED_API_KEY]_deps/tree-sitter-build -name \"*.o\" 2>/dev/null | head -5",
+      "first_used": "2026-06-26T06:38:14Z",
+      "id": "bld_1cd4d506",
+      "last_used": "2026-06-26T06:38:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"BUILD_SHARED_LIBS|set\\(BUILD_SHARED\" build/_deps/tree-sitter-src/CMakeLists.txt build/_deps/tree-sitter-cpp-src/CMakeLists.txt 2>/dev/null | head -10",
+      "first_used": "2026-06-26T06:39:31Z",
+      "id": "bld_044ed617",
+      "last_used": "2026-06-26T06:39:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -n \"TREE_SITTER_SKIP_FETCH\\|FetchContent_Declare\" CMakeLists.txt | head -5",
+      "first_used": "2026-06-26T06:40:10Z",
+      "id": "bld_faecd616",
+      "last_used": "2026-06-26T06:40:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '83,108p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T06:40:36Z",
+      "id": "bld_8425c9c6",
+      "last_used": "2026-06-26T06:40:36Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf build/_deps/llama_cpp-build build/_deps/llama_cpp-subbuild && bash /tmp/reconfig_ts.sh",
+      "first_used": "2026-06-26T06:45:58Z",
+      "id": "bld_aa4600bf",
+      "last_used": "2026-06-26T06:45:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_static_ts.sh",
+      "first_used": "2026-06-26T06:46:55Z",
+      "id": "bld_fd7ba99a",
+      "last_used": "2026-06-26T06:46:55Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "nm [FILTERED_API_KEY]_deps/tree-sitter-cpp-build/libtree-sitter-cpp.a | grep tree_sitter_cpp | head -3",
+      "first_used": "2026-06-26T06:48:05Z",
+      "id": "bld_a3b06407",
+      "last_used": "2026-06-26T06:48:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "nm -A [FILTERED_API_KEY]_deps/tree-sitter-cpp-build/libtree-sitter-cpp.a > /tmp/a_nm.txt; grep tree_sitter_cpp /tmp/a_nm.txt | head -3",
+      "first_used": "2026-06-26T06:50:24Z",
+      "id": "bld_b71bbc90",
+      "last_used": "2026-06-26T06:50:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd /tmp && ar x [FILTERED_API_KEY]_deps/tree-sitter-cpp-build/libtree-sitter-cpp.a parser.c.o && nm parser.c.o | grep tree_sitter_cpp",
+      "first_used": "2026-06-26T06:51:33Z",
+      "id": "bld_f82a3a87",
+      "last_used": "2026-06-26T06:51:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"apollo_core\\|add_library\\|tree.sitter\" [FILTERED_API_KEY].txt | head -10",
+      "first_used": "2026-06-26T06:58:05Z",
+      "id": "bld_40617bb4",
+      "last_used": "2026-06-26T06:58:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"apollo_core\\|add_library\" [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T06:58:33Z",
+      "id": "bld_ca5e16f2",
+      "last_used": "2026-06-26T06:58:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '129,155p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T06:58:59Z",
+      "id": "bld_6af56198",
+      "last_used": "2026-06-26T06:58:59Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/wrapper_build.sh",
+      "first_used": "2026-06-26T07:00:49Z",
+      "id": "bld_cd127409",
+      "last_used": "2026-06-26T07:00:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -20 /tmp/wrapper_build.log",
+      "first_used": "2026-06-26T07:01:03Z",
+      "id": "bld_9d0f95c2",
+      "last_used": "2026-06-26T07:01:03Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/wrapper_build2.sh",
+      "first_used": "2026-06-26T07:07:07Z",
+      "id": "bld_0add8bc1",
+      "last_used": "2026-06-26T07:14:20Z",
+      "notes": "",
+      "success": false,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/m3c_build.sh",
+      "first_used": "2026-06-26T17:43:39Z",
+      "id": "bld_fc3e4e4b",
+      "last_used": "2026-06-26T19:26:35Z",
+      "notes": "",
+      "success": true,
+      "use_count": 7
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY].txt 2>/dev/null | head -50",
+      "first_used": "2026-06-26T20:20:23Z",
+      "id": "bld_45039fb7",
+      "last_used": "2026-06-26T20:20:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "wc -l [FILTERED_API_KEY].txt && cat [FILTERED_API_KEY].txt | tail -40",
+      "first_used": "2026-06-26T20:20:40Z",
+      "id": "bld_9bf7aff1",
+      "last_used": "2026-06-26T20:20:40Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat >> [FILTERED_API_KEY].txt << 'EOF'\n\n# M3.C Multi-Project tests (no embedding model required)\nadd_executable(test_multi_project\n    test_multi_project.cpp\n)\ntarget_include_directories(test_multi_project PRIVATE\n    ${CMAKE_CURRENT_SOURCE_DIR}/../include\n    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include\n    ${SQLite3_INCLUDE_DIRS}\n)\ntarget_link_libraries(test_multi_project PRIVATE apollo_core)\nadd_test(NAME MultiProjectTests COMMAND test_multi_project)\nEOF\necho \"CMakeLists updated\"",
+      "first_used": "2026-06-26T20:22:46Z",
+      "id": "bld_390c9a5a",
+      "last_used": "2026-06-26T20:22:46Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_test.sh",
+      "first_used": "2026-06-26T20:23:24Z",
+      "id": "bld_b94f32b6",
+      "last_used": "2026-06-26T20:23:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -20 /tmp/test_build.log",
+      "first_used": "2026-06-26T20:23:40Z",
+      "id": "bld_de946cfa",
+      "last_used": "2026-06-26T20:23:40Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"add_subdirectory\\|tests\" [FILTERED_API_KEY].txt | head -10",
+      "first_used": "2026-06-26T20:23:54Z",
+      "id": "bld_68d9ef1e",
+      "last_used": "2026-06-26T20:23:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_test2.sh",
+      "first_used": "2026-06-26T20:24:29Z",
+      "id": "bld_43fd4202",
+      "last_used": "2026-06-26T20:24:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -iE \"error|cmake_error\" /tmp/cfg2.log | head -10",
+      "first_used": "2026-06-26T20:24:46Z",
+      "id": "bld_cfca402a",
+      "last_used": "2026-06-26T20:24:46Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_test3.sh",
+      "first_used": "2026-06-26T20:30:23Z",
+      "id": "bld_b07241ad",
+      "last_used": "2026-06-26T20:30:23Z",
+      "notes": "",
+      "success": false,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -20 /tmp/test_build_bg.log && echo \"---\" && ls -la [FILTERED_API_KEY]_multi_project 2>/dev/null",
+      "first_used": "2026-06-26T20:35:02Z",
+      "id": "bld_1056c2a1",
+      "last_used": "2026-06-26T20:39:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/rebuild_test.sh",
+      "first_used": "2026-06-26T20:42:18Z",
+      "id": "bld_75b59236",
+      "last_used": "2026-06-30T04:55:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 5
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_multi_project",
+      "first_used": "2026-06-26T20:42:51Z",
+      "id": "bld_21473d27",
+      "last_used": "2026-06-30T01:17:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_multi_project 2>/dev/null",
+      "first_used": "2026-06-26T20:44:03Z",
+      "id": "bld_5ceb66c1",
+      "last_used": "2026-06-26T20:45:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && sed -i '/apollo_mcp_completion.cpp/a\\    ${CMAKE_CURRENT_SOURCE_DIR}/../src/apollo_code_extractor.cpp' examples/CMakeLists.txt\ngrep \"code_extractor\" examples/CMakeLists.txt",
+      "first_used": "2026-06-26T21:29:53Z",
+      "id": "bld_e3e16c92",
+      "last_used": "2026-06-26T21:29:53Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"apollo_codebase_ingest\\|apollo_ts_wrapper\" [FILTERED_API_KEY].txt | head -5",
+      "first_used": "2026-06-26T21:30:11Z",
+      "id": "bld_3c9484fb",
+      "last_used": "2026-06-26T21:30:11Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '138,148p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T21:30:33Z",
+      "id": "bld_bc037412",
+      "last_used": "2026-06-26T21:30:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -15 /tmp/m3b_bg.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T21:35:20Z",
+      "id": "bld_cd84373e",
+      "last_used": "2026-06-26T21:35:20Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -40 /tmp/m3b_build.log",
+      "first_used": "2026-06-26T21:36:18Z",
+      "id": "bld_f07e8dd1",
+      "last_used": "2026-06-26T21:36:18Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/m3b_bg2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T21:41:12Z",
+      "id": "bld_5e9a5ad2",
+      "last_used": "2026-06-26T21:41:12Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 180 && tail -20 /tmp/m3b_bg2.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T21:44:41Z",
+      "id": "bld_bf4eeaa6",
+      "last_used": "2026-06-26T21:44:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 120 && tail -10 /tmp/m3b_bg3.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T21:51:30Z",
+      "id": "bld_3d172e29",
+      "last_used": "2026-06-26T21:51:30Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"tree_sitter-src\\|tree-sitter\" [FILTERED_API_KEY].txt | head -5",
+      "first_used": "2026-06-26T21:51:48Z",
+      "id": "bld_04263cc2",
+      "last_used": "2026-06-26T21:51:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '142,170p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T21:52:10Z",
+      "id": "bld_73fd79ba",
+      "last_used": "2026-06-26T21:52:10Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/m3b_bg4.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T21:57:37Z",
+      "id": "bld_0e33d455",
+      "last_used": "2026-06-26T21:57:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B 2 -A 3 \"CMake Error\" /tmp/cfg4.log | head -20",
+      "first_used": "2026-06-26T21:59:02Z",
+      "id": "bld_0d03642c",
+      "last_used": "2026-06-26T21:59:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 360 && tail -10 /tmp/m3b_bg5.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:06:22Z",
+      "id": "bld_5fe925e8",
+      "last_used": "2026-06-26T22:06:22Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"undefined reference\\|error:\" /tmp/m3b_build5.log | head -10",
+      "first_used": "2026-06-26T22:06:51Z",
+      "id": "bld_f6349698",
+      "last_used": "2026-06-26T22:06:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 360 && tail -10 /tmp/m3b_bg6.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:15:06Z",
+      "id": "bld_a094ad00",
+      "last_used": "2026-06-26T22:15:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B 1 -A 3 \"CMake Error\" /tmp/cfg6.log | head -10",
+      "first_used": "2026-06-26T22:15:41Z",
+      "id": "bld_8a902ad5",
+      "last_used": "2026-06-26T22:15:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '60,68p' [FILTERED_API_KEY]_deps/tree-sitter-python-src/CMakeLists.txt",
+      "first_used": "2026-06-26T22:15:59Z",
+      "id": "bld_e706fc05",
+      "last_used": "2026-06-26T22:15:59Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"ts-test\\|add_custom_target\" [FILTERED_API_KEY]_deps/tree-sitter-cpp-src/CMakeLists.txt [FILTERED_API_KEY]_deps/tree-sitter-src/CMakeLists.txt 2>/dev/null | head -5",
+      "first_used": "2026-06-26T22:16:37Z",
+      "id": "bld_40cd1646",
+      "last_used": "2026-06-26T22:16:37Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 360 && tail -10 /tmp/m3b_bg7.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:23:58Z",
+      "id": "bld_b5680bf8",
+      "last_used": "2026-06-26T22:23:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B 1 -A 3 \"CMake Error\" /tmp/cfg7.log | head -10",
+      "first_used": "2026-06-26T22:24:24Z",
+      "id": "bld_a64c3c09",
+      "last_used": "2026-06-26T22:24:24Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"ts-test\" [FILTERED_API_KEY]_deps/tree-sitter-python-src/CMakeLists.txt",
+      "first_used": "2026-06-26T22:24:42Z",
+      "id": "bld_05ac5252",
+      "last_used": "2026-06-26T22:24:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && rm -rf build/_deps/tree-sitter-python-* && cat build/_deps/tree-sitter-python-src/CMakeLists.txt | grep -n \"ts-test\"",
+      "first_used": "2026-06-26T22:25:06Z",
+      "id": "bld_003a1352",
+      "last_used": "2026-06-26T22:25:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 360 && tail -10 /tmp/m3b_bg8.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:32:17Z",
+      "id": "bld_9dd12080",
+      "last_used": "2026-06-26T22:32:17Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B 1 -A 4 \"CMake Error\" /tmp/cfg8.log | head -10",
+      "first_used": "2026-06-26T22:32:33Z",
+      "id": "bld_1422bc0f",
+      "last_used": "2026-06-26T22:32:33Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"ts-test\" [FILTERED_API_KEY]_deps/tree-sitter-python-src/CMakeLists.txt | head -3",
+      "first_used": "2026-06-26T22:32:57Z",
+      "id": "bld_f2837011",
+      "last_used": "2026-06-26T22:32:57Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sed -n '85,118p' [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T22:34:05Z",
+      "id": "bld_7569f33d",
+      "last_used": "2026-06-26T22:34:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n \"tree-sitter-python\" [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-26T22:35:08Z",
+      "id": "bld_741cc095",
+      "last_used": "2026-06-26T22:35:08Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 360 && tail -10 /tmp/m3b_bg9.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:42:04Z",
+      "id": "bld_ef9de8e0",
+      "last_used": "2026-06-26T22:42:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"undefined reference\\|error:\" /tmp/m3b_build9.log | head -10",
+      "first_used": "2026-06-26T22:42:25Z",
+      "id": "bld_6700b28b",
+      "last_used": "2026-06-26T22:42:25Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -10 /tmp/m3b_bg10.log && echo \"---\" && ls -la [FILTERED_API_KEY]_mcp_stdio_server",
+      "first_used": "2026-06-26T22:50:41Z",
+      "id": "bld_98a846e1",
+      "last_used": "2026-06-26T22:50:41Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_extractor_test.sh",
+      "first_used": "2026-06-26T22:51:53Z",
+      "id": "bld_359973be",
+      "last_used": "2026-06-26T22:51:53Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat >> [FILTERED_API_KEY].txt << 'EOF'\n\n# M3.B Code Extractor tests (tree-sitter AST → entities/relationships)\nadd_executable(test_code_extractor\n    test_code_extractor.cpp\n)\ntarget_include_directories(test_code_extractor PRIVATE\n    ${CMAKE_CURRENT_SOURCE_DIR}/../include\n    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include\n    ${SQLite3_INCLUDE_DIRS}\n)\ntarget_link_libraries(test_code_extractor PRIVATE apollo_core)\nadd_test(NAME CodeExtractorTests COMMAND test_code_extractor)\nEOF\necho \"CMakeLists updated\"",
+      "first_used": "2026-06-26T22:52:50Z",
+      "id": "bld_232f4e16",
+      "last_used": "2026-06-26T22:52:50Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 120 && tail -10 /tmp/build_ext_bg.log && echo \"---\" && ls -la [FILTERED_API_KEY]_code_extractor 2>/dev/null",
+      "first_used": "2026-06-26T22:55:48Z",
+      "id": "bld_e0496cd4",
+      "last_used": "2026-06-26T22:55:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" /tmp/test_ext_build.log | head -10",
+      "first_used": "2026-06-26T22:56:06Z",
+      "id": "bld_aa530b30",
+      "last_used": "2026-06-26T22:56:06Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -30 /tmp/test_ext_build.log",
+      "first_used": "2026-06-26T22:56:25Z",
+      "id": "bld_dd9b77e4",
+      "last_used": "2026-06-26T22:56:25Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -rn \"apollo_mcp\\|apollo_rest_api\\|apollo_codebase_ingest\\|omninet\\|simple_usage\\|apollo\\.hpp\" src/ include/ 2>/dev/null | grep -v \"\\.cpp_o\\|build/\"",
+      "first_used": "2026-06-29T04:22:14Z",
+      "id": "bld_08f65cba",
+      "last_used": "2026-06-29T04:22:14Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY] -name \"libapollo_core.a\" -o -name \"apollo_core*.a\" 2>/dev/null",
+      "first_used": "2026-06-29T04:39:49Z",
+      "id": "bld_bbed156a",
+      "last_used": "2026-06-29T04:39:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && ls -la build/tests/ build/examples/",
+      "first_used": "2026-06-29T14:47:56Z",
+      "id": "bld_d199b6b2",
+      "last_used": "2026-06-29T14:47:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find . -type f \\( -name \"*.cpp\" -o -name \"*.hpp\" -o -name \"*.h\" \\) 2>/dev/null | grep -v \"_deps\\|build/\\|models/\\|/tests/\" | head -50",
+      "first_used": "2026-06-30T00:54:01Z",
+      "id": "bld_cc191e6b",
+      "last_used": "2026-06-30T00:54:01Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find . -type f -name \"*.cpp\" 2>/dev/null | grep -v \"_deps\\|build/\\|models/\" | head -50 && echo \"---examples---\" && ls examples/ 2>/dev/null",
+      "first_used": "2026-06-30T00:54:26Z",
+      "id": "bld_2f35e561",
+      "last_used": "2026-06-30T00:54:26Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -n -i \"omninet\\|apollo_mcp\\|mcp\" [FILTERED_API_KEY].txt [FILTERED_API_KEY].txt 2>/dev/null | head -20",
+      "first_used": "2026-06-30T00:57:35Z",
+      "id": "bld_15891ba6",
+      "last_used": "2026-06-30T00:57:35Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY].txt | head -150",
+      "first_used": "2026-06-30T00:57:59Z",
+      "id": "bld_3df4d347",
+      "last_used": "2026-06-30T00:57:59Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat [FILTERED_API_KEY].txt && echo \"---tests---\" && cat [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-30T00:58:45Z",
+      "id": "bld_392012c6",
+      "last_used": "2026-06-30T00:58:45Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 240 && tail -20 /tmp/refactor_bg.log && echo \"---\" && ls -la [FILTERED_API_KEY]_core.a 2>/dev/null",
+      "first_used": "2026-06-30T01:04:33Z",
+      "id": "bld_d0255250",
+      "last_used": "2026-06-30T01:08:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY] -name \"libapollo_core*\" 2>/dev/null",
+      "first_used": "2026-06-30T01:09:42Z",
+      "id": "bld_aacbb4f2",
+      "last_used": "2026-06-30T01:09:42Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"warning:\" /tmp/refactor_build.log | head -10",
+      "first_used": "2026-06-30T01:10:04Z",
+      "id": "bld_6c8b3141",
+      "last_used": "2026-06-30T01:10:04Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/clean_build.sh",
+      "first_used": "2026-06-30T01:15:02Z",
+      "id": "bld_58f17e1e",
+      "last_used": "2026-06-30T01:15:02Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/tests_build.sh",
+      "first_used": "2026-06-30T01:16:35Z",
+      "id": "bld_f23ccf50",
+      "last_used": "2026-06-30T01:16:35Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "[FILTERED_API_KEY]_code_extractor",
+      "first_used": "2026-06-30T01:17:29Z",
+      "id": "bld_4dc08161",
+      "last_used": "2026-06-30T01:17:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/compile_debug.sh",
+      "first_used": "2026-06-30T01:19:47Z",
+      "id": "bld_478be327",
+      "last_used": "2026-06-30T01:19:47Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"error:\" /tmp/sym_build.log | head -5",
+      "first_used": "2026-06-30T01:26:23Z",
+      "id": "bld_3446b9c4",
+      "last_used": "2026-06-30T01:26:23Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "find [FILTERED_API_KEY] -maxdepth 3 -name \"*.md\" 2>/dev/null | grep -v \"_deps\\|build/\\|node_modules\" | sort",
+      "first_used": "2026-06-30T01:43:12Z",
+      "id": "bld_2bf402e4",
+      "last_used": "2026-06-30T01:43:12Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 300 && tail -40 /tmp/audit_bg.log && echo \"---\" && wc -l /tmp/audit_build.log",
+      "first_used": "2026-06-30T02:34:19Z",
+      "id": "bld_91eb8f4d",
+      "last_used": "2026-06-30T02:34:19Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cat >> [FILTERED_API_KEY].txt << 'EOF'\n\n# HyDE (Hypothetical Document Embeddings) tests\nadd_executable(test_hyde\n    test_hyde.cpp\n)\ntarget_include_directories(test_hyde PRIVATE\n    ${CMAKE_CURRENT_SOURCE_DIR}/../include\n    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include\n)\ntarget_link_libraries(test_hyde PRIVATE apollo_core)\nadd_test(NAME test_hyde COMMAND test_hyde)\n\n# Anthropic-style Contextual Retrieval tests\nadd_executable(test_contextual_retrieval\n    test_contextual_retrieval.cpp\n)\ntarget_include_directories(test_contextual_retrieval PRIVATE\n    ${CMAKE_CURRENT_SOURCE_DIR}/../include\n    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include\n)\ntarget_link_libraries(test_contextual_retrieval PRIVATE apollo_core)\nadd_test(NAME test_contextual_retrieval COMMAND test_contextual_retrieval)\nEOF\necho \"CMakeLists updated\"",
+      "first_used": "2026-06-30T03:39:54Z",
+      "id": "bld_0167a2fa",
+      "last_used": "2026-06-30T03:39:54Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -E \"warning:\" /tmp/audit_build.log",
+      "first_used": "2026-06-30T03:43:58Z",
+      "id": "bld_7b5f23ef",
+      "last_used": "2026-06-30T03:43:58Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/wire_build.sh",
+      "first_used": "2026-06-30T04:30:13Z",
+      "id": "bld_247ab6b3",
+      "last_used": "2026-06-30T04:32:12Z",
+      "notes": "",
+      "success": true,
+      "use_count": 2
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep \"error:\" /tmp/all_tests_build.log | head -10",
+      "first_used": "2026-06-30T04:32:48Z",
+      "id": "bld_ee30e576",
+      "last_used": "2026-06-30T04:32:48Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -B2 \"error:\" /tmp/all_tests_build.log | head -20",
+      "first_used": "2026-06-30T04:32:56Z",
+      "id": "bld_acbcafd6",
+      "last_used": "2026-06-30T04:32:56Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -A20 \"target_sources\" CMakeLists.txt | head -25",
+      "first_used": "2026-06-30T04:33:05Z",
+      "id": "bld_e4770945",
+      "last_used": "2026-06-30T04:33:05Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_hybrid_test.sh",
+      "first_used": "2026-06-30T04:43:20Z",
+      "id": "bld_14c36169",
+      "last_used": "2026-06-30T04:43:20Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "tail -20 /tmp/test_hybrid_build.log",
+      "first_used": "2026-06-30T04:43:31Z",
+      "id": "bld_b59256b6",
+      "last_used": "2026-06-30T04:43:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/build_hybrid2.sh",
+      "first_used": "2026-06-30T04:43:51Z",
+      "id": "bld_d548d806",
+      "last_used": "2026-06-30T04:43:51Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/demo_build.sh",
+      "first_used": "2026-06-30T04:59:31Z",
+      "id": "bld_05e19083",
+      "last_used": "2026-06-30T04:59:31Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "cd [FILTERED_API_KEY] && grep -B1 -A8 \"test_embeddings\" tests/CMakeLists.txt",
+      "first_used": "2026-06-30T05:03:39Z",
+      "id": "bld_c159b0ee",
+      "last_used": "2026-06-30T05:03:39Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep \"HybridSearchTests\\|test_hybrid_search\" [FILTERED_API_KEY].txt",
+      "first_used": "2026-06-30T05:04:36Z",
+      "id": "bld_f755c0a2",
+      "last_used": "2026-06-30T05:04:36Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "sleep 540 && tail -30 /tmp/final_ctest_bg.log",
+      "first_used": "2026-06-30T05:14:29Z",
+      "id": "bld_8ba99cf7",
+      "last_used": "2026-06-30T05:14:29Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/run_ctest.sh",
+      "first_used": "2026-06-30T05:14:55Z",
+      "id": "bld_899467f6",
+      "last_used": "2026-06-30T05:14:55Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "grep -B1 -A3 \"test_embeddings\" [FILTERED_API_KEY].cmake | head -10",
+      "first_used": "2026-06-30T05:15:49Z",
+      "id": "bld_af5ce37d",
+      "last_used": "2026-06-30T05:15:49Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    },
+    {
+      "attempts": 1,
+      "command": "bash /tmp/final_ctest2.sh",
+      "first_used": "2026-06-30T05:17:44Z",
+      "id": "bld_e6b143ba",
+      "last_used": "2026-06-30T05:17:44Z",
+      "notes": "",
+      "success": true,
+      "use_count": 1
+    }
+  ],
+  "config": {
+    "auto_detect_errors": true,
+    "auto_detect_preferences": true,
+    "auto_learn_builds": true,
+    "enabled": true,
+    "max_entries_per_category": 50,
+    "max_session_history": 20,
+    "max_total_size_kb": 100,
+    "memory_age_days": 30
+  },
+  "errors": [],
+  "patterns": [],
+  "preferences": [],
+  "project": {
+    "build_command": "",
+    "detected_at": "1969-12-25T18:00:00Z",
+    "last_verified": "2026-06-30T00:52:18Z",
+    "main_files": [],
+    "test_command": "",
+    "type": ""
+  },
+  "sessions": [
+    {
+      "files_touched": [],
+      "id": "ses_46f6be72",
+      "iterations": 5,
+      "summary": "Session with 5 iterations",
+      "timestamp": "2026-06-15T18:35:27Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_63dc2567",
+      "iterations": 2,
+      "summary": "Session with 2 iterations",
+      "timestamp": "2026-06-16T12:37:39Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_b74a35ad",
+      "iterations": 1,
+      "summary": "Session with 1 iterations",
+      "timestamp": "2026-06-16T22:54:10Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_032964ff",
+      "iterations": 20,
+      "summary": "Session with 20 iterations",
+      "timestamp": "2026-06-17T09:55:58Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_0d0cace6",
+      "iterations": 122,
+      "summary": "Session with 122 iterations",
+      "timestamp": "2026-06-17T20:53:38Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_a7798d2d",
+      "iterations": 1,
+      "summary": "Session with 1 iterations",
+      "timestamp": "2026-06-18T09:23:46Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_2a2a5e96",
+      "iterations": 22,
+      "summary": "Session with 22 iterations",
+      "timestamp": "2026-06-22T16:25:39Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_228c17c1",
+      "iterations": 30,
+      "summary": "Session with 30 iterations",
+      "timestamp": "2026-06-24T02:40:10Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_8fe0ab99",
+      "iterations": 54,
+      "summary": "Session with 54 iterations",
+      "timestamp": "2026-06-24T15:10:17Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_d602751b",
+      "iterations": 18,
+      "summary": "Session with 18 iterations",
+      "timestamp": "2026-06-25T11:16:14Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_103c6fdf",
+      "iterations": 109,
+      "summary": "Session with 109 iterations",
+      "timestamp": "2026-06-26T22:56:39Z"
+    },
+    {
+      "files_touched": [],
+      "id": "ses_26eb3afb",
+      "iterations": 9,
+      "summary": "Session with 9 iterations",
+      "timestamp": "2026-06-29T14:48:02Z"
+    }
+  ],
+  "updated_at": "2026-06-29T14:48:02Z",
+  "version": "1.0"
+}

@@ -14,6 +14,8 @@
 #include "apollocore/kb_persistence.hpp"
 #include "apollocore/fbin.hpp"
 #include "apollocore/entity_extractor.hpp"
+#include "apollocore/apollo_hybrid_search.hpp"  // M2.7: vector + BM25 + graph
+#include "apollocore/cross_encoder.hpp"        // M2.8: LLM-based reranking
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -196,10 +198,66 @@ public:
      * Query the knowledge base
      */
     std::vector<std::pair<std::string, float>> query(
-        const std::string& query_text, 
+        const std::string& query_text,
         size_t top_k = 5
     );
-    
+
+    // ========================================================================
+    // Hybrid Search (vector + BM25 + graph) — Phase M2.7
+    // ========================================================================
+
+    /**
+     * Hybrid search: combines vector similarity + BM25 keyword match + graph
+     * expansion (entities matching query terms) using weighted-sum fusion.
+     *
+     * Unlike `query()` which only does vector similarity, this searches all
+     * three sources simultaneously and combines the scores.
+     *
+     * @param query_text Natural language query
+     * @param top_k Number of results to return
+     * @param alpha Weight for vector similarity (default 0.5)
+     * @param beta  Weight for BM25 keyword score (default 0.3)
+     * @param gamma Weight for graph/entity boost (default 0.2)
+     * @return Ranked list of hybrid results with per-source scores
+     */
+    std::vector<search::HybridResult> query_hybrid(
+        const std::string& query_text,
+        size_t top_k = 5,
+        double alpha = 0.5,
+        double beta = 0.3,
+        double gamma = 0.2);
+
+    // ========================================================================
+    // Cross-Encoder Reranking (vector + LLM scoring) — Phase M2.8
+    // ========================================================================
+
+    /**
+     * Query with cross-encoder reranking: does vector search then re-scores
+     * top results with the LLM (cross-encoder style).
+     *
+     * Requires an LLM model to be loaded via `load_llm_model()`.
+     * Without an LLM, this falls back to plain vector search.
+     *
+     * @param query_text Natural language query
+     * @param top_k Number of results to return after reranking
+     * @param candidate_k Number of candidates to retrieve before reranking
+     *                     (default: top_k * 4 for good recall)
+     * @return Reranked results with original + rerank + final scores
+     */
+    std::vector<RerankedResult> query_with_rerank(
+        const std::string& query_text,
+        size_t top_k = 5,
+        size_t candidate_k = 0  // 0 = auto (4 * top_k)
+    );
+
+    /**
+     * Full pipeline: hybrid search → cross-encoder rerank.
+     * Best quality, slowest (requires LLM for rerank step).
+     */
+    std::vector<RerankedResult> query_full(
+        const std::string& query_text,
+        size_t top_k = 5);
+
     // ========================================================================
     // Entity extraction (requires LLM model)
     // ========================================================================

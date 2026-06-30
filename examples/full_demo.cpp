@@ -191,25 +191,52 @@ int main() {
         {"What is the study of life?", "Should find biology document"},
         {"Tell me about the uncertainty principle", "Should find quantum mechanics document"}
     };
-    
+
     for (const auto& [q, expected] : queries) {
         std::cout << "\n  Query: \"" << q << "\"\n";
         std::cout << "  Expected: " << expected << "\n";
         std::cout << "  ─────────────────────────────────────\n";
-        
+
         auto ts = high_resolution_clock::now();
         auto results = kb.query(q, 3);
         auto te = high_resolution_clock::now();
-        
+
         for (size_t i = 0; i < results.size(); i++) {
             const auto& [content, score] = results[i];
             std::string preview = content.substr(0, 80);
             if (content.length() > 80) preview += "...";
-            std::cout << "  [" << (i+1) << "] score=" << std::fixed 
-                      << std::setprecision(3) << score << " | " 
+            std::cout << "  [" << (i+1) << "] score=" << std::fixed
+                      << std::setprecision(3) << score << " | "
                       << preview << "\n";
         }
-        std::cout << "  (took " << duration_cast<microseconds>(te - ts).count() 
+        std::cout << "  (took " << duration_cast<microseconds>(te - ts).count()
+                  << " µs)\n";
+    }
+
+    // ====================================================================
+    // Step 6.5: Hybrid search (vector + BM25 + graph)
+    // ====================================================================
+    std::cout << "\n";
+    print_step(6, "Hybrid search — vector + BM25 + graph (Phase M2.7)");
+    {
+        std::cout << "\n  Query: \"physics theory\"\n";
+        std::cout << "  ─────────────────────────────────────\n";
+
+        auto ts = high_resolution_clock::now();
+        auto hybrid = kb.query_hybrid("physics theory", 3, 0.5, 0.3, 0.2);
+        auto te = high_resolution_clock::now();
+
+        std::cout << "  Top hybrid results (alpha=0.5 vec, beta=0.3 BM25, "
+                     "gamma=0.2 graph):\n";
+        for (size_t i = 0; i < hybrid.size(); i++) {
+            const auto& h = hybrid[i];
+            std::cout << "  [" << (i+1) << "] combined=" << std::fixed
+                      << std::setprecision(3) << h.score
+                      << " (vec=" << h.vector_score
+                      << ", bm25=" << h.bm25_score
+                      << ", graph=" << h.graph_score << ")\n";
+        }
+        std::cout << "  (took " << duration_cast<microseconds>(te - ts).count()
                   << " µs)\n";
     }
 
@@ -283,7 +310,7 @@ int main() {
     • Add your own documents
     • Experiment with different chunk sizes
     • Try different query types
-    • Combine with entity extraction (see examples/llm_extraction.cpp)
+    • Combine with entity extraction (enabled by default in this demo)
     
   All code is local. No API keys. No cloud. Just C++.
     )" << "\n";

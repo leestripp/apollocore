@@ -209,6 +209,7 @@ void test_stats() {
     
     auto stats = extractor.get_stats();
     assert(stats.total_extractions == 2);
+    (void)stats;
     
     std::cout << "PASSED\n";
 }

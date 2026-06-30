@@ -11,7 +11,7 @@ target_include_directories(test_v2 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
 )
 target_link_libraries(test_v2 PRIVATE apollo_core)
-add_test(NAME test_v2 COMMAND test_v2)
+add_test(NAME test_v2 COMMAND test_v2 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # Real embedding test (requires GGUF model)
 add_executable(test_embeddings
@@ -22,7 +22,7 @@ target_include_directories(test_embeddings PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
 )
 target_link_libraries(test_embeddings PRIVATE apollo_core)
-add_test(NAME test_embeddings COMMAND test_embeddings)
+add_test(NAME test_embeddings COMMAND test_embeddings WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # Entity extraction tests (can run without LLM model)
 add_executable(test_entity_extraction
@@ -116,3 +116,37 @@ target_include_directories(test_code_extractor PRIVATE
 )
 target_link_libraries(test_code_extractor PRIVATE apollo_core)
 add_test(NAME CodeExtractorTests COMMAND test_code_extractor)
+
+# HyDE (Hypothetical Document Embeddings) tests
+add_executable(test_hyde
+    test_hyde.cpp
+)
+target_include_directories(test_hyde PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+)
+target_link_libraries(test_hyde PRIVATE apollo_core)
+add_test(NAME test_hyde COMMAND test_hyde)
+
+# Anthropic-style Contextual Retrieval tests
+add_executable(test_contextual_retrieval
+    test_contextual_retrieval.cpp
+)
+target_include_directories(test_contextual_retrieval PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+)
+target_link_libraries(test_contextual_retrieval PRIVATE apollo_core)
+add_test(NAME test_contextual_retrieval COMMAND test_contextual_retrieval)
+
+# M2.7+M2.8 Hybrid Search and Cross-Encoder Reranking tests
+add_executable(test_hybrid_search
+    test_hybrid_search.cpp
+)
+target_include_directories(test_hybrid_search PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    ${SQLite3_INCLUDE_DIRS}
+)
+target_link_libraries(test_hybrid_search PRIVATE apollo_core)
+add_test(NAME HybridSearchTests COMMAND test_hybrid_search WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

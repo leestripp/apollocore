@@ -147,6 +147,7 @@ void test_score_filtering() {
     // Should filter out low-scoring results
     for (const auto& r : reranked) {
         assert(r.final_score >= 0.6f);
+        (void)r;  // suppress unused warning
     }
     
     std::cout << "PASSED\n";
@@ -179,6 +180,7 @@ void test_stats() {
     
     auto stats = reranker.get_stats();
     assert(stats.total_reranked == 2);
+    (void)stats;
     assert(stats.total_documents >= 0);
     
     std::cout << "PASSED\n";

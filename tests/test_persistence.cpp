@@ -101,6 +101,7 @@ void test_execute_with_params() {
         assert(name == "Test Knowledge Base");
         assert(dim == 768);
         found = true;
+        (void)name; (void)dim; (void)found;  // suppress unused-but-set
     }
     db.finalize(stmt);
     
@@ -138,7 +139,8 @@ void test_transactions() {
     int count = db.column_int(stmt, 0);
     db.finalize(stmt);
     assert(count == 1);
-    
+    (void)count;
+
     std::filesystem::remove(test_path);
     std::filesystem::remove(test_path + "-wal");
     std::cout << "PASSED\n";
@@ -184,6 +186,7 @@ void test_persist_and_reload() {
             assert(content == "Persistent chunk content");
             assert(pos == 0);
             found = true;
+            (void)content; (void)pos; (void)found;
         }
         db.finalize(stmt);
         
@@ -255,24 +258,28 @@ void test_realistic_workflow() {
     int nodes = db.column_int(stmt, 0);
     db.finalize(stmt);
     assert(nodes == 1);
-    
+    (void)nodes;
+
     stmt = db.prepare("SELECT COUNT(*) FROM chunks WHERE node_id = 'node_001';");
     sqlite3_step(stmt);
     int chunks = db.column_int(stmt, 0);
     db.finalize(stmt);
     assert(chunks == 2);
-    
+    (void)chunks;
+
     stmt = db.prepare("SELECT COUNT(*) FROM entities;");
     sqlite3_step(stmt);
     int entities = db.column_int(stmt, 0);
     db.finalize(stmt);
     assert(entities == 1);
-    
+    (void)entities;
+
     stmt = db.prepare("SELECT COUNT(*) FROM relationships;");
     sqlite3_step(stmt);
     int rels = db.column_int(stmt, 0);
     db.finalize(stmt);
     assert(rels == 1);
+    (void)rels;
     
     std::filesystem::remove(test_path);
     std::filesystem::remove(test_path + "-wal");

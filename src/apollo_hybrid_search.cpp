@@ -5,6 +5,7 @@
  */
 
 #include "apollocore/apollo_hybrid_search.hpp"
+#include "apollocore/apollo_persistence.hpp"  // For ApolloCore full definition
 #include "apollocore/entity_extractor.hpp"
 
 #include <algorithm>
@@ -27,7 +28,7 @@ namespace apollocore_v2::search {
 inline std::unordered_map<std::string, double> graph_expand(
     ApolloCore& kb,
     const std::string& query,
-    size_t max_hops)
+    size_t /*max_hops*/)
 {
     std::unordered_map<std::string, double> chunk_boost;
 

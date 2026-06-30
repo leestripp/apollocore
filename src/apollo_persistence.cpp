@@ -581,7 +581,147 @@ ApolloCore::query(const std::string& query_text, size_t top_k) {
     for (size_t i = 0; i < n; i++) {
         results.push_back({scored[i].content, scored[i].score});
     }
-    
+
+    return results;
+}
+
+// ============================================================================
+// Hybrid Search (M2.7) — vector + BM25 + graph
+// ============================================================================
+
+std::vector<search::HybridResult> ApolloCore::query_hybrid(
+    const std::string& query_text,
+    size_t top_k,
+    double alpha,
+    double beta,
+    double gamma)
+{
+    if (!is_open_) return {};
+    if (!embedder_->is_loaded()) {
+        std::cerr << "[ApolloCore] query_hybrid: embedding model not loaded, "
+                     "falling back to BM25 only\n";
+    }
+
+    search::HybridSearchParams params;
+    params.query = query_text;
+    params.top_k = top_k;
+    params.alpha = alpha;
+    params.beta = beta;
+    params.gamma = gamma;
+    params.candidate_multiplier = 5;  // get 5x more candidates per source
+    params.graph_max_hops = 2;
+
+    return search::hybrid_search(*this, params);
+}
+
+// ============================================================================
+// Cross-Encoder Reranking (M2.8) — vector + LLM scoring
+// ============================================================================
+
+namespace {
+
+// Helper: convert ApolloCore::query result to RerankedResult
+std::vector<RerankedResult> to_reranked(
+    const std::vector<std::pair<std::string, float>>& raw,
+    ApolloCore& kb)
+{
+    std::vector<RerankedResult> results;
+    auto all_chunks = kb.get_all_chunks();
+    std::unordered_map<std::string, std::string> content_map(
+        all_chunks.begin(), all_chunks.end());
+
+    for (const auto& [chunk_id, score] : raw) {
+        std::string content;
+        auto it = content_map.find(chunk_id);
+        if (it != content_map.end()) content = it->second;
+        RerankedResult r(chunk_id, content, score, 0.0f);
+        r.final_score = score;  // No rerank yet
+        results.push_back(r);
+    }
+    return results;
+}
+
+}  // namespace
+
+std::vector<RerankedResult> ApolloCore::query_with_rerank(
+    const std::string& query_text,
+    size_t top_k,
+    size_t candidate_k)
+{
+    if (!is_open_) return {};
+
+    if (candidate_k == 0) candidate_k = std::max(top_k * 4, size_t(20));
+
+    // 1. Vector search to get candidates
+    auto candidates = query(query_text, candidate_k);
+    if (candidates.empty()) return {};
+
+    // 2. Convert to RerankedResult format
+    auto results = to_reranked(candidates, *this);
+
+    // 3. If no LLM, fall back to plain vector ranking
+    if (!entity_extractor_ || !is_llm_loaded()) {
+        if (results.size() > top_k) results.resize(top_k);
+        return results;
+    }
+
+    // 4. Cross-encoder rerank using the loaded LLM
+    RerankConfig config;
+    config.llm.model_path = llm_model_path_;
+    config.top_k = candidate_k;
+    config.return_k = top_k;
+
+    CrossEncoderReranker reranker(config);
+    if (reranker.is_initialized()) {
+        results = reranker.rerank(query_text, results);
+    }
+
+    if (results.size() > top_k) results.resize(top_k);
+    return results;
+}
+
+std::vector<RerankedResult> ApolloCore::query_full(
+    const std::string& query_text,
+    size_t top_k)
+{
+    if (!is_open_) return {};
+
+    // 1. Hybrid search (vector + BM25 + graph)
+    auto hybrid = query_hybrid(query_text, top_k);
+    if (hybrid.empty()) return {};
+
+    // 2. Convert HybridResult to RerankedResult
+    std::vector<RerankedResult> results;
+    results.reserve(hybrid.size());
+    auto all_chunks = get_all_chunks();
+    std::unordered_map<std::string, std::string> content_map(
+        all_chunks.begin(), all_chunks.end());
+
+    for (const auto& h : hybrid) {
+        std::string content;
+        auto it = content_map.find(h.chunk_id);
+        if (it != content_map.end()) content = it->second;
+        RerankedResult r(h.chunk_id, content,
+                         static_cast<float>(h.vector_score),
+                         static_cast<float>(h.bm25_score));
+        r.final_score = static_cast<float>(h.score);
+        results.push_back(r);
+    }
+
+    // 3. Cross-encoder rerank (if LLM is loaded)
+    if (entity_extractor_ && is_llm_loaded()) {
+        RerankConfig config;
+        config.llm.model_path = llm_model_path_;
+        config.top_k = static_cast<size_t>(hybrid.size());
+        config.return_k = top_k;
+
+        CrossEncoderReranker reranker(config);
+        if (reranker.is_initialized()) {
+            results = reranker.rerank(query_text, results);
+        }
+    }
+
+    if (results.size() > top_k) results.resize(top_k);
     return results;
 }
 

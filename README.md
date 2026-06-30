@@ -274,10 +274,27 @@ std::string add_relationship(const std::string& source,
                              float confidence = 1.0f);
 std::vector<std::pair<std::string, float>> query(
     const std::string& query_text, size_t top_k = 5);
+std::vector<search::HybridResult> query_hybrid(
+    const std::string& query_text, size_t top_k = 5,
+    double alpha = 0.5, double beta = 0.3, double gamma = 0.2);
+std::vector<RerankedResult> query_with_rerank(
+    const std::string& query_text, size_t top_k = 5,
+    size_t candidate_k = 0);
+std::vector<RerankedResult> query_full(
+    const std::string& query_text, size_t top_k = 5);
 std::vector<Entity> get_entities(size_t limit = 100);
 std::vector<Relationship> get_relationships(size_t limit = 100);
 std::vector<Entity> get_neighbors(const std::string& entity_name, size_t hops = 1);
 ```
+
+**Query Modes — pick the right one:**
+
+| Method | Signals | Speed | Best for |
+|--------|---------|-------|----------|
+| `query()` | Vector only | Fastest | Pure semantic similarity |
+| `query_hybrid()` | Vector + BM25 + graph | Fast | Better recall (catches exact matches) |
+| `query_with_rerank()` | Vector → LLM rerank | Slower | Precision (filters false positives) |
+| `query_full()` | Hybrid → LLM rerank | Slowest | Highest quality |
 
 **Statistics:**
 ```cpp
@@ -611,11 +628,14 @@ cd build && ctest --output-on-failure
 | ApolloCore Integration | 8 | `tests/test_apollo_persistence` |
 | Hybrid Search (v2) | — | `tests/test_v2` |
 | Embedding Model | — | `tests/test_embeddings` |
-| LLM Entity Extraction | — | `tests/test_entity_extraction` |
-| Cross-Encoder | — | `tests/test_cross_encoder` |
+| LLM Entity Extraction | 14 | `tests/test_entity_extraction` |
+| Cross-Encoder | 7 | `tests/test_cross_encoder` |
+| HyDE | — | `tests/test_hyde` |
+| Contextual Retrieval | — | `tests/test_contextual_retrieval` |
 | **Code Extraction (M3.B)** | **12** | `tests/test_code_extractor` ✅ |
 | **Multi-Project Scoping (M3.C)** | **15** | `tests/test_multi_project` ✅ |
-| **Active tests** | **27** | **all passing** |
+| **Hybrid + Rerank wiring** | **6** | `tests/test_hybrid_search` ✅ |
+| **Active tests** | **33+** | **all passing** |
 
 ---
 

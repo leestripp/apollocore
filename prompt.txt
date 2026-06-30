@@ -1,0 +1,10 @@
+# ApolloCore refactor
+
+We need to make the a Static Library, it will work better as a built-in Tool set for an Agent rather then just a MCP addon
+It will be key for the Agent to understand large codebases etc.. So built-in would be a far better use.
+
+So I want you to remove all MCP code, we don't need OmniNet either.
+We still need the local models, for embeddings and understanding.
+
+Do a full refactor, remove dead/zombie code as you go. Clean up. remove unused unit tests.
+Get the Library building again with no warnings. I want a clean build with all tests passing.

@@ -12,7 +12,9 @@
 
 #pragma once
 
-#include "apollocore/apollo_persistence.hpp"
+// Forward declaration to avoid circular include with apollo_persistence.hpp.
+// The full definition is needed only in apollo_hybrid_search.cpp.
+namespace apollocore_v2 { class ApolloCore; }
 
 #include <nlohmann/json.hpp>
 #include <string>
