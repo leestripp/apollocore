@@ -1,10 +1,13 @@
-# ApolloCore - State-of-the-Art Knowledge Graph RAG System (C++23)
+# ApolloCore - Static Library Refactor (C++23)
 
-> **IMPORTANT**: See [docs/design.md](docs/design.md) for comprehensive architecture and implementation plan.
+> **Refactor**: Converted from MCP addon to embeddable static library.
+> All MCP/OmniNet code removed. Core library retained.
 
-## ✅ Implementation Status: CORE COMPLETE + G1 INTEGRATION DONE
+## ✅ Implementation Status: STATIC LIBRARY - MCP REMOVED
 
-> **Status**: All 10 original phases complete. Phase G1 (entity extraction wiring) also complete — the demo now shows `Entities: 42` (was 0). Relationships still 0 with the 0.5B model (a model capability limitation, not a code issue). See **[Phase G1 Status](#phase-g1-status--complete)** below.
+> **Refactor Date**: 2026-06-30
+> Removed: MCP servers (stdio, REST), OmniNet HTTP server, all MCP headers/sources.
+> Kept: Core library (embeddings, vector search, entity extraction, KB persistence).
 
 | Component | Status | Notes |
 |-----------|--------|-------|

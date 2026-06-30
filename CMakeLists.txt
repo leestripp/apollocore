@@ -51,27 +51,6 @@ string(REPLACE
 file(WRITE "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt" "${_ggml_src_patched}")
 message(STATUS "Patched llama.cpp to enable Vulkan backend")
 
-# OmniNet — HTTP/WebSocket server library (Phase O1)
-# Pinned to a specific tag for reproducibility.
-# Used by future REST API and MCP HTTP transport.
-# See docs/omninet-integration.md
-option(OMNINET_SKIP_FETCH "Use system OmniNet instead of FetchContent (for CI)" OFF)
-if(NOT OMNINET_SKIP_FETCH)
-    FetchContent_Declare(
-        omninet
-        GIT_REPOSITORY https://gitlab.com/leestripp/omninet.git
-        GIT_TAG        0.7.1
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(omninet)
-else()
-    # Allow CI to use a pre-installed OmniNet
-    find_package(omninet QUIET)
-    if(NOT omninet_FOUND)
-        message(FATAL_ERROR "OMNINET_SKIP_FETCH=ON but find_package(omninet) failed")
-    endif()
-endif()
-
 # ============================================================================
 # Tree-sitter — proper AST parsing for code (M3.B)
 # ============================================================================
@@ -139,17 +118,18 @@ target_sources(apollo_core PRIVATE
     src/kb_persistence.cpp
     src/apollo_persistence.cpp
     src/apollo_ts_wrapper.cpp   # Phase M3.B: tree-sitter C++ wrapper
+    src/apollo_code_extractor.cpp   # Phase M3.B: AST → entities/relationships
 )
 target_include_directories(apollo_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        # Tree-sitter (Phase M3.B) - PUBLIC so consumers see the headers
+        ${tree-sitter_SOURCE_DIR}/lib/include
+        ${tree-sitter-cpp_SOURCE_DIR}/src
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${llama_cpp_SOURCE_DIR}/include
-        # Tree-sitter (Phase M3.B)
-        ${tree-sitter_SOURCE_DIR}/lib/include
-        ${tree-sitter-cpp_SOURCE_DIR}/src
 )
 target_link_libraries(apollo_core
     PUBLIC
@@ -157,7 +137,6 @@ target_link_libraries(apollo_core
         llama
         SQLite::SQLite3
     PRIVATE
-        OmniNet
         # Tree-sitter (Phase M3.B) - static linking
         tree-sitter
         tree-sitter-cpp

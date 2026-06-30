@@ -14,13 +14,13 @@
  *   ./build/examples/full_demo
  */
 
-#include <apollocore/apollo.hpp>
+#include <apollocore/apollo_persistence.hpp>
 #include <apollocore/entity_extractor.hpp>
 #include <iostream>
 #include <chrono>
 #include <iomanip>
 
-using namespace apollocore;
+using namespace apollocore_v2;
 using namespace std::chrono;
 
 void print_header(const std::string& title) {

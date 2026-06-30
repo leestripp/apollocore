@@ -90,7 +90,7 @@ std::string LlamaCppBackend::generate(const std::string& prompt) {
     
     // Get vocab from model
     const llama_vocab* vocab = llama_model_get_vocab(state_->model);
-    int n_vocab = llama_vocab_n_tokens(vocab);
+    (void)vocab;  // Available if needed for custom tokenization
     int n_ctx = llama_n_ctx(state_->ctx);
     
     // Tokenize the prompt

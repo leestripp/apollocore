@@ -69,7 +69,7 @@ curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/
 ### 3. Run the Example
 
 ```bash
-./build/examples/simple_usage
+./build/examples/full_demo
 ```
 
 ### 4. Minimal Code Example
@@ -128,19 +128,11 @@ All dependencies are automatically fetched by CMake:
 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | master | Local LLM/embedding inference |
 | [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | JSON serialization |
 | [SQLite3](https://www.sqlite.org/) | 3.46+ | Metadata storage |
-| [OmniNet](https://gitlab.com/leestripp/omninet) | 0.7.1 | HTTP/WebSocket server (private dep) |
-
-OmniNet brings these system-level requirements (installed by your package manager):
-
-| System Package | Ubuntu/Debian | Purpose |
-|----------------|---------------|---------|
-| OpenSSL 3.x | `libssl-dev` | TLS + crypto for OmniNet |
-| zlib | `zlib1g-dev` | HTTP gzip compression |
-| SQLite3 dev | `libsqlite3-dev` | OmniNet session storage |
+| [tree-sitter](https://github.com/tree-sitter/tree-sitter) | v0.26.9 | C++ AST parsing for code entities |
 
 Quick install on Ubuntu/Debian:
 ```bash
-sudo apt install -y libssl-dev zlib1g-dev libsqlite3-dev
+sudo apt install -y libssl-dev zlib1g-dev libsqlite3-dev cmake build-essential
 ```
 
 ### Build Options
@@ -478,7 +470,7 @@ cmake --build build -j$(nproc)
 ### Run Example
 
 ```bash
-./build/examples/simple_usage
+./build/examples/full_demo
 ```
 
 ### Build Only the Library
@@ -507,10 +499,10 @@ cd build && ctest --output-on-failure
 ./build/tests/test_persistence
 ./build/tests/test_kb_persistence
 ./build/tests/test_apollo_persistence
+./build/tests/test_multi_project
+./build/tests/test_code_extractor
 ./build/tests/test_fbin
-./build/tests/test_hyde
 ./build/tests/test_cross_encoder
-./build/tests/test_contextual_retrieval
 ```
 
 ### Test Coverage
@@ -520,12 +512,12 @@ cd build && ctest --output-on-failure
 | Entity Extraction | 14 | ✅ All passing |
 | Persistence (SQLite) | 7 | ✅ All passing |
 | Knowledge Base Persistence | 14 | ✅ All passing |
-| ApolloCore Integration | 10 | ✅ All passing |
+| ApolloCore Integration | 15 | ✅ All passing |
 | FBIN (embeddings) | 12 | ✅ All passing |
-| HyDE | 7 | ✅ All passing |
 | Cross-Encoder | 7 | ✅ All passing |
-| Contextual Retrieval | 9 | ✅ All passing |
-| **Total** | **80+** | **✅** |
+| Code Extraction (tree-sitter) | 12 | ✅ All passing |
+| Multi-Project Scoping | 15 | ✅ All passing |
+| **Total** | **96+** | **✅** |
 
 ---
 

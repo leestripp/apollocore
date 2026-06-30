@@ -11,7 +11,9 @@
 // Grammar symbols (extern "C" to avoid name mangling)
 extern "C" {
     const TSLanguage* tree_sitter_cpp();
+#ifdef APOLLOCORE_ENABLE_PYTHON
     const TSLanguage* tree_sitter_python();
+#endif
 }
 
 namespace apollocore_v2::ts {
@@ -187,7 +189,15 @@ bool TSParser::set_cpp_language() {
 }
 
 bool TSParser::set_python_language() {
+#ifdef APOLLOCORE_ENABLE_PYTHON
     return ts_parser_set_language(parser_, tree_sitter_python());
+#else
+    // tree-sitter-python not linked. Disable to avoid link errors.
+    if (parser_) {
+        ts_parser_reset(parser_);
+    }
+    return false;
+#endif
 }
 
 TSTree TSParser::parse_string(std::string_view source) {

@@ -91,6 +91,41 @@ public:
 
 public:
     ::TSNode node_{};  // TSNode is a small POD, public for direct C API interop
+
+    // True if this is a default-initialized (null) node
+    bool is_null() const {
+        return ts_node_is_null(node_);
+    }
+
+    // Convenience: start line (0-based)
+    uint32_t start_row() const {
+        return ts_node_start_point(node_).row;
+    }
+
+    // Convenience: end line (0-based)
+    uint32_t end_row() const {
+        return ts_node_end_point(node_).row;
+    }
+
+    // Convenience: start column (0-based)
+    uint32_t start_column() const {
+        return ts_node_start_point(node_).column;
+    }
+
+    // Convenience: end column (0-based)
+    uint32_t end_column() const {
+        return ts_node_end_point(node_).column;
+    }
+
+    // Convenience: start byte offset
+    uint32_t start_byte() const {
+        return ts_node_start_byte(node_);
+    }
+
+    // Convenience: end byte offset
+    uint32_t end_byte() const {
+        return ts_node_end_byte(node_);
+    }
 };
 
 // ============================================================================
@@ -106,6 +141,11 @@ public:
     TSTree& operator=(TSTree&& other) noexcept;
     TSTree(const TSTree&) = delete;
     TSTree& operator=(const TSTree&) = delete;
+
+    // True if this is an empty/null tree
+    bool is_null() const {
+        return tree_ == nullptr;
+    }
 
     // Root node
     TSNode root_node() const;

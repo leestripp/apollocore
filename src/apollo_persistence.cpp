@@ -171,12 +171,12 @@ ApolloCore::~ApolloCore() {
 // ============================================================================
 
 bool ApolloCore::load_embedding_model(
-    const std::string& path, bool use_gpu) {
+    const std::string& path, bool /*use_gpu*/) {
     return embedder_->load(path);
 }
 
 bool ApolloCore::load_llm_model(
-    const std::string& path, bool use_gpu) {
+    const std::string& path, bool /*use_gpu*/) {
     // Build extraction config using the loaded model
     ExtractionConfig config = llama_extraction_config(path);
     
@@ -886,13 +886,7 @@ ApolloCore::Stats ApolloCore::get_stats() {
     auto visible = visible_projects();
     std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
 
-    // Count documents visible to current project
-    stats.document_count = 0;
-    for (const auto& [id, content] : documents_) {
-        // Check project via KB (need to look up project_id for this doc)
-        // For efficiency, use kb_persistence_->load_all_nodes() once
-    }
-
+    // Count documents visible to current project (real count below)
     if (is_open_) {
         // Filtered counts from DB
         auto nodes = kb_persistence_->load_all_nodes();
