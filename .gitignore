@@ -7,6 +7,9 @@ cmake-build-*/
 # CTest artifacts (recreated on each `ctest` run)
 /Testing/
 
+# CodeMax agent internals — never track
+.codemax/
+
 # Model files (large, downloaded by CMake)
 models/*.gguf
 models/*.bin
