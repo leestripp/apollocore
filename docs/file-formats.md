@@ -127,37 +127,6 @@ CREATE TABLE config (
 );
 ```
 
-#### `nodes` Table
-
-```sql
-CREATE TABLE nodes (
-    id            TEXT    PRIMARY KEY,
-    title         TEXT    NOT NULL,
-    content       TEXT,
-    parent_id     TEXT,
-    document_type TEXT,
-    metadata      TEXT,    -- JSON string
-    created_at    TEXT    DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TEXT    DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_nodes_parent ON nodes(parent_id);
-```
-
-#### `chunks` Table
-
-```sql
-CREATE TABLE chunks (
-    id             TEXT    PRIMARY KEY,
-    node_id        TEXT    NOT NULL,
-    content        TEXT    NOT NULL,
-    position       INTEGER,
-    embedding_file TEXT,    -- Path to .fbin file
-    content_hash   TEXT,    -- MD5 of content (for incremental updates)
-    created_at     TEXT    DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_chunks_node  ON chunks(node_id);
-CREATE INDEX idx_chunks_hash  ON chunks(content_hash);
-```
 
 #### `entities` Table
 
@@ -166,15 +135,17 @@ CREATE TABLE entities (
     id          TEXT    PRIMARY KEY,
     chunk_id    TEXT,
     name        TEXT    NOT NULL,
-    type        TEXT    NOT NULL,  -- PERSON, ORGANIZATION, etc.
+    type        TEXT    NOT NULL,  -- PERSON, FUNCTION, CLASS, etc.
     description TEXT,
     confidence  REAL    DEFAULT 0.5,
     metadata    TEXT,              -- JSON string
+    project_id  TEXT    NOT NULL DEFAULT 'default',  -- M3.C: project scoping
     created_at  TEXT    DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_entities_chunk ON entities(chunk_id);
-CREATE INDEX idx_entities_type  ON entities(type);
-CREATE INDEX idx_entities_name  ON entities(name);
+CREATE INDEX idx_entities_chunk    ON entities(chunk_id);
+CREATE INDEX idx_entities_type     ON entities(type);
+CREATE INDEX idx_entities_name     ON entities(name);
+CREATE INDEX idx_entities_project  ON entities(project_id);  -- M3.C
 ```
 
 #### `relationships` Table
@@ -184,14 +155,75 @@ CREATE TABLE relationships (
     id          TEXT    PRIMARY KEY,
     source_id   TEXT    NOT NULL,
     target_id   TEXT    NOT NULL,
-    type        TEXT    NOT NULL,  -- FOUNDED, WORKED_AT, etc.
+    type        TEXT    NOT NULL,  -- FOUNDED, CALLS, INHERITS, etc.
     description TEXT,
     confidence  REAL    DEFAULT 0.5,
+    project_id  TEXT    NOT NULL DEFAULT 'default',  -- M3.C: project scoping
     created_at  TEXT    DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_rels_source ON relationships(source_id);
-CREATE INDEX idx_rels_target ON relationships(target_id);
-CREATE INDEX idx_rels_type   ON relationships(type);
+CREATE INDEX idx_rels_source   ON relationships(source_id);
+CREATE INDEX idx_rels_target   ON relationships(target_id);
+CREATE INDEX idx_rels_type     ON relationships(type);
+CREATE INDEX idx_rels_project  ON relationships(project_id);  -- M3.C
+```
+
+#### `projects` Table (M3.C — multi-agent scoping)
+
+```sql
+CREATE TABLE projects (
+    id         TEXT    PRIMARY KEY,
+    name       TEXT    NOT NULL UNIQUE,
+    description TEXT,
+    path       TEXT    NOT NULL,         -- Project's KB path
+    is_shared  INTEGER NOT NULL DEFAULT 0,  -- Readable by other projects
+    owner      TEXT,                    -- Agent name or user
+    metadata   TEXT,                    -- JSON
+    created_at TEXT    DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_projects_name   ON projects(name);
+CREATE INDEX idx_projects_shared ON projects(is_shared);
+```
+
+**M3.C Migration:** All existing tables gain a `project_id TEXT NOT NULL
+DEFAULT 'default'` column. The `projects` table is created. Pre-existing
+data is automatically placed in the `default` project. Schema version is
+tracked via `PRAGMA user_version` (set to `1` after M3.C migration).
+
+#### `nodes` Table (with M3.C)
+
+```sql
+CREATE TABLE nodes (
+    id            TEXT    PRIMARY KEY,
+    title         TEXT    NOT NULL,
+    content       TEXT,
+    parent_id     TEXT,
+    document_type TEXT,
+    metadata      TEXT,    -- JSON string
+    project_id    TEXT    NOT NULL DEFAULT 'default',  -- M3.C
+    created_at    TEXT    DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TEXT    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_nodes_parent   ON nodes(parent_id);
+CREATE INDEX idx_nodes_project  ON nodes(project_id);  -- M3.C
+```
+
+#### `chunks` Table (with M3.C)
+
+```sql
+CREATE TABLE chunks (
+    id             TEXT    PRIMARY KEY,
+    node_id        TEXT    NOT NULL,
+    content        TEXT    NOT NULL,
+    position       INTEGER,
+    embedding_file TEXT,    -- Path to .fbin file
+    content_hash   TEXT,    -- MD5 of content (for incremental updates)
+    project_id     TEXT    NOT NULL DEFAULT 'default',  -- M3.C
+    created_at     TEXT    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_chunks_node    ON chunks(node_id);
+CREATE INDEX idx_chunks_hash    ON chunks(content_hash);
+CREATE INDEX idx_chunks_project  ON chunks(project_id);  -- M3.C
 ```
 
 ### PRAGMA Settings

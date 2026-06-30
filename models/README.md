@@ -47,13 +47,22 @@ curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/
 ```cpp
 #include <apollocore/apollo_persistence.hpp>
 
-apollocore_v2::ApolloCoreWithPersistence kb;
+apollocore_v2::ApolloCore kb;
 
 // Load the embedding model
 kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
 
-// (Optional) Configure entity extraction with the LLM
-// kb.set_llm_model("models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
+// (Optional) Load LLM for entity extraction (M3.A)
+kb.load_llm_model("models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
+
+// Create a knowledge base
+kb.create("data/my_kb", "My KB");
+
+// Add a document (auto-embedded)
+kb.add_document("Albert Einstein worked at Princeton.", "doc_001", 512);
+
+// Query
+auto results = kb.query("Einstein Princeton", 5);
 ```
 
 ## Why these models?

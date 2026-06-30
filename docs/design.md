@@ -33,19 +33,27 @@
 
 ## Current Code State: What We Have vs. What's Missing
 
-### Current Implementation (MOCK/FAKE)
-| Component | Status | Problem |
-|-----------|--------|---------|
-| KnowledgeNode tree | ✅ Exists | Not a knowledge graph, just hierarchy |
-| HashEmbedding | ❌ FAKE | Not real embeddings, hash-based fallback |
-| VectorStore | ✅ Exists | In-memory, basic cosine similarity |
-| BM25Index | ✅ Exists | Proper implementation |
-| Hybrid search | ✅ Exists | RRF fusion present |
-| Entity extraction | ❌ Missing | No LLM-based extraction |
-| Knowledge graph | ❌ Missing | No graph structure |
-| Contextual chunking | ❌ Missing | Basic sentence splitting |
-| Reranking | ❌ Missing | No cross-encoder |
-| Query enhancement | ❌ Missing | No HyDE or rewriting |
+### Current Implementation (as of June 2026)
+| Component | Status | Implementation |
+|-----------|--------|----------------|
+| Knowledge graph | ✅ Implemented | SQLite + entity/relationship extraction |
+| Embeddings | ✅ Real | llama.cpp / nomic-embed GGUF (768-dim) |
+| Vector similarity | ✅ Real | Cosine similarity on real embeddings |
+| BM25Index | ✅ Real | Proper BM25 implementation in `apollo_hybrid_search.hpp` |
+| Hybrid search | ✅ Implemented | RRF fusion (vector + BM25) |
+| LLM entity extraction | ✅ Implemented | Qwen2.5 via llama.cpp |
+| Knowledge graph storage | ✅ Implemented | entities + relationships tables |
+| Contextual chunking | ✅ Basic | Sentence-splitting (Anthropic-style is on roadmap) |
+| Cross-encoder reranking | ✅ Implemented | `cross_encoder.hpp` |
+| Query enhancement (HyDE) | ✅ Implemented | `hyde.hpp` |
+| Code extraction (M3.B) | ✅ Implemented | tree-sitter AST parsing |
+| Multi-project scoping (M3.C) | ✅ Implemented | Schema-level `project_id` column |
+
+### Aspirational / Not Yet Implemented
+- RAPTOR-style hierarchical summarization
+- Self-RAG adaptive retrieval
+- ColBERT late interaction (token-level)
+- Production eval benchmarks (RAGAS, BEIR)
 
 ### What We Need for True SOTA RAG
 
@@ -235,22 +243,9 @@ struct SearchResult {
     std::vector<std::string> entities;
 };
 
-class HybridSearchEngine {
-    // Parallel retrieval
-    std::vector<SearchResult> semantic_search(const Query& q, int top_k);
-    std::vector<SearchResult> keyword_search(const Query& q, int top_k);
-    std::vector<SearchResult> graph_search(const Query& q, int top_k);
-    
-    // Fusion
-    std::vector<SearchResult> fuse_results(
-        const std::vector<SearchResult>& semantic,
-        const std::vector<SearchResult>& keyword,
-        const std::vector<SearchResult>& graph,
-        float semantic_weight = 0.4,
-        float keyword_weight = 0.3,
-        float graph_weight = 0.3
-    );
-};
+// See apollo_hybrid_search.hpp for the actual implementation.
+// The class is now named `HybridSearch` and lives in apollocore_v2 namespace.
+// It uses RRF (Reciprocal Rank Fusion) to combine vector + BM25 results.
 ```
 
 ### 5. Query Enhancement Pipeline
@@ -675,30 +670,60 @@ wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nom
 
 ```
 ApolloCore/
-├── CMakeLists.txt
+├── CMakeLists.txt                  # Top-level build (links libapollo_core.a)
+├── README.md                       # Main docs
+├── CodeMax.md                      # Planning + status doc
 ├── docs/
-│   ├── README.md
-│   └── design.md                    # This document
+│   ├── design.md                   # This document
+│   ├── BANNER_PROMPTS.md           # Prompts for LLM extraction
+│   └── file-formats.md             # ApolloCore file formats
 ├── include/apollocore/
-│   ├── apollocore.hpp               # v1 API (keep for compat)
-│   ├── apollocore_v2.hpp            # New v2 API
-│   ├── embedding_model.hpp          # llama.cpp embeddings
-│   ├── knowledge_graph.hpp          # KG classes
-│   ├── hybrid_search.hpp           # Search pipeline
-│   ├── chunking.hpp                 # Smart chunking
-│   └── types.hpp                    # Shared types
+│   ├── apollo_persistence.hpp      # Main high-level API (ApolloCore)
+│   ├── kb_persistence.hpp          # SQLite + FBIN + project registry
+│   ├── entity_extractor.hpp        # LLM entity extraction (Qwen2.5)
+│   ├── cross_encoder.hpp           # Cross-encoder reranking
+│   ├── hyde.hpp                    # HyDE query enhancement
+│   ├── contextual_retrieval.hpp    # Anthropic-style chunking
+│   ├── embedding_model.hpp         # GGUF embeddings
+│   ├── onnx_embedding.hpp          # ONNX embeddings (alt)
+│   ├── persistence.hpp             # Schema + migrations
+│   ├── fbin.hpp                    # Binary embedding storage
+│   ├── apollo_hybrid_search.hpp    # Hybrid vector + BM25 + RRF
+│   ├── apollo_ts_wrapper.hpp       # tree-sitter C++ RAII wrapper
+│   └── apollo_code_extractor.hpp   # M3.B AST → entities/relationships
 ├── src/
-│   ├── apollocore_v2.cpp            # v2 implementation
-│   ├── embedding_model.cpp          # llama.cpp wrapper
-│   ├── knowledge_graph.cpp          # KG implementation
-│   ├── hybrid_search.cpp            # Search pipeline
-│   └── entity_extraction.cpp        # LLM extraction (placeholder)
-├── models/                          # GGUF models (user-provided)
-│   └── README.md                    # Download instructions
+│   ├── apollocore.cpp              # ApolloEngine (LLM driver)
+│   ├── entity_extractor.cpp        # Entity extraction (uses llama.cpp)
+│   ├── cross_encoder.cpp           # Cross-encoder reranking
+│   ├── hyde.cpp                    # HyDE
+│   ├── contextual_retrieval.cpp    # Contextual chunking
+│   ├── embedding_model.cpp         # llama.cpp embeddings wrapper
+│   ├── onnx_embedding.cpp          # ONNX embeddings
+│   ├── persistence.cpp             # Schema + apply_project_migrations
+│   ├── fbin.cpp                    # FBIN storage format
+│   ├── kb_persistence.cpp          # SQLite + project registry
+│   ├── apollo_persistence.cpp      # ApolloCore v2 + M3.C scoping
+│   ├── apollo_hybrid_search.cpp    # Hybrid search impl
+│   ├── apollo_ts_wrapper.cpp       # tree-sitter wrapper impl
+│   └── apollo_code_extractor.cpp   # Code extraction impl
+├── models/                         # GGUF models (user-provided, auto-downloaded)
+│   └── README.md
+├── examples/
+│   └── full_demo.cpp               # End-to-end demo
 └── tests/
-    ├── test_apollocore.cpp          # v1 tests
-    └── test_v2.cpp                  # v2 tests
+    ├── test_v2.cpp                 # Hybrid search tests
+    ├── test_embeddings.cpp         # Embedding model tests
+    ├── test_entity_extraction.cpp  # LLM extraction tests
+    ├── test_cross_encoder.cpp      # Cross-encoder tests
+    ├── test_persistence.cpp        # Schema/persistence tests
+    ├── test_fbin.cpp               # FBIN format tests
+    ├── test_kb_persistence.cpp     # KB persistence tests
+    ├── test_apollo_persistence.cpp # ApolloCore integration tests
+    ├── test_multi_project.cpp      # M3.C tests (15 tests)
+    └── test_code_extractor.cpp     # M3.B tests (12 tests)
 ```
+
+**Active tests: 27 passing (12 M3.B + 15 M3.C).**
 
 ---
 
