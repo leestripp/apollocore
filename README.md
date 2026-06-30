@@ -664,7 +664,7 @@ cd build && ctest --output-on-failure
 | **M3.C** | **Multi-Project Scoping** | ✅ |
 | — | **Static Library Refactor** (no MCP/HTTP) | ✅ |
 
-**Status: Production-ready core. All phases complete. 27 tests passing.**
+**Status: Production-ready core. All phases complete. 13 test suites, all passing.**
 
 ### Library vs MCP History
 

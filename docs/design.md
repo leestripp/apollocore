@@ -40,11 +40,14 @@
 | Embeddings | ✅ Real | llama.cpp / nomic-embed GGUF (768-dim) |
 | Vector similarity | ✅ Real | Cosine similarity on real embeddings |
 | BM25Index | ✅ Real | Proper BM25 implementation in `apollo_hybrid_search.hpp` |
-| Hybrid search | ✅ Implemented | RRF fusion (vector + BM25) |
+| Hybrid search | ✅ Implemented | Vector + BM25 + graph, weighted-sum fusion |
+| Hybrid search API | ✅ Wired | `ApolloCore::query_hybrid()` returns `HybridResult[]` |
+| Cross-encoder reranking | ✅ Implemented | `cross_encoder.hpp` |
+| Reranking API | ✅ Wired | `ApolloCore::query_with_rerank()` uses `CrossEncoderReranker` |
+| Full pipeline | ✅ Wired | `ApolloCore::query_full()` = hybrid → rerank |
 | LLM entity extraction | ✅ Implemented | Qwen2.5 via llama.cpp |
 | Knowledge graph storage | ✅ Implemented | entities + relationships tables |
-| Contextual chunking | ✅ Basic | Sentence-splitting (Anthropic-style is on roadmap) |
-| Cross-encoder reranking | ✅ Implemented | `cross_encoder.hpp` |
+| Contextual chunking | ✅ Implemented | `contextual_retrieval.cpp` |
 | Query enhancement (HyDE) | ✅ Implemented | `hyde.hpp` |
 | Code extraction (M3.B) | ✅ Implemented | tree-sitter AST parsing |
 | Multi-project scoping (M3.C) | ✅ Implemented | Schema-level `project_id` column |
@@ -243,9 +246,11 @@ struct SearchResult {
     std::vector<std::string> entities;
 };
 
-// See apollo_hybrid_search.hpp for the actual implementation.
-// The class is now named `HybridSearch` and lives in apollocore_v2 namespace.
-// It uses RRF (Reciprocal Rank Fusion) to combine vector + BM25 results.
+// See apollo_hybrid_search.hpp for the actual HybridResult struct.
+// Returns std::vector<HybridResult> with per-source scores.
+// Searchable via ApolloCore::query_hybrid(query, top_k, alpha, beta, gamma).
+// Also wired into ApolloCore::query_with_rerank() (vector → LLM rerank) and
+// ApolloCore::query_full() (hybrid → LLM rerank).
 ```
 
 ### 5. Query Enhancement Pipeline
@@ -711,7 +716,7 @@ ApolloCore/
 ├── examples/
 │   └── full_demo.cpp               # End-to-end demo
 └── tests/
-    ├── test_v2.cpp                 # Hybrid search tests
+    ├── test_v2.cpp                 # Hybrid search v2 tests
     ├── test_embeddings.cpp         # Embedding model tests
     ├── test_entity_extraction.cpp  # LLM extraction tests
     ├── test_cross_encoder.cpp      # Cross-encoder tests
@@ -720,10 +725,12 @@ ApolloCore/
     ├── test_kb_persistence.cpp     # KB persistence tests
     ├── test_apollo_persistence.cpp # ApolloCore integration tests
     ├── test_multi_project.cpp      # M3.C tests (15 tests)
-    └── test_code_extractor.cpp     # M3.B tests (12 tests)
-```
+    ├── test_code_extractor.cpp     # M3.B tests (12 tests)
+    ├── test_hyde.cpp               # HyDE query enhancement tests
+    ├── test_contextual_retrieval.cpp # Anthropic-style chunking tests
+    └── test_hybrid_search.cpp      # M2.7+M2.8 wiring tests (6 tests)
 
-**Active tests: 27 passing (12 M3.B + 15 M3.C).**
+**Active tests: 13 suites, all passing via `ctest`**
 
 ---
 
