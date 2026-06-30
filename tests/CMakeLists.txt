@@ -2,6 +2,20 @@ cmake_minimum_required(VERSION 3.20)
 
 enable_testing()
 
+# Re-use the same helper we use for the MCP server tests.
+function(add_apollo_test name)
+    add_executable(${name}
+        ${ARGN}
+    )
+    target_include_directories(${name} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/mcp_server
+        ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    )
+    target_link_libraries(${name} PRIVATE apollo_core)
+    add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
+
 # v2 tests (ApolloEngine with real embeddings)
 add_executable(test_v2
     test_v2.cpp
@@ -162,3 +176,32 @@ target_include_directories(test_coverage_holes PRIVATE
 )
 target_link_libraries(test_coverage_holes PRIVATE apollo_core)
 add_test(NAME CoverageHolesTests COMMAND test_coverage_holes WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# ============================================================================
+# MCP server tests (Phase 5)
+# ============================================================================
+# These compile the MCP source files directly into the test executable,
+# bypassing OmniNet (we test the dispatcher layer in isolation).
+function(add_mcp_test name)
+    add_executable(${name}
+        test_${name}.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/jsonrpc.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/server_state.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/dispatcher.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/tools.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/resources.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/prompts.cpp
+    )
+    target_include_directories(${name} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_SOURCE_DIR}/src/mcp_server
+        ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+        ${SQLite3_INCLUDE_DIRS}
+    )
+    target_compile_features(${name} PRIVATE cxx_std_23)
+    target_link_libraries(${name} PRIVATE apollo_core)
+    add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
+
+add_mcp_test(mcp_dispatcher)
+add_mcp_test(mcp_tools)

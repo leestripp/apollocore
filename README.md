@@ -113,6 +113,106 @@ int main() {
 
 ---
 
+## 🤖 MCP Server Mode (NEW)
+
+ApolloCore ships an **MCP (Model Context Protocol) server** so any MCP-aware
+agent (Claude Desktop, Cursor, Cline, Windsurf, Continue.dev, etc.) can use
+the knowledge base as a tool without writing glue code.
+
+The server implements **MCP 2025-11-25** over the **Streamable HTTP** transport
+(JSON-RPC 2.0 over `POST /mcp`), built on **OmniNet** (HTTP+TLS+WS in C++23).
+
+### Build
+
+The MCP server is built by default alongside the static library:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc) --target apollo_mcp_server
+```
+
+Opt out with `-DAPOLLO_BUILD_MCP_SERVER=OFF`.
+
+### Run
+
+```bash
+./build/src/mcp_server/apollo_mcp_server --port 8765
+```
+
+CLI flags: `--host`, `--port`, `--data-dir`, `--embed-model`,
+`--llm-model`, `--admin`, `-v`/`--verbose`. Environment variables
+(`APOLLO_DATA_DIR`, `APOLLO_EMBED_MODEL`, `APOLLO_LLM_MODEL`,
+`OMNINET_DATA_DIR`) are honored as defaults.
+
+### What the agent sees
+
+| Tools (12) | Resources (5) | Prompts (4) |
+|------------|---------------|-------------|
+| `apollo_query_kb`, `apollo_add_document`, `apollo_extract_entities`, `apollo_ingest_codebase`, `apollo_search_symbols`, `apollo_get_neighbors`, `apollo_create_kb`, `apollo_open_kb`, `apollo_save_kb`, `apollo_get_stats`, `apollo_set_project`, `apollo_list_projects` | `apollo://projects`, `apollo://stats`, `apollo://entities`, `apollo://graph`, `apollo://chunk/{id}` | `summarize_kb`, `answer_with_citations`, `code_review_summary`, `entity_research` |
+
+All tools have JSON Schema 2020-12 inputs and `readOnlyHint` /
+`destructiveHint` / `idempotentHint` annotations per MCP 2026 best practice.
+
+### Quick probe
+
+```bash
+# Health
+curl -s http://127.0.0.1:8765/health | jq
+
+# Initialize
+curl -s -X POST http://127.0.0.1:8765/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
+       "params":{"protocolVersion":"2025-11-25","capabilities":{},
+                 "clientInfo":{"name":"probe","version":"0"}}}'
+
+# List tools
+curl -s -X POST http://127.0.0.1:8765/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
+# → 12
+
+# Create a KB
+curl -s -X POST http://127.0.0.1:8765/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call",
+       "params":{"name":"apollo_create_kb",
+                 "arguments":{"path":"data/demo","name":"demo"}}}'
+```
+
+### Connecting MCP clients
+
+**Claude Desktop** (`~/.config/Claude/claude_desktop_config.json` on Linux):
+
+```json
+{
+  "mcpServers": {
+    "apollocore": {
+      "url": "http://127.0.0.1:8765/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+**Cursor / Cline / Windsurf / Continue.dev**: add an MCP server entry
+pointing to `http://127.0.0.1:8765/mcp`. The exact UI location varies by
+client; consult the client's docs for "custom MCP server URL".
+
+See `docs/mcp-quickstart.md` for a full worked session and `docs/design.md`
+for the architectural rationale.
+
+### Spec versioning
+
+The server pins **MCP 2025-11-25** (latest stable at this writing).
+The 2026-07-28 release candidate introduces a stateless protocol core,
+`Mcp-Method`/`Mcp-Name` headers, and Extensions — code is structured to
+migrate when clients catch up.
+
+---
+
 ## 📦 Installation
 
 ### System Requirements

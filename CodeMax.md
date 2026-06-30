@@ -291,12 +291,24 @@ self-correct. We always return informative strings:
   - `GET /health` and `GET /info` return diagnostic JSON
 - 56 MB executable (`build/src/mcp_server/apollo_mcp_server`)
 
-### **Phase 5 — Tests, docs, polish** 🔲 NEXT
-- Add `tests/test_mcp_*.cpp` CTest entries (unit + integration)
-- Add a curl-style smoke-test script under `examples/`
-- Update `README.md` with "MCP Server Mode" section + Claude/Cursor config snippets
-- New `docs/mcp-quickstart.md` worked example
-- README updates for the new executable
+### **Phase 5 — Tests, docs, polish** ✅ DONE
+- **Tests added:** `tests/test_mcp_dispatcher.cpp` (10 dispatcher-level tests
+  covering initialize, tools/list, resources/list, prompts/list, ping,
+  unknown method → -32601, end-to-end create_kb + stats, unknown tool,
+  missing required arg, notification suppression). `tests/test_mcp_tools.cpp`
+  (6 tool/resource/prompt integration tests using real ApolloCore KB
+  persistence in tmpdir).
+- Both MCP tests registered with CTest via `add_mcp_test()` helper in
+  `tests/CMakeLists.txt`. They compile the MCP sources directly into the test
+  executable (no HTTP needed).
+- **Full test suite:** **16/16 CTest targets pass** (2 new MCP tests +
+  14 pre-existing tests, all green).
+- **README updated:** New top-level "🤖 MCP Server Mode (NEW)" section
+  covering build, run, tools/resources/prompts catalog, sample curl probes,
+  Claude Desktop / Cursor / Cline config snippets, spec-versioning note.
+- **`docs/mcp-quickstart.md` added:** 10-step worked session from
+  `cmake --build` to Claude Desktop config, with copy-paste curl commands
+  and example responses for every major endpoint.
 
 ### **Phase 6 (future) — 2026-07-28 migration prep** 🔲 FUTURE
 - Drop `initialize` handshake → add `_meta` per-request
