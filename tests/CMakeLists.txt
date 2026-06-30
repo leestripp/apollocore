@@ -150,3 +150,15 @@ target_include_directories(test_hybrid_search PRIVATE
 )
 target_link_libraries(test_hybrid_search PRIVATE apollo_core)
 add_test(NAME HybridSearchTests COMMAND test_hybrid_search WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# Coverage Holes tests — fills gaps in existing test suites
+add_executable(test_coverage_holes
+    test_coverage_holes.cpp
+)
+target_include_directories(test_coverage_holes PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../build/_deps/llama_cpp-src/include
+    ${SQLite3_INCLUDE_DIRS}
+)
+target_link_libraries(test_coverage_holes PRIVATE apollo_core)
+add_test(NAME CoverageHolesTests COMMAND test_coverage_holes WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
