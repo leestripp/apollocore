@@ -85,6 +85,30 @@ curl -s http://127.0.0.1:8765/health | jq
 
 ---
 
+## Web UI
+
+Browse to `http://localhost:8765/` and you get a five-tab operator
+dashboard served by the same executable:
+
+- **Health** — server info, model status, KB stats (auto-refresh every 5s)
+- **Search** — query the KB with the same four modes an agent uses
+  (`vector` / `hybrid` / `rerank` / `full`), with per-signal score badges
+- **Graph** — force-directed visualisation of the knowledge graph,
+  type-coloured nodes, pan/zoom/drag, hover to highlight neighbours
+- **Settings** — list and switch projects, see model paths and server config
+- **About** — build info and a one-click copy of the agent config snippet
+
+The UI is a regular MCP client — every number on screen was loaded by a
+real `POST /mcp` JSON-RPC call. No second API. No CDN. No framework.
+~1,500 lines of plain HTML/CSS/ES modules.
+
+Disable with `--no-ui` (the `/mcp`, `/health`, `/info` endpoints keep
+working).
+
+Full guide: [`docs/ui.md`](docs/ui.md).
+
+---
+
 ## Connecting MCP clients
 
 Any MCP client with the Streamable HTTP transport works.

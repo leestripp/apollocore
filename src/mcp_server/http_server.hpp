@@ -32,6 +32,9 @@ struct HttpConfig {
     int request_timeout_seconds = 30;
     /// If true, register the OmniNet admin dashboard at /omninet/*.
     bool enable_admin_dashboard = false;
+    /// Directory containing the Web UI's static files (index.html + js/ + css/).
+    /// Empty string disables the UI.
+    std::string ui_static_dir;
 };
 
 class HttpServer {

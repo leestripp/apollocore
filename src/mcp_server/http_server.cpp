@@ -6,26 +6,33 @@
 //   POST /mcp    — JSON-RPC request/response
 //   GET  /health — liveness probe (not part of MCP spec; for k8s/docker)
 //   GET  /info   — server card-style info
+//   GET  /       — Web UI (when cfg.ui_static_dir is set)
+//   GET  /static/* — Static files for the Web UI
 //
-// We do NOT register a static-file catch-all (unlike OmniNet demos) — this
-// is an API server, not a website.
+// The UI is a pure client of POST /mcp — no separate API. Disabling UI:
+// pass an empty `ui_static_dir` or run with `--no-ui`.
 
 #include "http_server.hpp"
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 #include <nlohmann/json.hpp>
 
 #include "OmniNet.h"
+#include "http/StaticHandler.h"
 
 namespace apollo::mcp {
 
 using nlohmann::json;
 
+namespace fs = std::filesystem;
 namespace on  = OmniNet;
 namespace onh = OmniNet::HTTP;
 
@@ -41,6 +48,7 @@ struct HttpServer::Impl {
     PromptRegistry prompts;
     Dispatcher dispatcher;
     std::unique_ptr<onh::Server> server;
+    std::unique_ptr<onh::StaticHandler> static_handler;
     std::atomic<bool> stop_requested{false};
 
     Impl(ServerState& s, const HttpConfig& c)
@@ -58,6 +66,25 @@ struct HttpServer::Impl {
         sc.requestTimeout = std::chrono::seconds(cfg.request_timeout_seconds);
         sc.corsEnabled    = false;
         server = std::make_unique<onh::Server>(sc);
+
+        // Mount static file handler if a UI directory is configured.
+        if (!cfg.ui_static_dir.empty()) {
+            std::error_code ec;
+            if (fs::is_directory(cfg.ui_static_dir, ec)) {
+                static_handler = std::make_unique<onh::StaticHandler>(cfg.ui_static_dir);
+                static_handler->setDefaultFile("index.html");
+                static_handler->setIndexFiles({"index.html"});
+                static_handler->allowDirectoryListing(false);
+                static_handler->setCacheMaxAge(std::chrono::seconds(0)); // dev: re-validate
+                on::Logger::instance().info(
+                    "Web UI mounted at / from " + cfg.ui_static_dir);
+            } else {
+                on::Logger::instance().warn(
+                    "ui_static_dir is set but the directory does not exist: " +
+                    cfg.ui_static_dir + " — UI disabled");
+            }
+        }
+
         register_routes();
     }
 
@@ -94,6 +121,21 @@ struct HttpServer::Impl {
             handle_info(resp);
         });
 
+        // ------------------------------------------------------------------
+        // GET /* — Web UI catch-all. Mounted LAST so the more specific
+        // /mcp, /health, /info routes win. The StaticHandler resolves
+        // /<path> → <rootDir>/<path>, with / → index.html.
+        // ------------------------------------------------------------------
+        if (static_handler) {
+            server->get("/*", [this](const onh::Request& req, onh::Response& resp) {
+                // If the static handler serves the file, the response is
+                // already set. If not (file missing), the response status
+                // is whatever the handler set (typically 404).
+                if (static_handler) static_handler->handle(req, resp);
+                else                write_json(resp, 404, {{"error", "UI disabled"}});
+            });
+        }
+
         // Optional admin dashboard from OmniNet.
         if (cfg.enable_admin_dashboard) {
             try {
@@ -118,12 +160,20 @@ struct HttpServer::Impl {
 
     void handle_post_mcp(const onh::Request& req, onh::Response& resp)
     {
-        // Make sure the client wants JSON.
+        // Per MCP 2025-11-25, clients SHOULD send Accept with both
+        // application/json and text/event-stream. We allow */* (default
+        // curl, browsers) for friendliness — it's the same thing.
         auto accept = req.header("accept");
-        if (accept && std::string(*accept).find("application/json") == std::string::npos
-                  && std::string(*accept).find("text/event-stream") == std::string::npos) {
-            write_json(resp, 406, {{"error", "Accept must include application/json"}});
-            return;
+        if (accept) {
+            const std::string a(*accept);
+            const bool has_json     = a.find("application/json")   != std::string::npos;
+            const bool has_sse      = a.find("text/event-stream")  != std::string::npos;
+            const bool has_wildcard = a.find("*/*")                != std::string::npos;
+            const bool has_json_wc  = a.find("application/*")      != std::string::npos;
+            if (!has_json && !has_sse && !has_wildcard && !has_json_wc) {
+                write_json(resp, 406, {{"error", "Accept must include application/json or text/event-stream"}});
+                return;
+            }
         }
 
         std::string body(req.bodyAsString());

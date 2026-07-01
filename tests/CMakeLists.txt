@@ -205,3 +205,21 @@ endfunction()
 
 add_mcp_test(mcp_dispatcher)
 add_mcp_test(mcp_tools)
+
+# ============================================================================
+# Web UI static-files smoke test (no network required)
+# ============================================================================
+# Verifies the static files at src/mcp_server/static/ exist, are non-empty,
+# and contain the expected structure. End-to-end HTTP smoke testing is a
+# developer-run check (see docs/ui.md "Manual smoke test").
+add_executable(test_ui_static
+    test_ui_static.cpp
+)
+target_include_directories(test_ui_static PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/mcp_server
+)
+target_compile_features(test_ui_static PRIVATE cxx_std_23)
+target_link_libraries(test_ui_static PRIVATE apollo_core)
+add_test(NAME test_ui_static COMMAND test_ui_static
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

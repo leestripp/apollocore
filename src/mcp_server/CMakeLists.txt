@@ -51,5 +51,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(apollo_mcp_server PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# Web UI — pure static files, served by OmniNet at runtime.
+# Bundled next to the source tree (so dev builds get the UI by default) and
+# installed under share/apollocore/ui/ so `cmake --install` deploys it.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/static
+        DESTINATION share/apollocore/ui
+        OPTIONAL  # tolerate empty/missing static/ dir on third-party builds
+        FILES_MATCHING PATTERN "*")
+
 # Install alongside the library so `cmake --install` deploys both.
 install(TARGETS apollo_mcp_server RUNTIME DESTINATION bin)

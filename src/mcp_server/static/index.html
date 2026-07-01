@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ApolloCore</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    <span class="brand-name">ApolloCore</span>
+    <span class="brand-tag">Web UI</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <a href="#health"   class="tab" data-tab="health">Health</a>
+    <a href="#search"   class="tab" data-tab="search">Search</a>
+    <a href="#graph"    class="tab" data-tab="graph">Graph</a>
+    <a href="#settings" class="tab" data-tab="settings">Settings</a>
+    <a href="#about"    class="tab" data-tab="about">About</a>
+  </nav>
+</header>
+
+<main id="content">
+  <section id="tab-health"   class="tab-panel" hidden></section>
+  <section id="tab-search"   class="tab-panel" hidden></section>
+  <section id="tab-graph"    class="tab-panel" hidden></section>
+  <section id="tab-settings" class="tab-panel" hidden></section>
+  <section id="tab-about"    class="tab-panel" hidden></section>
+</main>
+
+<div id="toast-host" aria-live="polite"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

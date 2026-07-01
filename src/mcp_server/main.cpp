@@ -7,6 +7,8 @@
 //                     [--data-dir DIR]      (ApolloCore KB directory)
 //                     [--embed-model PATH]  (GGUF embedding model)
 //                     [--llm-model PATH]    (GGUF LLM model, optional)
+//                     [--ui-static-dir DIR] (web UI assets; "" or --no-ui disables)
+//                     [--no-ui]             (don't serve the web UI at /)
 //                     [--admin]             (enable /omninet admin UI)
 //
 // Environment variables (defaults if --flag not given):
@@ -14,6 +16,7 @@
 //   APOLLO_EMBED_MODEL  default "models/nomic-embed-text-v1.5.Q4_K_M.gguf"
 //   APOLLO_LLM_MODEL    default "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 //   OMNINET_DATA_DIR    OmniNet's own ~/.omninet location
+//   APOLLO_NO_UI        set to "1" or "true" to disable the web UI
 
 #include <cstdlib>
 #include <cstring>
@@ -36,6 +39,8 @@ struct CliArgs {
     std::string data_dir = "data";
     std::string embed_model = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
     std::string llm_model = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+    std::string ui_static_dir;       // empty = try default; --no-ui disables
+    bool no_ui = false;
     bool admin = false;
     bool verbose = false;
 };
@@ -50,6 +55,10 @@ CliArgs parse_args(int argc, char** argv)
     a.data_dir    = env_or("APOLLO_DATA_DIR",    a.data_dir);
     a.embed_model = env_or("APOLLO_EMBED_MODEL", a.embed_model);
     a.llm_model   = env_or("APOLLO_LLM_MODEL",   a.llm_model);
+    if (auto* no_ui = std::getenv("APOLLO_NO_UI"); no_ui && *no_ui) {
+        std::string v = no_ui;
+        a.no_ui = (v == "1" || v == "true" || v == "yes" || v == "on");
+    }
 
     for (int i = 1; i < argc; ++i) {
         std::string k = argv[i];
@@ -60,23 +69,27 @@ CliArgs parse_args(int argc, char** argv)
             }
             return argv[++i];
         };
-        if      (k == "--host")          a.host = need("--host");
-        else if (k == "--port")          a.port = std::stoi(need("--port"));
-        else if (k == "--data-dir")      a.data_dir = need("--data-dir");
-        else if (k == "--embed-model")   a.embed_model = need("--embed-model");
-        else if (k == "--llm-model")     a.llm_model = need("--llm-model");
-        else if (k == "--admin")         a.admin = true;
+        if      (k == "--host")           a.host = need("--host");
+        else if (k == "--port")           a.port = std::stoi(need("--port"));
+        else if (k == "--data-dir")       a.data_dir = need("--data-dir");
+        else if (k == "--embed-model")    a.embed_model = need("--embed-model");
+        else if (k == "--llm-model")      a.llm_model = need("--llm-model");
+        else if (k == "--ui-static-dir")  a.ui_static_dir = need("--ui-static-dir");
+        else if (k == "--no-ui")          a.no_ui = true;
+        else if (k == "--admin")          a.admin = true;
         else if (k == "-v" || k == "--verbose") a.verbose = true;
         else if (k == "-h" || k == "--help") {
             std::cout <<
                 "apollo_mcp_server — ApolloCore MCP server\n"
-                "  --host HOST         (default 0.0.0.0)\n"
-                "  --port PORT         (default 8765)\n"
-                "  --data-dir DIR      ApolloCore KB directory (default data)\n"
-                "  --embed-model PATH  GGUF embedding model\n"
-                "  --llm-model PATH    GGUF LLM model (entity extraction)\n"
-                "  --admin             enable /omninet admin UI\n"
-                "  -v, --verbose       verbose logging\n";
+                "  --host HOST              (default 0.0.0.0)\n"
+                "  --port PORT              (default 8765)\n"
+                "  --data-dir DIR           ApolloCore KB directory (default data)\n"
+                "  --embed-model PATH       GGUF embedding model\n"
+                "  --llm-model PATH         GGUF LLM model (entity extraction)\n"
+                "  --ui-static-dir DIR      web UI assets (default: bundled)\n"
+                "  --no-ui                  disable the web UI at /\n"
+                "  --admin                  enable /omninet admin UI\n"
+                "  -v, --verbose            verbose logging\n";
             std::exit(0);
         }
         else {
@@ -143,10 +156,46 @@ int main(int argc, char** argv)
     hcfg.port = args.port;
     hcfg.enable_admin_dashboard = args.admin;
 
-    OmniNet::Logger::instance().info(
+    // Resolve UI static directory.
+    // Priority (first-existing wins):
+    //   1. --no-ui  → "" (disabled)
+    //   2. --ui-static-dir (explicit user override)
+    //   3. ${CMAKE_SOURCE_DIR}/src/mcp_server/static/ (dev, current dir)
+    //   4. <executable_dir>/../share/apollocore/ui/static/ (install)
+    if (!args.no_ui) {
+        std::vector<fs::path> candidates;
+        if (!args.ui_static_dir.empty()) candidates.emplace_back(args.ui_static_dir);
+        candidates.emplace_back("src/mcp_server/static");
+
+        // Install-path candidate: <exe>/../share/apollocore/ui/static/
+        // /proc/self/exe on Linux, _NSGetExecutablePath on macOS.
+        #if defined(__linux__)
+        std::error_code ec;
+        fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+        if (!ec) candidates.emplace_back(exe.parent_path().parent_path() / "share" / "apollocore" / "ui" / "static");
+        #elif defined(__APPLE__)
+        // macOS support can be added via _NSGetExecutablePath; deferred.
+        #endif
+
+        for (const auto& c : candidates) {
+            std::error_code ec;
+            if (fs::is_directory(c, ec)) {
+                hcfg.ui_static_dir = fs::absolute(c, ec).string();
+                break;
+            }
+        }
+        if (hcfg.ui_static_dir.empty()) {
+            OmniNet::Logger::instance().warn(std::string(
+                "Web UI directory not found; UI disabled. "
+                "Pass --ui-static-dir or run from the repo root."));
+        }
+    }
+
+    OmniNet::Logger::instance().info(std::string(
         "Starting ApolloCore MCP server on " + args.host + ":" +
         std::to_string(args.port) +
-        " (MCP spec 2025-11-25, Streamable HTTP transport)");
+        " (MCP spec 2025-11-25, Streamable HTTP transport)" +
+        (hcfg.ui_static_dir.empty() ? ", UI disabled" : ", UI at /")));
 
     apollo::mcp::HttpServer server(state, hcfg);
     server.run();  // blocks

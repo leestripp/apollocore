@@ -704,5 +704,78 @@ on until the smoke check passes.
 
 ## 10. Execution log
 
-To be filled in as phases complete.
+### Phase A — Static file serving foundation ✅ DONE
+
+Wired `OmniNet::HTTP::StaticHandler` into `HttpServer::Impl`, registered a
+catch-all `GET /*` route (last in registration order so `/mcp`, `/health`,
+`/info` win), added `ui_static_dir` to `HttpConfig`, `--no-ui` /
+`--ui-static-dir` to CLI, `APOLLO_NO_UI` env var, and a `test_ui_static`
+CTest target that verifies every UI file exists and contains expected
+structural anchors. Install rule copies `static/` next to the binary.
+Runtime lookup order: explicit `--ui-static-dir` → `src/mcp_server/static/`
+(dev) → `<exe>/../share/apollocore/ui/static/` (install).
+
+### Phase B — Skeleton + tab shell ✅ DONE
+
+`index.html` with five-tab nav, hash routing, CSS variables for
+dark/light. `api.js` JSON-RPC wrapper with `rpc`, `callTool`,
+`readResource`, `listTools`, `initialize`. `app.js` tab swap with
+teardown callbacks (so the Graph viewer's RAF can be cleaned up on tab
+switch).
+
+### Phase C — Health tab ✅ DONE
+
+Auto-refresh every 5 s. Pulls `/health`, `/info`, and `apollo://stats`
+in parallel. Cards: server, surface, KB stats, probe (round-trip latency
+of `apollo_get_stats`).
+
+### Phase D — Search tab ✅ DONE
+
+Mode selector (vector / hybrid / rerank / full), top-K input, result
+cards with per-signal score badges (vec / bm25 / graph / rrf), copy-id
+buttons, expandable content. Empty / error states with helpful guidance.
+
+### Phase E — Graph viewer ✅ DONE
+
+Hand-rolled Fruchterman-Reingold on `<canvas>`. O(n²) per iteration,
+capped at 500 nodes. Drag to pin, double-click to unpin, scroll to zoom,
+drag background to pan. Type-coloured nodes (palette in `graph.js`),
+hover highlights neighbours, click opens detail panel with neighbor list.
+Toolbar: reload, pause/resume, reset zoom, name filter, type filter chips.
+
+### Phase F — Settings + About ✅ DONE
+
+Settings: projects list with `apollo_set_project` buttons, server config
+card, models card, build card. About: build info, copy-config snippet
+button for Claude Desktop / Cursor / Cline / Windsurf, "open raw MCP
+endpoint" link.
+
+### Phase G — Tests + docs ✅ DONE
+
+- `tests/test_ui_static.cpp`: 17 checks across 9 files (size, required
+  substrings, no CDN references). Passes.
+- `docs/ui.md`: ~200-line user guide with quick start, tab reference,
+  architecture cheatsheet, customisation guide, known limitations.
+- `README.md`: new "Web UI" section between "Connecting MCP clients"
+  and the other content, linking to `docs/ui.md`.
+
+### Phase H — Polish (deferred)
+
+Originally planned: keyboard shortcuts, loading skeletons, empty-state
+illustrations, deeper responsiveness. Tab and search already have basic
+loading + error states; the rest can land in a v2 patch.
+
+### Phase I — Final verification ✅ DONE
+
+- `cd build && ctest -j$(nproc)` → **17/17 pass** (16 pre-existing + 1 UI)
+- `curl /` → 200, `text/html`, 1247 bytes (index.html)
+- `curl /css/style.css` → 200, `text/css`, 7452 bytes
+- `curl /js/{app,api,health,search,graph,settings,about}.js` → 200
+- `curl /mcp` initialize → 200, valid JSON-RPC 2025-11-25 envelope
+- `curl /nope` → 404 (clean)
+- Install to `/tmp/apollo-test-install` → binary finds UI via
+  `<exe>/../share/apollocore/ui/static/` fallback. Confirms the
+  install rule + runtime lookup both work.
+
+UI shipped end-to-end. **All 17/17 tests pass; install + run both work.**
 
