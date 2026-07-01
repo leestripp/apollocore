@@ -49,3 +49,5 @@ _deps/
 
 # Auto-generated
 Testing/Temporary/
+apollo_mcp_server.log
+.apollo_mcp_server.pid

@@ -109,6 +109,37 @@ Full guide: [`docs/ui.md`](docs/ui.md).
 
 ---
 
+## Deployment
+
+### Production: systemd on Ubuntu 26.04
+
+```bash
+sudo ./scripts/install.sh
+systemctl status apollo_mcp_server
+curl http://localhost:8765/health
+```
+
+Sets up the `apollocore` system user, installs the binary and UI to
+`/opt/apollocore/`, drops models under `/opt/apollocore/models/`,
+copies the systemd unit + env file to `/etc/`, and starts the
+service on port 8765. Re-running upgrades in place.
+
+Full ops guide (config, hardening, logs, uninstall):
+[`docs/deployment.md`](docs/deployment.md).
+
+### Dev: foreground or detach without systemd
+
+For distrobox, CI sandboxes, or anything that doesn't have systemd:
+
+```bash
+./scripts/start.sh                  # foreground, Ctrl-C to stop
+./scripts/start.sh --detach        # write .apollo_mcp_server.pid, log to apollo_mcp_server.log
+./scripts/stop.sh                  # send SIGTERM, then SIGKILL after 5s
+APOLLO_PORT=9000 ./scripts/start.sh --no-ui
+```
+
+---
+
 ## Connecting MCP clients
 
 Any MCP client with the Streamable HTTP transport works.

@@ -1,0 +1,92 @@
+# apollo_mcp_server.service — systemd unit for the ApolloCore MCP server.
+#
+# Target: Ubuntu 26.04 LTS (or any distro with systemd v255+).
+# Install: sudo install -m 644 packaging/apollo_mcp_server.service \
+#                        /etc/systemd/system/apollo_mcp_server.service
+#         sudo systemctl daemon-reload
+#         sudo systemctl enable --now apollo_mcp_server
+#
+# Hardening notes:
+#   * ProtectSystem=strict   — /usr, /boot, /etc are read-only.
+#   * ProtectHome=true        — $HOME and /home are invisible.
+#   * PrivateTmp=true         — /tmp is a private namespace.
+#   * ReadWritePaths=         — only data, models, log, cache are writable.
+#   * MemoryDenyWriteExecute — no W^X pages.
+#   * RestrictNamespaces, RestrictRealtime, LockPersonality, etc. — defence in depth.
+#
+# The unit still needs network (the server listens on a TCP port), so we
+# keep the default RestrictAddressFamilies off and let systemd allow the
+# usual AF_INET/AF_INET6.
+
+[Unit]
+Description=ApolloCore MCP Server
+Documentation=https://github.com/ApolloCore/ApolloCore
+# Network must be up before we try to bind the listener.
+After=network-online.target
+Wants=network-online.target
+# Cap restart storms (paired with StartLimitBurst above).
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=apollocore
+Group=apollocore
+
+# Environment file can override any of the variable defaults below.
+EnvironmentFile=-/etc/default/apollocore
+
+# Where to find the binary (the install script puts it here).
+ExecStart=/opt/apollocore/bin/apollo_mcp_server \
+    --host   ${APOLLO_HOST:-0.0.0.0} \
+    --port   ${APOLLO_PORT:-8765} \
+    --data-dir   /var/lib/apollocore/data \
+    --embed-model ${APOLLO_EMBED_MODEL:-/opt/apollocore/models/nomic-embed-text-v1.5.Q4_K_M.gguf} \
+    --llm-model   ${APOLLO_LLM_MODEL:-/opt/apollocore/models/qwen2.5-0.5b-instruct-q4_k_m.gguf}
+
+# Restart on failure. The KB can take a few seconds to come up while
+# llama.cpp warms up the embedding model — give it 5 s before giving up.
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=10
+
+# Logs go to journald by default. If you also want a file, the install
+# script symlinks /var/log/apollocore.log there.
+StandardOutput=append:/var/log/apollocore/apollo_mcp_server.log
+StandardError=append:/var/log/apollocore/apollo_mcp_server.log
+
+# ───────────────────── Hardening ─────────────────────
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+# ───────────────────── Filesystem w/whitelist ─────────────────────
+# Only the listed paths are writable. Everything else under / is RO.
+ReadWritePaths=/var/lib/apollocore /var/log/apollocore /var/cache/apollocore
+ReadOnlyPaths=/opt/apollocore
+
+# ───────────────────── Resource limits (optional) ─────────────────────
+# The default KB is small (~50 MB), but the LLM can use ~1.5 GB.
+# Override in /etc/default/apollocore. systemd's variable syntax is
+# ${VAR} (no default expansion); if APOLLO_MEMORY_MAX is unset, the
+# literal "2G" passes through, which is a valid size spec.
+MemoryMax=2G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
