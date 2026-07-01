@@ -343,3 +343,366 @@ self-correct. We always return informative strings:
 - [ ] Tool subset: 12 tools listed above; anything missing? → **review after Phase 3 wiring**
 - [ ] SSE: implement or skip for v1? → **skip for v1; defer to Phase 6**
 
+---
+
+# 🔨 CURRENT SUB-TASK — ApolloCore Web UI
+
+**Started:** 2026-06-30 (this session)
+**Source:** user request — "We should create a web UI for the KB/RAG system, ideas: Health, Search, Graph viewer, Settings"
+**Goal:** Ship a single-page web dashboard, served by the same `apollo_mcp_server` executable, that humans (not agents) use to inspect and operate the knowledge base.
+
+---
+
+## 1. Why now, what we're building
+
+The MCP server already exposes a complete surface to AI agents — 12 tools,
+5 resources, 4 prompts, all over JSON-RPC on `POST /mcp`. Human operators
+have no way to look at that surface other than via `curl` + `jq`.
+
+A small in-process web UI closes that loop. It's not product surface for
+end-users; it's an operator console. Same executable, same port, no extra
+service. OmniNet already has a static-file handler we can wire to the
+right directory.
+
+### Design principles
+
+1. **One executable, one port.** Browse to `http://localhost:8765/` and
+   you see the UI. The JSON-RPC API stays at `/mcp`. No reverse proxy,
+   no SPA build pipeline, no second process.
+2. **Pure client of `POST /mcp`.** The UI sends the same JSON-RPC the
+   agent runtime would send. It is *not* a separate API. We test it once
+   and forget about it.
+3. **Zero dependencies.** Vanilla ES modules. No bundler, no npm, no
+   framework. Hand-rolled force-directed layout for the graph viewer.
+4. **Tells the truth.** Every visible number comes from `GET /health`,
+   `GET /info`, or a real JSON-RPC call. No fake stats.
+
+---
+
+## 2. Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                      Browser (operator)                            │
+│   index.html (loaded once)  ───►  ES modules call JSON-RPC         │
+└──────────────────────────────┬────────────────────────────────────┘
+                               │  HTTP
+                               ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                apollo_mcp_server                                  │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │ OmniNet router:                                            │  │
+│  │   POST /mcp      ─►  JSON-RPC dispatcher  (unchanged)      │  │
+│  │   GET  /health   ─►  JSON                  (unchanged)      │  │
+│  │   GET  /info     ─►  JSON                  (unchanged)      │  │
+│  │   GET  /static/* ─►  StaticHandler        (NEW)             │  │
+│  │   GET  /         ─►  StaticHandler("/index.html") (NEW)    │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+The static handler reads files from `src/mcp_server/static/` at runtime.
+Same path is fine in dev (`cmake --build`) — relative to the CWD — and
+in installs (we'll copy the static dir to `${SHAREDIR}/apollocore/ui/`
+via `install(DIRECTORY …)` so `cmake --install` deploys the UI next to
+the binary).
+
+### What changes server-side (only this):
+
+1. `src/mcp_server/http_server.cpp` — add two routes:
+   - `GET /`        → 200 + `index.html`
+   - `GET /static/…` → files from the static dir
+2. `src/mcp_server/static/` — new directory of plain files
+3. `src/mcp_server/CMakeLists.txt` — `install(DIRECTORY static …)`
+4. New CLI flag `--no-ui` (default: UI enabled) for users who want
+   headless mode
+
+That's it. No new C++ methods, no new tool, no new resource. The UI is
+a *client* of the existing API. We can rip out the entire `static/`
+directory later without affecting any other behavior.
+
+---
+
+## 3. UI tabs
+
+Five-tab SPA, no router library — the simplest `<button>`-swaps-section
+pattern. URL hash holds the active tab so reloads go to the right place
+(`#health`, `#search`, `#graph`, `#settings`, `#about`).
+
+### 3.1 Health
+
+Auto-refresh every 5 s (`GET /health` + `GET /info`).
+
+- **Server card:** name, version, protocol version, vendor, transport.
+- **Capability counts:** tools (12), resources (5), prompts (4). Each
+  number links to a dropdown listing the names.
+- **Models:** embed model path + load status, LLM model path + load
+  status. Detected with `GET /health`'s `models` field once we add it.
+- **Active project + KB stats:** project name, document count, chunk
+  count, entity count, relationship count. Pulled from
+  `resources/read apollo://stats`.
+- **Sessions:** active session count.
+- **Quick probe button** that fires a single `tools/call apollo_get_stats`
+  and shows the round-trip latency in ms.
+
+### 3.2 Search
+
+Operator-facing search against the active KB. Same pipeline modes as
+`apollo_query_kb`: vector / hybrid / rerank / full.
+
+- **Input row:** text input + mode dropdown + "Top-K" number input
+  (default 10) + Search button.
+- **Loading state:** spinner with "Searching…" and disabled inputs.
+- **Result cards:** each card shows
+  - chunk_id (monospace, copyable)
+  - source document title
+  - content excerpt (first 240 chars with full text on click)
+  - score badges: `vector 0.812`, `bm25 0.211`, `graph 0.405`,
+    final RRF score
+- **Empty state:** "No hits. Try a different mode."
+- **Save query** → copy to clipboard (so it can be pasted into the
+  agent's UI).
+
+### 3.3 Graph viewer
+
+This is the showcase screen. Hand-rolled force-directed layout on a
+`<canvas>`.
+
+- **Data source:** `resources/read apollo://graph` → `{nodes: [{id,
+  name, type}], edges: [{source, target, type}]}`.
+- **Layout:** Fruchterman-Reingold, O(n²) per iteration, n ≤ ~500. If we
+  ever ship larger graphs we can switch to Barnes-Hut.
+- **Rendering:**
+  - Node radius ∝ log(1 + degree).
+  - Node colour by entity type (10-bucket palette, generation is
+    deterministic so reloads look consistent).
+  - Edge stroke = relationship type, low alpha by default.
+  - Hover node → highlight neighbours + show tooltip with name, type,
+    description.
+  - Click node → open detail panel on the right (description, source
+    chunk, neighbours).
+  - Drag to reposition; double-click to unpin.
+  - Wheel to zoom, drag background to pan.
+- **Toolbar:**
+  - Reload button.
+  - Search box (centres & highlights nodes whose name matches).
+  - Type filter (multi-select chips).
+  - "Pause physics" toggle.
+  - "Reset zoom".
+- **Performance budget:** 60 fps on a 300-node graph on a mid-range
+  laptop.
+
+### 3.4 Settings
+
+Read-mostly view + a couple of mutations.
+
+- **Projects list:** rows from `resources/read apollo://projects`. Each
+  row has "Open" button → `tools/call apollo_set_project {project_name}`.
+  Active project highlighted.
+- **Models panel:** embed + LLM model paths, sizes, free disk. If the
+  user requests, expose `--embed-model` / `--llm-model` setting overrides
+  via the `/api/v1/config` POST endpoint we will add (server-side, but
+  small — just writes a JSON config the next start honors).
+- **Server config:** host, port, data dir, CLI flags in effect (from
+  `GET /info`).
+- **Danger zone:** "Wipe current KB" (calls a new dedicated tool,
+  see Open Decisions below).
+
+### 3.5 About
+
+A static page tab (no JSON-RPC calls).
+
+- Build hash (CI env var → server reads it from `APOLLO_BUILD_SHA`).
+- One-paragraph project description.
+- License.
+- Embedded copy of `LICENSE` (or a link).
+- "Copy agent config" snippet button — drops the Claude Desktop JSON
+  config to the clipboard for the current server URL.
+
+---
+
+## 4. Data flow cheatsheet
+
+| UI action | HTTP request | JSON-RPC |
+|-----------|--------------|----------|
+| Open page | `GET /` | — |
+| Load tab JS modules | `GET /static/…` | — |
+| Initial health | `GET /health`, `GET /info`, `resources/read apollo://stats` | Yes (second + third) |
+| Search | `POST /mcp` | `tools/call apollo_query_kb` |
+| Graph | `POST /mcp` | `resources/read apollo://graph` |
+| Switch project | `POST /mcp` | `tools/call apollo_set_project` |
+| List tools | `POST /mcp` | `tools/list` |
+| Re-ping | `POST /mcp` | `ping` |
+
+`POST /mcp` is one endpoint; the UI just sends different methods at it.
+
+---
+
+## 5. File layout
+
+```
+src/mcp_server/
+├── CMakeLists.txt              (+ install(DIRECTORY static))
+├── main.cpp                    (+ --no-ui flag, mount static handler)
+├── http_server.cpp             (+ /, /static/* routes)
+├── http_server.hpp             (+ mount_static(path))
+├── dispatcher.cpp  …
+├── jsonrpc.cpp     …
+├── server_state.cpp (+ accessor for build_sha from env)
+├── tools.cpp       …
+├── resources.cpp   …
+├── prompts.cpp     …
+└── static/                   (NEW — pure files, no build step)
+    ├── index.html            (single-page shell)
+    ├── css/
+    │   └── style.css         (~200 lines, dark/light vars)
+    └── js/
+        ├── api.js            (~80 lines, JSON-RPC wrapper)
+        ├── app.js            (~60 lines, tab switching + hash routing)
+        ├── health.js         (~150 lines)
+        ├── search.js         (~200 lines)
+        ├── graph.js          (~400 lines — canvas + Fruchterman-Reingold)
+        ├── settings.js       (~120 lines)
+        └── about.js          (~50 lines)
+
+tests/
+└── test_ui_static.cpp        (NEW — CTest target that verifies every
+                              file in static/ exists and the served
+                              index.html returns 200 in a smoke test)
+
+docs/
+└── ui.md                     (NEW — user guide for the web UI)
+```
+
+Roughly **1,300 lines of UI code** (HTML+CSS+JS). All fit inside
+`src/mcp_server/static/`. No bundler, no transpilation, no `node_modules`.
+
+---
+
+## 6. Implementation phases
+
+Each phase ends with a runnable binary + a smoke check. We don't move
+on until the smoke check passes.
+
+### Phase A — Static file serving (foundation)
+
+**No UI yet. Just verify OmniNet can serve files from `static/`.**
+
+- Create `src/mcp_server/static/index.html` with the words "ApolloCore
+  Web UI".
+- Add `GET /` and `GET /static/…` routes in `http_server.cpp`.
+- `src/mcp_server/CMakeLists.txt`: `install(DIRECTORY static …)`.
+- `main.cpp`: mount the static handler at startup; honour `--no-ui`.
+- Smoke: `curl http://localhost:8765/` returns the HTML.
+
+### Phase B — Skeleton + tab shell
+
+- Write `index.html` with a five-tab nav bar.
+- `css/style.css`: CSS custom-property dark theme (no framework).
+- `js/app.js`: tab swap + hash routing (`#health` etc.).
+- `js/api.js`: JSON-RPC wrapper around `fetch('/mcp', …)`.
+- Smoke: each tab is empty but does not 404 on its JS imports.
+
+### Phase C — Health tab
+
+- Implement `health.js`.
+- Wires the periodic refresh.
+- Smoke: open `/` and visually confirm counts and stats.
+
+### Phase D — Search tab
+
+- Implement `search.js`.
+- Calls `tools/call apollo_query_kb`.
+- Renders result cards with all four scores when present.
+- Smoke: search against a seeded KB returns cards with content.
+
+### Phase E — Graph viewer
+
+- Implement `graph.js`.
+- Force-directed layout on canvas, ~400 lines.
+- Type-coloured nodes, draggable, zoom/pan.
+- Smoke: graph renders ≥ 50 nodes, hovers and clicks work.
+
+### Phase F — Settings + About
+
+- Implement `settings.js` (project list, model info) and
+  `about.js` (build info, copy-config button).
+- Smoke: switch project → verify `apollo_set_project` call; copy
+  config snippet verifies valid JSON.
+
+### Phase G — Tests + docs
+
+- `tests/test_ui_static.cpp`: a CTest target that
+  - verifies every file under `static/` exists at build time;
+  - smoke-tests `GET /` returns `200` with `text/html` on a
+    thread-spinup instance of the binary.
+- `tests/CMakeLists.txt`: `add_mcp_test(test_ui_static …)`.
+- `docs/ui.md`: ~150-line user doc with screenshots-in-ASCII placeholder.
+- Top-level `README.md`: link the UI in the Features table and the Quick
+  Start.
+- `docs/design.md`: add a section on the UI under "MCP surface" or as a
+  sibling.
+
+### Phase H — Polish
+
+- Loading skeletons on each tab.
+- Error toasts when JSON-RPC fails (e.g. KB not open).
+- Keyboard shortcuts: `g h` → Health, `g s` → Search, `g g` → Graph,
+  `g ,` → Settings. (Vim-style follows me everywhere.)
+- Empty-state illustrations (CSS-only).
+- Responsive layout down to ~768 px wide (tablet); below that, the Graph
+  viewer gets a "best viewed on a wider screen" notice.
+
+### Phase I — Final verification
+
+- `cd build && ctest -j$(nproc)` → all suites pass (16 existing + 1 new).
+- Manual end-to-end: open `/`, see the UI, click through every tab,
+  perform a search against a small seeded KB, switch projects, browse
+  the graph.
+- Commit + push. Update CodeMax.md "Risk Register" with anything learned.
+
+---
+
+## 7. Risks & mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Browser cache shows stale UI after updates | Cache-bust via a `?v=$BUILD_SHA` query string on the JS module URLs. |
+| Graph rendering jank with > 1k nodes | Cap displayed nodes to 500 with a "show all" button; warn if data is larger. |
+| Force-directed layout drifts forever | Apply proper damping + small resets on user input; "pause" button is a hard requirement, not a nicety. |
+| Static asset paths break after `cmake --install` | Set both dev path (CWD relative) and installed path (`${SHAREDIR}/apollocore/ui/`) in the binary, prefer the one that exists. |
+| UI accidentally consumes the `POST /mcp` endpoint meant for agents | They share the endpoint — that's the design. No conflict because both use the same protocol. |
+| UI tries to render before JSON-RPC ready (server still loading models) | Every UI call surfaces its own loading + error state; no global "wait for server" spinner. |
+| Someone expects the UI to *not* be there (CI scripts hitting `/`) | `--no-ui` flag + admins of CI can flip it off. |
+
+---
+
+## 8. Open decisions (for the UI sub-task)
+
+- [ ] Static-asset directory at runtime: **`./src/mcp_server/static/`**
+      (dev) → `${CMAKE_INSTALL_PREFIX}/share/apollocore/ui/` (installed).
+- [ ] Default state: **UI mounted** at `/`, CLI flag `--no-ui` to skip.
+- [ ] Graph algorithm: **Fruchterman-Reingold**, 500-node cap.
+- [ ] Cache-busting: **`?v=$BUILD_SHA`** when `APOLLO_BUILD_SHA` env is set,
+      otherwise `?v=1`.
+- [ ] Settings writes: defer to a v2; v1 is read-only.
+- [ ] Wipe KB: defer to a v2; v1 has no destructive action exposed.
+
+---
+
+## 9. How we'll know we're done
+
+- `apollo_mcp_server` still single-binary, still 16/16 tests pass.
+- Opening `http://localhost:8765/` in any browser shows the UI.
+- The UI talks to `/mcp` exactly as an agent would; no second API.
+- `cd build && ctest -j$(nproc)` passes, including a new
+  `test_ui_static` target.
+- `README.md`, `docs/design.md`, and a new `docs/ui.md` describe the UI.
+- A short screencast-ready manual test pass runs in <2 minutes.
+
+---
+
+## 10. Execution log
+
+To be filled in as phases complete.
+
