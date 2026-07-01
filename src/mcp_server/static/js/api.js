@@ -47,6 +47,29 @@ export async function httpJson(path) {
     return resp.json();
 }
 
+/** POST JSON to a non-RPC endpoint. Throws on non-2xx with the body included. */
+export async function httpPost(path, body) {
+    const resp = await fetch(path, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+    });
+    const text = await resp.text();
+    let json = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { /* keep {} */ }
+    if (!resp.ok) {
+        const detail = json.error ?? text ?? `HTTP ${resp.status}`;
+        const err = new Error(detail);
+        err.body = json;
+        err.status = resp.status;
+        throw err;
+    }
+    return json;
+}
+
 /** Unwrap the `result` of a tools/call response.
  *  If isError is true, throws a domain error so the caller can show a toast.
  */

@@ -121,33 +121,70 @@ int main(int argc, char** argv)
     // Construct server state (owns ApolloCore).
     apollo::mcp::ServerState state;
 
+    // Tell state where the data dir lives so it can persist runtime
+    // config (e.g. model paths changed via /api/config).
+    state.set_data_dir(args.data_dir);
+
+    // Resolve model paths. Priority:
+    //   1. CLI / env override (user picked a path explicitly)
+    //   2. <data-dir>/config.json (Settings page persistence)
+    //   3. CLI default placeholder (relative path, e.g. models/...)
+    {
+        std::string cfg_embed, cfg_llm;
+        state.read_config_paths(cfg_embed, cfg_llm);
+
+        const char* env_embed = std::getenv("APOLLO_EMBED_MODEL");
+        const char* env_llm   = std::getenv("APOLLO_LLM_MODEL");
+        bool cli_embed_explicit = env_embed && *env_embed;
+        bool cli_llm_explicit   = env_llm   && *env_llm;
+        const std::string default_embed = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
+        const std::string default_llm   = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+        if (!cli_embed_explicit && args.embed_model != default_embed) cli_embed_explicit = true;
+        if (!cli_llm_explicit   && args.llm_model   != default_llm)   cli_llm_explicit   = true;
+
+        // Apply config.json when the user did NOT pick a path explicitly.
+        if (!cli_embed_explicit && !cfg_embed.empty()) args.embed_model = cfg_embed;
+        if (!cli_llm_explicit   && !cfg_llm.empty())   args.llm_model   = cfg_llm;
+    }
+
+    // Record the resolved paths in state (so /api/config and
+    // apollo://config report them even on a fresh start). Loading is
+    // still done below — this only updates state, no model reload.
+    state.record_resolved_models(args.embed_model, args.llm_model);
+
     // Optional: load embedding model now if the file exists.
     if (fs::exists(args.embed_model)) {
         if (state.core().load_embedding_model(args.embed_model)) {
             OmniNet::Logger::instance().info(
                 "Loaded embedding model: " + args.embed_model);
+            state.report_embed_load(true, "");
         } else {
             OmniNet::Logger::instance().warn(
                 "Failed to load embedding model: " + args.embed_model);
+            state.report_embed_load(false, "load_embedding_model returned false");
         }
     } else {
         OmniNet::Logger::instance().warn(
             "Embedding model not found at " + args.embed_model +
             " — query_kb tool will fail until one is loaded.");
+        state.report_embed_load(false, "file not found");
     }
     // LLM model is optional — only needed for entity extraction / reranking.
     if (fs::exists(args.llm_model)) {
         if (state.core().load_llm_model(args.llm_model)) {
             OmniNet::Logger::instance().info(
                 "Loaded LLM model: " + args.llm_model);
+            state.report_llm_load(true, "");
         } else {
             OmniNet::Logger::instance().warn(
                 "Failed to load LLM model: " + args.llm_model);
+            state.report_llm_load(false, "load_llm_model returned false");
         }
     } else {
         OmniNet::Logger::instance().info(
             "No LLM model at " + args.llm_model +
             " — extract_entities/with_rerank tools will be unavailable.");
+        state.report_llm_load(false, "file not found");
     }
 
     // Configure HTTP server.

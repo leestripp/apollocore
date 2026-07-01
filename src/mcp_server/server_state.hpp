@@ -67,10 +67,77 @@ public:
     };
     Stats snapshot() const;
 
+    // -- Runtime config ------------------------------------------------
+    //
+    // Model paths can be changed while the server is running. Changes
+    // are persisted to <config_path>/config.json so they survive restarts.
+    // host/port/data_dir cannot be changed at runtime — those are bind
+    // params and require a restart.
+
+    /// Result of a set_models call. embed_loaded / llm_loaded are false if
+    /// the path was set but the model failed to load (e.g. file missing or
+    /// wrong format). *_error holds a human-readable reason on failure.
+    struct ConfigResult {
+        bool embed_loaded = false;
+        bool llm_loaded = false;
+        std::string embed_error;
+        std::string llm_error;
+        std::string embed_model;
+        std::string llm_model;
+    };
+
+    /// Set model paths, hot-reload, and persist to disk.
+    /// Empty `embed_path` / `llm_path` keeps the current value.
+    ConfigResult set_models(const std::string& embed_path,
+                            const std::string& llm_path);
+
+    /// JSON snapshot of the runtime model config — used by /api/config
+    /// and apollo://config.
+    std::string config_json() const;
+
+    /// Where config.json lives. Empty until set_data_dir() is called.
+    const std::string& config_path() const { return config_path_; }
+
+    /// Tell the state where the data dir is. Called once at startup,
+    /// after the data-dir is known. Sets up the config.json path.
+    void set_data_dir(const std::string& data_dir);
+
+    /// Read <config_path> from disk and apply model paths. If the file
+    /// exists and has valid JSON, both paths are loaded and the
+    /// underlying models are hot-reloaded. Returns true on success.
+    /// Missing file is not an error — returns false silently.
+    bool load_config_from_disk();
+
+    /// Read paths from <config_path> without touching the loaded models.
+    /// Used at startup so main() can resolve "CLI override vs. config.json
+    /// default" without a double-load. Out params empty if not set.
+    bool read_config_paths(std::string& embed_out, std::string& llm_out) const;
+
+    /// Record the resolved startup model paths into state without
+    /// loading the models. Updates the in-memory paths so /api/config
+    /// and apollo://config report them on a fresh start, even before
+    /// main() has actually loaded them.
+    void record_resolved_models(const std::string& embed_path,
+                                const std::string& llm_path);
+
+    /// Record the outcome of an embedding-model load attempt. Called
+    /// by main() after it calls core().load_embedding_model().
+    void report_embed_load(bool loaded, const std::string& error);
+
+    /// Record the outcome of an LLM-model load attempt.
+    void report_llm_load(bool loaded, const std::string& error);
+
 private:
     std::unique_ptr<apollocore_v2::ApolloCore> core_;
     mutable std::mutex mu_;
     std::unordered_map<std::string, Session> sessions_;   // keyed by session id
+
+    // Runtime model config (under mu_).
+    std::string embed_model_path_;
+    std::string llm_model_path_;
+    std::string embed_error_;
+    std::string llm_error_;
+    std::string config_path_;
 
     static std::string make_uuid_v4();
 };

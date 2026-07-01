@@ -85,6 +85,13 @@ static ResourceReadResult res_projects(const std::string& uri, ServerState& stat
     return {{ {uri, j.dump(2)} }};
 }
 
+static ResourceReadResult res_config(const std::string& uri, ServerState& state)
+{
+    // state.config_json() emits the same shape as GET /api/config so MCP
+    // clients and the Web UI get identical field names.
+    return {{ {uri, state.config_json()} }};
+}
+
 static ResourceReadResult res_stats(const std::string& uri, ServerState& state)
 {
     auto s = state.core().get_stats();
@@ -161,6 +168,10 @@ ResourceRegistry build_default_resource_registry()
         {"apollo://projects", "projects", "Projects",
          "List of all projects in the current knowledge base."},
         res_projects);
+    r.register_resource(
+        {"apollo://config", "config", "Server configuration",
+         "Current model paths and load status. Same shape as GET /api/config."},
+        res_config);
     r.register_resource(
         {"apollo://stats", "stats", "Statistics",
          "Document/chunk/entity counts for the current project."},

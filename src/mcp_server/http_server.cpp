@@ -122,6 +122,25 @@ struct HttpServer::Impl {
         });
 
         // ------------------------------------------------------------------
+        // GET /api/config — Runtime model configuration
+        // Returns the current model paths, load status, and on-disk config
+        // location. Used by the Web UI Settings tab to populate form fields.
+        // ------------------------------------------------------------------
+        server->get("/api/config", [this](const onh::Request& /*req*/, onh::Response& resp) {
+            handle_get_config(resp);
+        });
+
+        // ------------------------------------------------------------------
+        // POST /api/config — Apply a model configuration
+        // Body: {"embed_model": "...", "llm_model": "..."} (both optional).
+        // Empty values keep the current path. Models are hot-reloaded.
+        // Persisted to <data_dir>/config.json.
+        // ------------------------------------------------------------------
+        server->post("/api/config", [this](const onh::Request& req, onh::Response& resp) {
+            handle_post_config(req, resp);
+        });
+
+        // ------------------------------------------------------------------
         // GET /* — Web UI catch-all. Mounted LAST so the more specific
         // /mcp, /health, /info routes win. The StaticHandler resolves
         // /<path> → <rootDir>/<path>, with / → index.html.
@@ -279,6 +298,53 @@ struct HttpServer::Impl {
             {"prompts",      prompts.size()},
         };
         write_json(resp, 200, body);
+    }
+
+    void handle_get_config(onh::Response& resp)
+    {
+        // The ServerState emits its own JSON to keep the field names in
+        // sync with what on-disk config.json uses.
+        std::string body = state.config_json();
+        resp.setStatus(static_cast<onh::StatusCode>(200));
+        resp.setContentType("application/json");
+        resp.setBody(body);
+    }
+
+    void handle_post_config(const onh::Request& req, onh::Response& resp)
+    {
+        std::string body(req.bodyAsString());
+        if (body.empty()) {
+            write_json(resp, 400, {{"error", "empty body"}});
+            return;
+        }
+        json parsed;
+        try {
+            parsed = json::parse(body);
+        } catch (const std::exception& e) {
+            write_json(resp, 400, {{"error", std::string("parse error: ") + e.what()}});
+            return;
+        }
+        if (!parsed.is_object()) {
+            write_json(resp, 400, {{"error", "expected JSON object"}});
+            return;
+        }
+        std::string embed = parsed.value("embed_model", "");
+        std::string llm   = parsed.value("llm_model",   "");
+
+        auto r = state.set_models(embed, llm);
+
+        json out = {
+            {"ok",           r.embed_loaded || r.llm_loaded || (embed.empty() && llm.empty())},
+            {"embed_model",  r.embed_model},
+            {"llm_model",    r.llm_model},
+            {"embed_loaded", r.embed_loaded},
+            {"llm_loaded",   r.llm_loaded},
+            {"embed_error",  r.embed_error},
+            {"llm_error",    r.llm_error},
+            {"config_path",  state.config_path()},
+        };
+        int status = (out["ok"].get<bool>() ? 200 : 400);
+        write_json(resp, status, out);
     }
 };
 

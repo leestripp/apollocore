@@ -1,11 +1,17 @@
-// about.js — About tab: build info, license, copy-agent-config snippet.
+// about.js — About tab: build info, server diagnostics, copy-agent-config.
+//
+// Anything that's read-only and informational lives here. The Settings
+// tab is reserved for things the user can change. (See settings.js.)
 
 import { httpJson, toast } from './api.js';
 
 export async function renderAbout(panel) {
-    let info = {};
+    let info = {}, health = {};
     try {
-        info = await httpJson('/info');
+        [info, health] = await Promise.all([
+            httpJson('/info').catch(() => ({})),
+            httpJson('/health').catch(() => ({})),
+        ]);
     } catch (e) { /* tolerate */ }
 
     const origin = window.location.origin;
@@ -20,18 +26,41 @@ export async function renderAbout(panel) {
     };
     const cfgStr = JSON.stringify(cfg, null, 2);
 
+    // Capabilities counts come from /info; tools/resources/prompts are
+    // integers. If the fetch failed, default to 0.
+    const cap = `${info.tools ?? 0} tools, ${info.resources ?? 0} resources, ${info.prompts ?? 0} prompts`;
+
     panel.innerHTML = `
         <h2>About</h2>
 
         <div class="card">
-            <dl class="about-grid">
-                <dt>Name</dt>     <dd>${escapeHtml(info.name ?? 'apollo_mcp_server')}</dd>
-                <dt>Title</dt>    <dd>${escapeHtml(info.title ?? 'ApolloCore MCP Server')}</dd>
-                <dt>Version</dt>  <dd>${escapeHtml(info.version ?? '—')}</dd>
-                <dt>Protocol</dt> <dd>${escapeHtml(info.protocol ?? '2025-11-25')}</dd>
-                <dt>Transport</dt><dd>${escapeHtml(info.transport ?? 'streamable-http')}</dd>
-                <dt>Vendor</dt>   <dd>${escapeHtml(info.vendor ?? 'ApolloCore')}</dd>
-            </dl>
+            <h3 style="margin-top: 0;">Build</h3>
+            <table class="kv">
+                <tr><td class="key">Name</td>         <td>${escapeHtml(info.name ?? 'apollo_mcp_server')}</td></tr>
+                <tr><td class="key">Title</td>        <td>${escapeHtml(info.title ?? 'ApolloCore MCP Server')}</td></tr>
+                <tr><td class="key">Version</td>      <td>${escapeHtml(info.version ?? '—')}</td></tr>
+                <tr><td class="key">MCP protocol</td> <td>${escapeHtml(info.protocol ?? '2025-11-25')}</td></tr>
+                <tr><td class="key">Transport</td>    <td>${escapeHtml(info.transport ?? 'streamable-http')}</td></tr>
+                <tr><td class="key">Vendor</td>       <td>${escapeHtml(info.vendor ?? 'ApolloCore')}</td></tr>
+                <tr><td class="key">Capabilities</td> <td>${escapeHtml(cap)}</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top: 0;">Server (read-only — restart to change)</h3>
+            <p class="muted">
+                <strong>host</strong>, <strong>port</strong>, and <strong>data-dir</strong>
+                are bind params and can't be changed at runtime. Edit the
+                systemd unit or <code>./scripts/start.sh</code> and restart.
+            </p>
+            <table class="kv">
+                <tr><td class="key">Hostname (browser sees)</td> <td>${escapeHtml(window.location.hostname)}</td></tr>
+                <tr><td class="key">Port (browser sees)</td>     <td>${escapeHtml(window.location.port || '(default)')}</td></tr>
+                <tr><td class="key">Live MCP sessions</td>       <td>${escapeHtml(String(health.sessions ?? '—'))}</td></tr>
+                <tr><td class="key">Documents in KB</td>         <td>${escapeHtml(String(health.documents ?? '—'))}</td></tr>
+                <tr><td class="key">Chunks in KB</td>            <td>${escapeHtml(String(health.chunks ?? '—'))}</td></tr>
+                <tr><td class="key">Entities in KB</td>          <td>${escapeHtml(String(health.entities ?? '—'))}</td></tr>
+            </table>
         </div>
 
         <div class="card">

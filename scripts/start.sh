@@ -53,8 +53,20 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 # ────────────────────────────────────────────────────────────────────
-# Apply environment defaults if caller did not set them.
 # ────────────────────────────────────────────────────────────────────
+# Track which paths the user *actually* set BEFORE we fill defaults.
+# We only forward --embed-model / --llm-model to the binary when the
+# user picked the path themselves — otherwise the binary sees no flag
+# and falls back to <data-dir>/config.json (which is how the Settings
+# page persists model choices across restarts).
+#
+# `${VAR+set}` is "set" if VAR is defined (even if empty), "unset"
+# otherwise. Snapshot now, then fill defaults, then translate the
+# "set"/"unset" markers to bash booleans.
+EMBED_USER_SET="${APOLLO_EMBED_MODEL+set}"
+LLM_USER_SET="${APOLLO_LLM_MODEL+set}"
+
+# Apply environment defaults if caller did not set them.
 : "${APOLLO_PORT:=8765}"
 : "${APOLLO_HOST:=0.0.0.0}"
 : "${APOLLO_DATA_DIR:=$PROJECT_ROOT/data}"
@@ -62,6 +74,9 @@ fi
 : "${APOLLO_LLM_MODEL:=$PROJECT_ROOT/models/qwen2.5-0.5b-instruct-q4_k_m.gguf}"
 : "${APOLLO_UI:=1}"
 : "${APOLLO_VERBOSE:=0}"
+
+[[ "$EMBED_USER_SET" == "set" ]] && USER_SET_EMBED=1 || USER_SET_EMBED=0
+[[ "$LLM_USER_SET"   == "set" ]] && USER_SET_LLM=1   || USER_SET_LLM=0
 
 # Allow --no-ui via flag too (we still translate it for convenience).
 ARGS=()
@@ -93,8 +108,13 @@ fi
 ARGS+=(--host "$APOLLO_HOST")
 ARGS+=(--port "$APOLLO_PORT")
 ARGS+=(--data-dir "$APOLLO_DATA_DIR")
-[[ -f "$APOLLO_EMBED_MODEL" ]] && ARGS+=(--embed-model "$APOLLO_EMBED_MODEL")
-[[ -f "$APOLLO_LLM_MODEL" ]]   && ARGS+=(--llm-model   "$APOLLO_LLM_MODEL")
+# Forward --embed-model / --llm-model ONLY when the user actually chose
+# the path themselves (env var or --flag on the command line). When the
+# user didn't override, leave the flag OFF — the binary's parse_args then
+# uses its placeholder default, and main() reads <data-dir>/config.json
+# (written by the Settings page) to override the placeholder.
+if (( USER_SET_EMBED )); then ARGS+=(--embed-model "$APOLLO_EMBED_MODEL"); fi
+if (( USER_SET_LLM    )); then ARGS+=(--llm-model   "$APOLLO_LLM_MODEL");   fi
 [[ "$APOLLO_UI" == "0" ]]      && ARGS+=(--no-ui)
 [[ "$APOLLO_VERBOSE" == "1" ]] && ARGS+=(--verbose)
 

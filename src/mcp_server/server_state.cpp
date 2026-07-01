@@ -7,11 +7,20 @@
 #include "server_state.hpp"
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <random>
 #include <sstream>
+#include <system_error>
 
 namespace apollo::mcp {
+
+namespace fs = std::filesystem;
+
+/// Escape a string for inclusion in a JSON literal. Used by
+/// config_json() and set_models() to render model paths safely.
+std::string json_escape(const std::string& s);
 
 // ---------------------------------------------------------------------------
 // UUID v4 — small inline generator. We don't need cryptographic strength
@@ -100,6 +109,193 @@ ServerState::Stats ServerState::snapshot() const
     s.entity_count          = apollo_stats.entity_count;
     s.relationship_count    = apollo_stats.relationship_count;
     return s;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime config: model paths
+// ---------------------------------------------------------------------------
+
+void ServerState::set_data_dir(const std::string& data_dir)
+{
+    std::lock_guard<std::mutex> lk(mu_);
+    if (data_dir.empty()) {
+        config_path_.clear();
+        return;
+    }
+    std::error_code ec;
+    fs::create_directories(data_dir, ec);
+    config_path_ = (fs::path(data_dir) / "config.json").string();
+}
+
+ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
+                                                  const std::string& llm_path)
+{
+    ConfigResult result;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!embed_path.empty()) embed_model_path_ = embed_path;
+        if (!llm_path.empty())   llm_model_path_   = llm_path;
+        result.embed_model = embed_model_path_;
+        result.llm_model   = llm_model_path_;
+    }
+
+    // Reload embedding model if a path is set.
+    if (!result.embed_model.empty()) {
+        std::error_code ec;
+        if (!fs::exists(result.embed_model, ec)) {
+            result.embed_error  = "file not found";
+            result.embed_loaded = false;
+        } else if (!core_->load_embedding_model(result.embed_model)) {
+            result.embed_error  = "load_embedding_model returned false";
+            result.embed_loaded = false;
+        } else {
+            result.embed_loaded = true;
+            result.embed_error.clear();
+        }
+    }
+
+    if (!result.llm_model.empty()) {
+        std::error_code ec;
+        if (!fs::exists(result.llm_model, ec)) {
+            result.llm_error  = "file not found";
+            result.llm_loaded = false;
+        } else if (!core_->load_llm_model(result.llm_model)) {
+            result.llm_error  = "load_llm_model returned false";
+            result.llm_loaded = false;
+        } else {
+            result.llm_loaded = true;
+            result.llm_error.clear();
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        embed_error_ = result.embed_error;
+        llm_error_   = result.llm_error;
+    }
+
+    // Persist to disk (best-effort; failures here are non-fatal).
+    if (!config_path_.empty()) {
+        std::ofstream out(config_path_);
+        if (out) {
+            out << "{\n"
+                << "  \"embed_model\": \"" << json_escape(result.embed_model) << "\",\n"
+                << "  \"llm_model\":   \"" << json_escape(result.llm_model)   << "\"\n"
+                << "}\n";
+        }
+    }
+    return result;
+}
+
+std::string ServerState::config_json() const
+{
+    std::lock_guard<std::mutex> lk(mu_);
+    std::ostringstream o;
+    o << "{\n"
+      << "  \"embed_model\": \"" << json_escape(embed_model_path_) << "\",\n"
+      << "  \"llm_model\":   \"" << json_escape(llm_model_path_)   << "\",\n"
+      << "  \"embed_loaded\": " << (embed_error_.empty() && !embed_model_path_.empty() ? "true" : "false") << ",\n"
+      << "  \"llm_loaded\":   " << (llm_error_.empty()   && !llm_model_path_.empty()   ? "true" : "false") << ",\n"
+      << "  \"embed_error\": \"" << json_escape(embed_error_) << "\",\n"
+      << "  \"llm_error\":   \"" << json_escape(llm_error_)   << "\",\n"
+      << "  \"config_path\": \"" << json_escape(config_path_) << "\"\n"
+      << "}\n";
+    return o.str();
+}
+
+bool ServerState::load_config_from_disk()
+{
+    std::string embed, llm;
+    if (!read_config_paths(embed, llm)) return false;
+    if (embed.empty() && llm.empty()) return false;
+    set_models(embed, llm);
+    return true;
+}
+
+bool ServerState::read_config_paths(std::string& embed_out,
+                                     std::string& llm_out) const
+{
+    embed_out.clear();
+    llm_out.clear();
+    if (config_path_.empty()) return false;
+    std::error_code ec;
+    if (!fs::exists(config_path_, ec)) return false;
+
+    std::ifstream in(config_path_);
+    if (!in) return false;
+
+    // Hand-rolled mini-parser — config.json is small and well-known.
+    // Avoids pulling in nlohmann/json for a 4-key file.
+    std::string content((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+    auto grab = [&](const std::string& key) -> std::string {
+        auto kpos = content.find("\"" + key + "\"");
+        if (kpos == std::string::npos) return "";
+        auto colon = content.find(':', kpos);
+        if (colon == std::string::npos) return "";
+        auto q1 = content.find('"', colon);
+        if (q1 == std::string::npos) return "";
+        auto q2 = content.find('"', q1 + 1);
+        if (q2 == std::string::npos) return "";
+        return content.substr(q1 + 1, q2 - q1 - 1);
+    };
+
+    embed_out = grab("embed_model");
+    llm_out   = grab("llm_model");
+    return true;
+}
+
+void ServerState::record_resolved_models(const std::string& embed_path,
+                                          const std::string& llm_path)
+{
+    // Update in-memory paths (under mu_) but DON'T load here — main()
+    // will load below. We need the paths set first so config_json()
+    // is meaningful even if the load fails.
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!embed_path.empty()) embed_model_path_ = embed_path;
+        if (!llm_path.empty())   llm_model_path_   = llm_path;
+    }
+}
+
+void ServerState::report_embed_load(bool loaded, const std::string& error)
+{
+    (void)loaded;  // success / failure is implicit in `error.empty()`
+    std::lock_guard<std::mutex> lk(mu_);
+    embed_error_ = error;
+}
+
+void ServerState::report_llm_load(bool loaded, const std::string& error)
+{
+    (void)loaded;
+    std::lock_guard<std::mutex> lk(mu_);
+    llm_error_ = error;
+}
+
+// Helper used by both set_models and config_json. Keeps the on-disk and
+// on-wire JSON clean even when paths contain quotes or backslashes.
+std::string json_escape(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    return out;
 }
 
 }  // namespace apollo::mcp

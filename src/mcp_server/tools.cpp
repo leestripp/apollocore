@@ -507,6 +507,46 @@ static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& st
     return CallToolResult::text(j.dump(2));
 }
 
+static CallToolResult apollo_set_config(const json& args, ServerState& state)
+{
+    // Either field may be missing or empty — that's "keep current".
+    std::string embed = args.contains("embed_model") && args["embed_model"].is_string()
+                        ? args["embed_model"].get<std::string>() : std::string{};
+    std::string llm   = args.contains("llm_model") && args["llm_model"].is_string()
+                        ? args["llm_model"].get<std::string>() : std::string{};
+
+    if (embed.empty() && llm.empty()) {
+        return CallToolResult::error(
+            "Provide at least one of: embed_model, llm_model. "
+            "Empty values keep the current path.");
+    }
+
+    auto r = state.set_models(embed, llm);
+
+    json out = {
+        {"embed_model",  r.embed_model},
+        {"llm_model",    r.llm_model},
+        {"embed_loaded", r.embed_loaded},
+        {"llm_loaded",   r.llm_loaded},
+        {"embed_error",  r.embed_error},
+        {"llm_error",    r.llm_error},
+        {"config_path",  state.config_path()},
+    };
+
+    // If user asked to set a path and it failed to load, return is_error
+    // so the agent can self-correct.
+    bool wanted_embed = !embed.empty();
+    bool wanted_llm   = !llm.empty();
+    bool failed = (wanted_embed && !r.embed_loaded) ||
+                  (wanted_llm   && !r.llm_loaded);
+    if (failed) {
+        auto res = CallToolResult::text(out.dump(2));
+        res.is_error = true;
+        return res;
+    }
+    return CallToolResult::text(out.dump(2));
+}
+
 // ---------------------------------------------------------------------------
 // JSON Schemas (JSON Schema 2020-12 subset used by MCP)
 // ---------------------------------------------------------------------------
@@ -622,6 +662,20 @@ json schema_set_project() {
             {"project", {{"type", "string"}}}
         }},
         {"required", json::array({"project"})}
+    };
+}
+
+json schema_set_config() {
+    // Both fields are optional. Empty/missing means "keep current value".
+    return json{
+        {"type", "object"},
+        {"properties", {
+            {"embed_model", {{"type", "string"},
+                             {"description", "Absolute path to a GGUF embedding model. Empty keeps the current path."}}},
+            {"llm_model",   {{"type", "string"},
+                             {"description", "Absolute path to a GGUF LLM (instruct-tuned). Empty keeps the current path."}}}
+        }},
+        // No "required" — both are optional.
     };
 }
 }  // namespace
@@ -753,6 +807,17 @@ ToolRegistry build_default_registry()
          /*read_only_hint*/ true,
          /*idempotent_hint*/ true},
         apollo_list_projects);
+
+    r.register_tool(
+        {"apollo_set_config",
+         "Set the embedding and/or LLM model paths, hot-reload them, "
+         "and persist to <data-dir>/config.json. Empty values keep the "
+         "current path. host/port/data_dir cannot be changed at runtime.",
+         schema_set_config(),
+         "Update model configuration",
+         /*destructive_hint*/ true,
+         /*idempotent_hint*/ true},
+        apollo_set_config);
 
     return r;
 }
