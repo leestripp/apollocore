@@ -105,7 +105,8 @@ real `POST /mcp` JSON-RPC call. No second API. No CDN. No framework.
 Disable with `--no-ui` (the `/mcp`, `/health`, `/info` endpoints keep
 working).
 
-Full guide: [`docs/ui.md`](docs/ui.md).
+Full guide: [`docs/ui.md`](docs/ui.md). Browser-driven smoke test:
+[`docs/ui-testing.md`](docs/ui-testing.md).
 
 ---
 
