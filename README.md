@@ -1,121 +1,56 @@
-![ApolloCore banner image](resources/banner.png)
-
 # ApolloCore
 
-> **A C++23 MCP (Model Context Protocol) server that exposes a local RAG /
-> retrieval-augmented knowledge base to AI agents.**
+A C++23 MCP (Model Context Protocol) server that exposes a local
+retrieval-augmented knowledge base to AI agents. Any MCP-aware client —
+Claude Desktop, Cursor, Cline, Windsurf, Continue.dev — points at it and
+gets 12 ready-made tools, 5 resources, and 4 pre-built prompts for searching,
+ingesting, and walking documents and codebases.
 
-This is the only way ApolloCore is delivered: as a single executable,
-`apollo_mcp_server`, that any MCP-aware agent can talk to. There is no
-library to link, no SDK to embed — agents connect over HTTP and call
-tools.
+```text
+Claude Desktop ─┐
+Cursor          ├──►  POST /mcp  ──►  apollo_mcp_server  ──►  SQLite + FBIN
+Cline           ─┘                                  └──►  llama.cpp (embeddings + LLM)
+                                                   └──►  tree-sitter (code AST)
+```
+
+The server runs entirely on your machine. No API keys, no cloud, no data
+leaving the box.
 
 ---
 
-## 🌟 Features
+## Features
 
-| Feature | Description |
-|---------|-------------|
-| 🧠 **Local LLM Inference** | Run embedding models and LLMs locally via llama.cpp |
-| 🔍 **Hybrid Search** | Combines vector similarity (semantic) + BM25 (keyword) via RRF |
-| 💾 **Persistent Storage** | SQLite (metadata) + binary embeddings (.fbin) |
-| 🌐 **Knowledge Graph** | Entity & relationship extraction (LLM + manual + tree-sitter) |
-| 🎯 **Cross-Encoder Reranking** | LLM-based result reranking for precision |
-| 💡 **HyDE** | Hypothetical Document Embeddings for query enhancement |
-| 📄 **Contextual Retrieval** | Context-aware chunk processing |
-| 🌳 **Code-Aware Extraction** | tree-sitter AST parsing auto-extracts FUNCTION/CLASS/etc. |
-| 👥 **Multi-Project Scoping** | Multiple agents share one KB, isolated by project |
-| 🤖 **MCP Server** | Single `apollo_mcp_server` executable — speaks MCP 2025-11-25, Streamable HTTP, ready for Claude/Cursor/Cline |
-| ⚡ **High Performance** | C++23, zero-copy, mmap-backed embeddings, Vulkan GPU |
-
----
-
-## 📋 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Installation](#-installation)
-- [Architecture](#-architecture)
-- [API Reference](#-api-reference)
-- [Examples](#-examples)
-- [File Formats](#-file-formats)
-- [Building](#-building)
-- [Testing](#-testing)
-- [Project Status](#-project-status)
-- [Contributing](#-contributing)
-- [License](#-license)
+- **Hybrid search** — vector similarity + BM25 keyword + knowledge-graph
+  expansion fused with Reciprocal Rank Fusion.
+- **Cross-encoder reranking** — opt-in precision boost using the local LLM.
+- **HyDE** — Hypothetical Document Embeddings for query expansion.
+- **Contextual retrieval** — Anthropic-style context-injected chunks.
+- **Knowledge graph** — entities and relationships extracted by the LLM,
+  plus tree-sitter-based extraction for code (`FUNCTION`, `CLASS`,
+  `NAMESPACE`, …).
+- **Multi-project scoping** — multiple agents can share one KB directory,
+  each isolated in its own project with optional cross-project reads.
+- **Persistent storage** — SQLite for metadata, binary `.fbin` files for
+  vectors, one directory per knowledge base.
+- **Pluggable backends** — Vulkan / CUDA / Metal / CPU (auto-selected by
+  llama.cpp).
+- **Single binary** — `apollo_mcp_server` is the entire deliverable.
+  Link the static library if you must, but you shouldn't need to.
 
 ---
 
-## 🚀 Quick Start
+## Quick start
 
-### 1. Build ApolloCore
+### Prerequisites
 
-```bash
-git clone https://github.com/yourname/ApolloCore.git
-cd ApolloCore
-
-# Configure and build
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-```
-
-### 2. Download a Model
+Ubuntu 24.04+ (or Debian 13+, or macOS, or WSL):
 
 ```bash
-# Create models directory
-mkdir -p models
-cd models
-
-# Download embedding model (~81MB)
-curl -L -O "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
-
-# (Optional) Download LLM for entity extraction (~469MB)
-curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+sudo apt install -y build-essential cmake ninja-build pkg-config \
+                    libssl-dev zlib1g-dev libsqlite3-dev git
 ```
 
-### 3. Run the Example
-
-```bash
-./build/examples/full_demo
-```
-
-### 4. Minimal Code Example
-
-```cpp
-#include <apollocore/apollo_persistence.hpp>
-#include <iostream>
-
-using namespace apollocore_v2;
-
-int main() {
-    ApolloCore kb;
-    
-    // Load embedding model
-    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
-    
-    // Create a knowledge base
-    kb.create("data/my_kb", "My Knowledge Base");
-    
-    // Add documents (auto-persisted to disk)
-    kb.add_document(
-        "Albert Einstein developed the theory of relativity. "
-        "He worked at Princeton University. "
-        "His theory changed modern physics.",
-        "doc_einstein",  // custom doc_id
-        512              // chunk size in characters
-    );
-    
-    // Query the knowledge base
-    auto results = kb.query("relativity Einstein", 5);
-    for (const auto& [content, score] : results) {
-        std::cout << "Score " << score << ": " << content << "\n";
-    }
-    
-    return 0;
-}
-```
-
-## 🚀 Quick Start
+Compiler: GCC 13+ or Clang 17+ (C++23). Tested against GCC 15.
 
 ### Build
 
@@ -124,58 +59,37 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc) --target apollo_mcp_server
 ```
 
+First build takes ~5 minutes (llama.cpp + OmniNet + their transitive deps).
+Subsequent builds are incremental.
+
 ### Run
 
 ```bash
+# Make sure you have models (see "Models" below)
+mkdir -p models
+# Download Nomic embed (required) and Qwen 0.5B (optional, for extraction/rerank)
 ./build/src/mcp_server/apollo_mcp_server --port 8765
 ```
 
 CLI flags: `--host`, `--port`, `--data-dir`, `--embed-model`,
 `--llm-model`, `--admin`, `-v`/`--verbose`. Environment variables
 (`APOLLO_DATA_DIR`, `APOLLO_EMBED_MODEL`, `APOLLO_LLM_MODEL`,
-`OMNINET_DATA_DIR`) are honored as defaults.
+`OMNINET_DATA_DIR`) are honored.
 
-### What the agent sees
-
-| Tools (12) | Resources (5) | Prompts (4) |
-|------------|---------------|-------------|
-| `apollo_query_kb`, `apollo_add_document`, `apollo_extract_entities`, `apollo_ingest_codebase`, `apollo_search_symbols`, `apollo_get_neighbors`, `apollo_create_kb`, `apollo_open_kb`, `apollo_save_kb`, `apollo_get_stats`, `apollo_set_project`, `apollo_list_projects` | `apollo://projects`, `apollo://stats`, `apollo://entities`, `apollo://graph`, `apollo://chunk/{id}` | `summarize_kb`, `answer_with_citations`, `code_review_summary`, `entity_research` |
-
-All tools have JSON Schema 2020-12 inputs and `readOnlyHint` /
-`destructiveHint` / `idempotentHint` annotations per MCP 2026 best practice.
-
-### Quick probe
+The server is now listening on `http://0.0.0.0:8765`. Probe it:
 
 ```bash
-# Health
 curl -s http://127.0.0.1:8765/health | jq
-
-# Initialize
-curl -s -X POST http://127.0.0.1:8765/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
-       "params":{"protocolVersion":"2025-11-25","capabilities":{},
-                 "clientInfo":{"name":"probe","version":"0"}}}'
-
-# List tools
-curl -s -X POST http://127.0.0.1:8765/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
-# → 12
-
-# Create a KB
-curl -s -X POST http://127.0.0.1:8765/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json' \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call",
-       "params":{"name":"apollo_create_kb",
-                 "arguments":{"path":"data/demo","name":"demo"}}}'
+# → { "status": "ok", "tools": 12, "resources": 5, "prompts": 4, ... }
 ```
 
-### Connecting MCP clients
+---
 
-**Claude Desktop** (`~/.config/Claude/claude_desktop_config.json` on Linux):
+## Connecting MCP clients
+
+Any MCP client with the Streamable HTTP transport works.
+
+**Claude Desktop** — edit `~/.config/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -188,638 +102,287 @@ curl -s -X POST http://127.0.0.1:8765/mcp \
 }
 ```
 
-**Cursor / Cline / Windsurf / Continue.dev**: add an MCP server entry
-pointing to `http://127.0.0.1:8765/mcp`. The exact UI location varies by
-client; consult the client's docs for "custom MCP server URL".
+Restart Claude Desktop. The 12 `apollo_*` tools appear in every conversation.
 
-See `docs/mcp-quickstart.md` for a full worked session and `docs/design.md`
-for the architectural rationale.
-
-### Spec versioning
-
-The server pins **MCP 2025-11-25** (latest stable at this writing).
-The 2026-07-28 release candidate introduces a stateless protocol core,
-`Mcp-Method`/`Mcp-Name` headers, and Extensions — code is structured to
-migrate when clients catch up.
+**Cursor / Cline / Windsurf / Continue.dev** — add an MCP server entry with
+URL `http://127.0.0.1:8765/mcp`. Exact location varies by client; consult
+their docs for "custom MCP server URL".
 
 ---
 
-## 📦 Installation
+## Tools
 
-### System Requirements
+All tools are JSON-RPC 2.0 methods on `POST /mcp` with JSON Schema 2020-12
+inputs. They carry `readOnlyHint` / `destructiveHint` / `idempotentHint`
+annotations so the model knows what's safe.
 
-- **OS**: Linux (Ubuntu 20.04+), macOS, or Windows with WSL
-- **Compiler**: GCC 13+ or Clang 17+ (C++23 support required)
-- **CMake**: 3.20+
-- **RAM**: 4GB minimum, 8GB recommended
-- **Disk**: 1GB for models + storage for your data
+| Tool | What it does |
+|------|--------------|
+| `apollo_query_kb` | Search the KB. `mode`: `vector` / `hybrid` / `rerank` / `full`. |
+| `apollo_add_document` | Ingest a string as a document. Chunks automatically. |
+| `apollo_extract_entities` | Run entity extraction over the KB (needs LLM). |
+| `apollo_ingest_codebase` | Walk a directory; tree-sitter pulls FUNCTION/CLASS/etc. for code, embeddings for everything else. |
+| `apollo_search_symbols` | Find code symbols by name. |
+| `apollo_get_neighbors` | Approximate neighborhood lookup in the knowledge graph. |
+| `apollo_create_kb` | Create an empty KB at a path. |
+| `apollo_open_kb` | Open an existing KB. |
+| `apollo_save_kb` | Persist the KB to disk. |
+| `apollo_get_stats` | Document / chunk / entity counts. |
+| `apollo_set_project` | Switch active project (multi-tenant). |
+| `apollo_list_projects` | List projects in the current KB. |
 
-### Dependencies
+## Resources
 
-All dependencies are automatically fetched by CMake:
+URI-addressed read-only data:
 
-| Dependency | Version | Purpose |
-|------------|---------|---------|
-| [llama.cpp](https://github.com/ggerganov/llama.cpp) | master | Local LLM/embedding inference |
-| [nlohmann/json](https://github.com/nlohmann/json) | v3.11.3 | JSON serialization |
-| [SQLite3](https://www.sqlite.org/) | 3.46+ | Metadata storage |
-| [tree-sitter](https://github.com/tree-sitter/tree-sitter) | v0.26.9 | C++ AST parsing for code entities |
+| URI | Contents |
+|-----|----------|
+| `apollo://projects` | Project list (JSON) |
+| `apollo://stats` | Per-project stats |
+| `apollo://entities` | Entities in the current project |
+| `apollo://graph` | Knowledge graph (entities + relationships) |
+| `apollo://chunk/{id}` | A single chunk by id |
 
-Quick install on Ubuntu/Debian:
+## Prompts
+
+Pre-built workflows the user can invoke:
+
+| Prompt | Args |
+|--------|------|
+| `summarize_kb` | — |
+| `answer_with_citations` | `question` |
+| `code_review_summary` | `path` |
+| `entity_research` | `entity` |
+
+---
+
+## Models
+
+ApolloCore needs at least an embedding model. The default is
+**nomic-embed-text-v1.5** (768-dim, ~81 MB), quantized Q4_K_M.
+
+For entity extraction, cross-encoder reranking, HyDE, and contextual
+retrieval, load an LLM. The default is **Qwen2.5-0.5B-Instruct** (~469 MB).
+
+Download both into `models/`:
+
 ```bash
-sudo apt install -y libssl-dev zlib1g-dev libsqlite3-dev cmake build-essential
+mkdir -p models && cd models
+
+curl -L -O "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
+
+curl -L -O "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 ```
 
-### Build Options
+Or point at your own paths:
 
 ```bash
-# Release build (default, recommended)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-# Debug build
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-
-# With specific GPU support
-cmake -S . -B build -DLLAMA_CUBLAS=ON  # NVIDIA CUDA
-cmake -S . -B build -DLLAMA_VULKAN=ON  # AMD/Intel Vulkan
-cmake -S . -B build -DLLAMA_METAL=ON   # Apple Metal
+./apollo_mcp_server \
+  --embed-model /path/to/my-embed.gguf \
+  --llm-model /path/to/my-llm.gguf
 ```
+
+Both fields are GGUF. Any model llama.cpp can load with an embedding head
+works for the embed slot; any instruct-tuned GGUF works for the LLM slot.
 
 ---
 
-## 🏗️ Architecture
+## Configuration
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     ApolloCore API                          │
-│           (apollo_persistence.hpp — single header)          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Hybrid     │  │   Code       │  │   Context    │     │
-│  │   Search     │  │   Extractor  │  │   Retrieval  │     │
-│  │  (Vector+BM25)│ │  (tree-sitter)│  │              │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                 │                 │              │
-│  ┌──────┴─────────────────┴─────────────────┴───────┐     │
-│  │              Knowledge Graph                       │     │
-│  │   (entities + relationships + project scoping)    │     │
-│  └──────────────────────┬─────────────────────────────┘     │
-│                         │                                   │
-│  ┌──────────────────────┴─────────────────────────────┐    │
-│  │            Embedding & Inference Engine              │    │
-│  │    (llama.cpp wrapper for local models)              │    │
-│  └──────────────────────┬─────────────────────────────┘    │
-│                         │                                   │
-│  ┌──────────────────────┴─────────────────────────────┐    │
-│  │              Persistence Layer                       │    │
-│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐         │    │
-│  │   │ SQLite   │  │  FBIN    │  │ Projects │         │    │
-│  │   │  (data)  │  │(vectors) │  │  (M3.C)  │         │    │
-│  │   └──────────┘  └──────────┘  └──────────┘         │    │
-│  └──────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                  ┌───────────┴───────────┐
-                  │  apollo_mcp_server   │  ← The only deliverable
-                  │  (the executable)    │
-                  └─────────────────────┘
-                              │  AI agent connects via HTTP
-                              ▼  (Claude, Cursor, Cline, …)
-```
+| Flag / env var | Default | Notes |
+|----------------|---------|-------|
+| `--host` / `APOLLO_HOST` | `0.0.0.0` | Bind address |
+| `--port` / `APOLLO_PORT` | `8765` | TCP port |
+| `--data-dir` / `APOLLO_DATA_DIR` | `data` | KB root directory |
+| `--embed-model` / `APOLLO_EMBED_MODEL` | `models/nomic-embed-text-v1.5.Q4_K_M.gguf` | Embedding GGUF |
+| `--llm-model` / `APOLLO_LLM_MODEL` | `models/qwen2.5-0.5b-instruct-q4_k_m.gguf` | LLM GGUF (optional) |
+| `--admin` | off | Mount OmniNet admin dashboard at `/omninet` |
+| `-v` / `--verbose` | off | Debug logging |
 
-### Module Overview
-
-| Module | Header | Purpose |
-|--------|--------|---------|
-| `ApolloCore` | `apollo_persistence.hpp` | Unified high-level API (with persistence) |
-| `EntityExtractor` | `entity_extractor.hpp` | Extract entities/relationships via LLM |
-| `HybridSearch` | `apollo_hybrid_search.hpp` | Vector + BM25 + graph combined via RRF |
-| `CrossEncoderReranker` | `cross_encoder.hpp` | LLM-based reranking for precision |
-| `HydeEnhancer` | `hyde.hpp` | Hypothetical Document Embeddings |
-| `ContextGenerator` | `contextual_retrieval.hpp` | Anthropic-style contextual retrieval |
-| `EmbeddingModel` | `embedding_model.hpp` | GGUF text → 768-dim vectors |
-| `OnnxEmbeddingModel` | `onnx_embedding.hpp` | ONNX-based embeddings |
-| `KnowledgeBasePersistence` | `kb_persistence.hpp` | SQLite + FBIN + project registry |
-| `CodeExtractor` | `apollo_code_extractor.hpp` | tree-sitter AST → entities/relationships |
-| `TSParser` / `TSNode` | `apollo_ts_wrapper.hpp` | tree-sitter C++ RAII wrapper |
+The knowledge base itself lives at `<data-dir>/<name>`. Create one with
+`apollo_create_kb` or `apollo_open_kb`.
 
 ---
 
-## 📚 API Reference
+## Storage
 
-### Core Classes
-
-#### `ApolloCore`
-
-The main entry point. Provides a unified API combining embeddings, search, knowledge graph, persistence, and project scoping.
-
-```cpp
-#include <apollocore/apollo_persistence.hpp>
-
-apollocore_v2::ApolloCore kb;
-```
-
-**Model Management:**
-```cpp
-bool load_embedding_model(const std::string& path, bool use_gpu = false);
-bool load_llm_model(const std::string& path, bool use_gpu = false);
-bool is_llm_loaded() const;
-```
-
-**Knowledge Base Management:**
-```cpp
-static bool kb_exists(const std::string& path);
-bool create(const std::string& path, const std::string& name = "Untitled");
-bool open(const std::string& path);
-void close();
-bool save();
-```
-
-**Project Scoping (M3.C — multi-agent):**
-```cpp
-bool set_current_project(const std::string& project_name);
-std::string current_project() const;
-bool register_project(const std::string& name,
-                      const std::string& description = "",
-                      bool is_shared = false,
-                      const std::string& owner = "");
-nlohmann::json list_projects() const;
-bool add_shared_read_source(const std::string& project_name);
-bool delete_project(const std::string& name, bool confirm);
-```
-
-**Data Operations:**
-```cpp
-size_t add_document(const std::string& text, size_t chunk_size = 512);
-size_t add_document(const std::string& text,
-                    const std::string& custom_doc_id,
-                    size_t chunk_size = 512);
-std::string add_entity(const std::string& name,
-                       const std::string& type,
-                       const std::string& chunk_id = "",
-                       const std::string& description = "",
-                       float confidence = 1.0f);
-std::string add_relationship(const std::string& source,
-                             const std::string& target,
-                             const std::string& type,
-                             const std::string& description = "",
-                             float confidence = 1.0f);
-std::vector<std::pair<std::string, float>> query(
-    const std::string& query_text, size_t top_k = 5);
-std::vector<search::HybridResult> query_hybrid(
-    const std::string& query_text, size_t top_k = 5,
-    double alpha = 0.5, double beta = 0.3, double gamma = 0.2);
-std::vector<RerankedResult> query_with_rerank(
-    const std::string& query_text, size_t top_k = 5,
-    size_t candidate_k = 0);
-std::vector<RerankedResult> query_full(
-    const std::string& query_text, size_t top_k = 5);
-std::vector<Entity> get_entities(size_t limit = 100);
-std::vector<Relationship> get_relationships(size_t limit = 100);
-std::vector<Entity> get_neighbors(const std::string& entity_name, size_t hops = 1);
-```
-
-**Query Modes — pick the right one:**
-
-| Method | Signals | Speed | Best for |
-|--------|---------|-------|----------|
-| `query()` | Vector only | Fastest | Pure semantic similarity |
-| `query_hybrid()` | Vector + BM25 + graph | Fast | Better recall (catches exact matches) |
-| `query_with_rerank()` | Vector → LLM rerank | Slower | Precision (filters false positives) |
-| `query_full()` | Hybrid → LLM rerank | Slowest | Highest quality |
-
-**Statistics:**
-```cpp
-struct Stats {
-    size_t document_count;
-    size_t chunk_count;
-    size_t entity_count;
-    size_t relationship_count;
-    size_t chunks_with_entities;
-    size_t embedding_files_size;
-};
-Stats get_stats();
-```
-
-### Code Extraction (M3.B — tree-sitter)
-
-For automatic code-aware entity extraction:
-
-```cpp
-#include <apollocore/apollo_code_extractor.hpp>
-
-apollocore_v2::CodeModel model = apollocore_v2::extract_cpp(source, "src/foo.cpp");
-for (const auto& e : model.entities) {
-    std::cout << "[" << e.type << "] " << e.name
-              << " (line " << e.start_line << ")\n";
-}
-for (const auto& r : model.relationships) {
-    std::cout << r.source << " --[" << r.type << "]--> " << r.target << "\n";
-}
-```
-
-### Entity Extraction
-
-```cpp
-#include <apollocore/entity_extractor.hpp>
-
-apollocore_v2::ExtractionConfig config;
-config.llm.backend = apollocore_v2::ExtractionConfig::LLMConfig::Backend::LLAMA_CPP;
-config.llm.model_path = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
-
-apollocore_v2::EntityExtractor extractor(config);
-auto result = extractor.extract("Albert Einstein worked at Princeton...");
-
-for (const auto& entity : result.entities) {
-    std::cout << entity.name << " (" << entity.type << ")\n";
-}
-```
-
-### Persistence (Lower-level)
-
-For more control, use `KnowledgeBasePersistence` directly:
-
-```cpp
-#include <apollocore/kb_persistence.hpp>
-
-apollocore_v2::KnowledgeBasePersistence kb;
-
-// Create or open
-kb.create("data/my_kb", "My KB");
-kb.open("data/my_kb");
-
-// Save data
-kb.save_chunk("chunk_001", "node_001", "content", 0, embedding);
-kb.save_entity("e1", "chunk_001", "Einstein", "PERSON", "physicist", 0.95f);
-kb.save_relationship("r1", "e1", "e2", "WORKED_AT", "desc", 0.9f);
-
-// Load data
-auto chunks = kb.load_all_chunks();
-auto entities = kb.load_all_entities();
-```
-
----
-
-## 💡 Examples
-
-### Example 1: Build a Document Search Engine
-
-```cpp
-#include <apollocore/apollo_persistence.hpp>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-
-using namespace apollocore_v2;
-
-int main() {
-    ApolloCore kb;
-    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
-
-    kb.create("data/research", "Research Papers");
-
-    // Read all text files from a directory
-    for (const auto& entry : std::filesystem::directory_iterator("papers/")) {
-        if (entry.path().extension() == ".txt") {
-            std::ifstream f(entry.path());
-            std::stringstream ss;
-            ss << f.rdbuf();
-            kb.add_document(ss.str(), entry.path().string(), 512);
-        }
-    }
-
-    // Search
-    std::cout << "Enter query: ";
-    std::string query;
-    std::getline(std::cin, query);
-
-    auto results = kb.query(query, 5);
-    for (const auto& [content, score] : results) {
-        std::cout << "\n--- Score: " << score << " ---\n"
-                  << content << "\n";
-    }
-
-    return 0;
-}
-```
-
-### Example 2: Codebase Knowledge Graph (M3.B + M3.C)
-
-```cpp
-#include <apollocore/apollo_persistence.hpp>
-#include <apollocore/apollo_code_extractor.hpp>
-#include <filesystem>
-
-using namespace apollocore_v2;
-
-int main() {
-    ApolloCore kb;
-    kb.load_embedding_model("models/nomic-embed-text-v1.5.Q4_K_M.gguf");
-
-    // M3.C: Use project scoping so this agent doesn't see others' data
-    kb.create("data/myagent_kb", "MyAgentKB");
-    kb.register_project("vortxGE", "Game engine", true /*shared*/);
-
-    // Walk a codebase and extract everything
-    for (const auto& entry : std::filesystem::recursive_directory_iterator("src/")) {
-        if (!entry.is_regular_file()) continue;
-        auto path = entry.path();
-        std::ifstream f(path);
-        std::stringstream ss; ss << f.rdbuf();
-        std::string source = ss.str();
-
-        // M3.B: tree-sitter extracts FUNCTION, CLASS, NAMESPACE, CALLS, INHERITS
-        CodeModel model = extract_code(source, path.string());
-        for (const auto& e : model.entities) {
-            kb.add_entity(e.name, e.type, "", e.signature);
-        }
-        for (const auto& r : model.relationships) {
-            kb.add_relationship(r.source, r.target, r.type);
-        }
-
-        // Also add the raw source as a document for semantic search
-        kb.add_document(source, path.string(), 512);
-    }
-
-    // Query the call graph
-    auto neighbors = kb.get_neighbors("authenticate", 2);
-    std::cout << "Things that call or are called by 'authenticate':\n";
-    for (const auto& e : neighbors) {
-        std::cout << "  - [" << entity_type_to_string(e.type) << "] " << e.name << "\n";
-    }
-
-    // Search by meaning
-    auto hits = kb.query("how does user authentication work?", 5);
-
-    // Read shared project (M3.C)
-    kb.set_current_project("vortxGE");
-    auto vortx_entities = kb.get_entities(100);
-
-    return 0;
-}
-```
-
-### Example 3: Entity Extraction (LLM-based)
-
-```cpp
-#include <apollocore/entity_extractor.hpp>
-
-using namespace apollocore_v2;
-
-int main() {
-    ExtractionConfig config = scientific_extraction_config();
-    config.llm.model_path = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
-
-    EntityExtractor extractor(config);
-
-    std::string text = R"(
-        Albert Einstein published his theory of relativity in 1915
-        while working at the University of Zurich. He later joined
-        Princeton University where he developed quantum mechanics
-        concepts with Neils Bohr.
-    )";
-
-    auto result = extractor.extract(text, "science_chunk_001");
-
-    std::cout << "Entities found: " << result.entity_count() << "\n";
-    for (const auto& e : result.entities) {
-        std::cout << "  - " << e.name << " (" << e.type << ")\n";
-    }
-
-    return 0;
-}
-```
-
----
-
-## 🤖 Model Selection
-
-ApolloCore uses two GGUF models, both auto-downloaded by CMake.
-
-### Required Models
-
-| Model | Purpose | Size | Dimensions |
-|-------|---------|------|------------|
-| `nomic-embed-text-v1.5.Q4_K_M.gguf` | Text embeddings | ~81 MB | 768 |
-| `qwen2.5-0.5b-instruct-q4_k_m.gguf` | Entity extraction (LLM) | ~469 MB | — |
-
-### Why these models?
-
-- **Nomic Embed Text v1.5** — Best open-source embedding model at this size. Rivals OpenAI's `text-embedding-ada-002` on MTEB benchmark.
-- **Qwen2.5 0.5B Instruct** — Small but capable instruction-tuned LLM. Fast enough for entity extraction on CPU, good enough for JSON output.
-
-### 0.5B vs 3B Comparison
-
-We tested both Qwen2.5 0.5B and 3B for entity extraction. The **stop condition bug** in the generation loop was the real blocker — once fixed (waiting for `}]}` instead of `}]`), the 0.5B model produces real relationships.
-
-| Model | Size | Entities | Relationships | Time |
-|-------|------|----------|----------------|------|
-| Qwen2.5 0.5B | 469 MB | 10–42 | 0–4 | ~60s |
-| Qwen2.5 3B | 2.1 GB | 18–20 | 6 | ~280s |
-
-**Recommendation:** Use **0.5B** (the default). It's 4.5× smaller and 4× faster with nearly the same quality. Switch to 3B+ only if you need higher accuracy on complex relationships and can afford the slowdown.
-
-## 📁 File Formats
-
-ApolloCore uses a hybrid storage approach. See [docs/file-formats.md](docs/file-formats.md) for details.
+On disk a KB looks like:
 
 ```
 my_kb/
 ├── apollo.db           # SQLite: nodes, chunks, entities, relationships
-├── apollo.db-wal       # Write-Ahead Log (auto-generated)
+├── apollo.db-wal       # Write-Ahead Log (auto-managed)
 └── embeddings/
-    ├── chunk_001.fbin  # Binary embedding (16-byte header + float32[])
+    ├── chunk_001.fbin  # 16-byte header (u32 ndim, u32 count) + float32[] vector
     └── chunk_002.fbin
 ```
 
-**Storage sizes:**
-- SQLite: ~1 KB per chunk
-- FBIN: 3,088 bytes for 768-dim embedding
-- Total: ~45 MB for 1000 docs × 10 chunks
+About 1 KB of metadata per chunk plus 3,088 bytes per embedding
+(768-dim). ~45 MB total for 1,000 documents averaging 10 chunks each.
 
 ---
 
-## 🔨 Building
-
-### Build the MCP server
+## Build options
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc) --target apollo_mcp_server
+# GPU backends (auto-detected, pick what you have)
+cmake -S . -B build -DLLAMA_VULKAN=ON   # AMD / Intel
+cmake -S . -B build -DLLAMA_CUBLAS=ON   # NVIDIA
+cmake -S . -B build -DLLAMA_METAL=ON    # macOS
+
+# Use system libs instead of FetchContent
+cmake -S . -B build -DTREE_SITTER_SKIP_FETCH=ON
+cmake -S . -B build -DOMNINET_SKIP_FETCH=ON
+
+# Debug build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 ```
 
-This produces `build/src/mcp_server/apollo_mcp_server` — a single
-self-contained executable. Run it:
-
-```bash
-./build/src/mcp_server/apollo_mcp_server --port 8765
-```
-
-### Build everything (server + tests)
-
-```bash
-cmake --build build -j$(nproc)
-cd build && ctest --output-on-failure
-```
-
-### Build options
-
-- `-DCMAKE_BUILD_TYPE=Debug|Release`
-- `-DLLAMA_CUBLAS=ON` (NVIDIA)
-- `-DLLAMA_VULKAN=ON` (AMD/Intel)
-- `-DLLAMA_METAL=ON` (Apple)
-- `-DTREE_SITTER_SKIP_FETCH=ON` (use system tree-sitter)
-- `-DOMNINET_SKIP_FETCH=ON` (use system OmniNet)
-
-### Install the executable
+When the build is done, install the executable:
 
 ```bash
 cmake --install build --prefix /usr/local
-# Installs: /usr/local/bin/apollo_mcp_server
+# /usr/local/bin/apollo_mcp_server
 ```
 
 ---
 
-## 🧪 Testing
+## Development
+
+### Layout
+
+```
+ApolloCore/
+├── CMakeLists.txt              Top-level build (server, library, tests, models)
+├── include/apollocore/         Public headers of the internal apollo_core target
+├── src/                        Library: RAG, KG, persistence, hybrid search, …
+│   └── mcp_server/             MCP server: dispatcher, tools, resources, prompts
+├── tests/                      CTest targets (14 pre-existing + 2 MCP-specific)
+├── examples/full_demo.cpp       Standalone CLI demo of the library
+├── docs/                       design.md, file-formats.md, mcp-quickstart.md
+└── models/                     GGUF files (gitignored)
+```
+
+### Running tests
 
 ```bash
-# Build and run all tests
 cmake --build build -j$(nproc)
 cd build && ctest --output-on-failure
-
-# Or run individual tests
-./build/tests/test_entity_extraction
-./build/tests/test_persistence
-./build/tests/test_kb_persistence
-./build/tests/test_apollo_persistence
-./build/tests/test_multi_project
-./build/tests/test_code_extractor
-./build/tests/test_fbin
-./build/tests/test_cross_encoder
 ```
 
-### Test Coverage
+16 test executables, all passing:
 
-| Module | Tests | File |
-|--------|-------|------|
-| Persistence (SQLite) | 7 | `tests/test_persistence` |
-| FBIN (embeddings) | 12 | `tests/test_fbin` |
-| Knowledge Base Persistence | 14 | `tests/test_kb_persistence` |
-| ApolloCore Integration | 8 | `tests/test_apollo_persistence` |
-| Hybrid Search (v2) | — | `tests/test_v2` |
-| Embedding Model | — | `tests/test_embeddings` |
-| LLM Entity Extraction | 14 | `tests/test_entity_extraction` |
-| Cross-Encoder | 7 | `tests/test_cross_encoder` |
-| HyDE | — | `tests/test_hyde` |
-| Contextual Retrieval | — | `tests/test_contextual_retrieval` |
-| **Code Extraction (M3.B)** | **12** | `tests/test_code_extractor` ✅ |
-| **Multi-Project Scoping (M3.C)** | **15** | `tests/test_multi_project` ✅ |
-| **Hybrid + Rerank wiring** | **6** | `tests/test_hybrid_search` ✅ |
-| **Active tests** | **33+** | **all passing** |
+- 14 pre-existing (`test_persistence`, `test_fbin`, `test_kb_persistence`,
+  `test_apollo_persistence`, `test_v2`, `test_embeddings`,
+  `test_entity_extraction`, `test_cross_encoder`, `test_hyde`,
+  `test_contextual_retrieval`, `test_hybrid_search`, `test_code_extractor`,
+  `test_multi_project`, `test_coverage_holes`)
+- 2 MCP-specific (`mcp_dispatcher` — JSON-RPC method routing,
+  `mcp_tools` — handler-level tests using a real KB in tmpdir)
+
+### Worked example
+
+See `docs/mcp-quickstart.md` for a ten-step walkthrough from `cmake
+--build` to a running Claude Desktop session.
 
 ---
 
-## 📊 Project Status
+## Architecture
 
-### Implementation Phases
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      AI Agent (Claude, Cursor, ...)                 │
+│                   speaks MCP JSON-RPC over HTTP                      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │  POST /mcp  (Streamable HTTP)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                apollo_mcp_server   ←  THE deliverable               │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │              OmniNet HTTP+WS server                          │  │
+│  │  POST /mcp   → JSON-RPC dispatcher                            │  │
+│  │  GET  /mcp   → SSE stream (server-pushed notifications)       │  │
+│  │  GET  /health→ JSON {status, tools, resources, prompts}       │  │
+│  │  GET  /info  → Server card                                   │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Dispatcher       — routes methods to registries              │  │
+│  │  ServerState      — owns one ApolloCore, manages sessions     │  │
+│  │  ToolRegistry     — 12 tools                                 │  │
+│  │  ResourceRegistry —  5 resources                             │  │
+│  │  PromptRegistry   —  4 prompts                               │  │
+│  └──────────────────────┬───────────────────────────────────────┘  │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │  links against (internal only)
+                          ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│   apollo_core  (STATIC LIBRARY — internal CMake target, not installed) │
+│       RAG, hybrid search, knowledge graph, entity extraction          │
+└─────────────────────────────────────────────────────────────────────┘
+                          │  SQLite + FBIN + llama.cpp + tree-sitter
+                          ▼
+                   files on disk
+```
 
-| Phase | Module | Status |
-|-------|--------|--------|
-| 1 | llama.cpp Integration | ✅ |
-| 2 | Embedding Model (nomic-bert) | ✅ |
-| 3 | Hybrid Search (Vector + BM25 + RRF) | ✅ |
-| 4 | Smart Chunking | ✅ |
-| 5 | Knowledge Graph | ✅ |
-| 6 | Entity Extraction Framework | ✅ |
-| 7 | LLM Backend (Qwen2.5) | ✅ |
-| 8 | Cross-Encoder Reranking | ✅ |
-| 9 | HyDE Query Enhancement | ✅ |
-| 10 | Contextual Retrieval | ✅ |
-| P1 | SQLite Database Schema | ✅ |
-| P2 | Binary Embedding Storage (.fbin) | ✅ |
-| P3 | Persistence API | ✅ |
-| P3+ | Integration with ApolloCore | ✅ |
-| M3.A | LLM Entity Extraction (Qwen) | ✅ |
-| **M3.B** | **tree-sitter Code Extraction** | ✅ |
-| **M3.C** | **Multi-Project Scoping** | ✅ |
-| — | **MCP Server** (Streamable HTTP, OmniNet) | ✅ |
-
-**Status: Production-ready. The MCP server is the only way ApolloCore is delivered.**
-
-### Why an MCP server?
-
-ApolloCore exists to give AI agents a knowledge base without making each
-agent author its own glue code. The Model Context Protocol is the standard
-way agents discover and call external tools — by speaking MCP, ApolloCore
-works with Claude Desktop, Cursor, Cline, Windsurf, Continue.dev, and any
-other MCP-aware client with zero integration work.
-
-The server is a single `apollo_mcp_server` executable that runs as a
-separate process and accepts JSON-RPC 2.0 over `POST /mcp`. There is no
-library to embed; the HTTP boundary is the API.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes with tests
-4. Ensure all tests pass
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Code Style
-
-- C++23 features encouraged
-- `clang-format` configuration provided
-- All public APIs must have doxygen comments
-- All new code must have unit tests
-
-### Reporting Bugs
-
-Please use GitHub Issues and include:
-- ApolloCore version
-- Compiler & version
-- OS & version
-- Minimal reproduction example
-- Expected vs actual behavior
+The `apollo_core` static library exists only to organize the RAG code in
+one place. It is not installed, not exported, and not meant to be linked
+into downstream code.
 
 ---
 
-## 📜 License
+## Stack
 
-MIT License - see [LICENSE](LICENSE) for details.
+| | |
+|---|---|
+| Language | C++23 (GCC 13+ / Clang 17+) |
+| Build | CMake ≥ 3.20, FetchContent for everything |
+| HTTP / WS | [OmniNet](https://gitlab.com/leestripp/omninet) (C++23, MIT) |
+| Inference | [llama.cpp](https://github.com/ggerganov/llama.cpp) (Vulkan / CUDA / Metal / CPU) |
+| Code parsing | [tree-sitter](https://tree-sitter.github.io/) v0.26 |
+| Metadata | SQLite 3.46 |
+| Vector storage | sqlite-vec (loaded as a SQLite extension) |
+| JSON | nlohmann/json 3.11 |
+| JSON-RPC | hand-rolled (`src/mcp_server/jsonrpc.hpp`) |
+| TLS | OpenSSL 3 |
 
 ---
 
-## 🙏 Acknowledgments
+## Project status
 
-Built on top of:
+All planned phases of the RAG pipeline are done and tested:
+
+- llama.cpp integration ✔
+- Embedding model (nomic-bert) ✔
+- Hybrid search (vector + BM25 + RRF) ✔
+- Smart chunking ✔
+- Knowledge graph ✔
+- Entity extraction (LLM-driven) ✔
+- Cross-encoder reranking ✔
+- HyDE ✔
+- Contextual retrieval ✔
+- SQLite persistence ✔
+- FBIN embedding storage ✔
+- tree-sitter code extraction (M3.B) ✔
+- Multi-project scoping (M3.C) ✔
+- MCP server (Streamable HTTP, OmniNet) ✔
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Acknowledgments
+
+Built on:
+
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) by Georgi Gerganov
+- [OmniNet](https://gitlab.com/leestripp/omninet) by Lee Stripp
 - [nlohmann/json](https://github.com/nlohmann/json) by Niels Lohmann
 - [SQLite](https://www.sqlite.org/) by D. Richard Hipp
 - [tree-sitter](https://tree-sitter.github.io/) by Max Brunsfeld
 - [Nomic AI](https://www.nomic.ai/) for the embedding model
-- [Qwen Team](https://qwenlm.github.io/) for the language model
+- [Qwen team](https://qwenlm.github.io/) for the language model
 
 Inspired by:
+
 - [Anthropic's Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)
 - [Microsoft GraphRAG](https://www.microsoft.com/en-us/research/project/graphrag/)
 - [LightRAG](https://arxiv.org/abs/2410.05779)
-
----
-
-## 📞 Support
-
-- 📖 [Documentation](docs/)
-- 🐛 [Issue Tracker](https://github.com/yourname/ApolloCore/issues)
-- 💬 [Discussions](https://github.com/yourname/ApolloCore/discussions)
-
----
-
-**Built with ❤️ for the local-AI community**

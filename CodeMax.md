@@ -32,13 +32,12 @@
 
 ## Task Summary
 
-ApolloCore **is** an MCP (Model Context Protocol) server. Period.
-
-The deliverable is a single executable, `apollo_mcp_server`, that AI agents
-connect to over HTTP. Internally the RAG / knowledge-graph code is still
-organized in a static library target (`apollo_core`) — that's a CMake
-implementation detail, not a public-facing product. There is no opt-in
-flag, no alternative mode, no library for downstream consumers to link.
+ApolloCore is a C++23 MCP server that exposes a local RAG / knowledge-graph
+knowledge base to AI agents. The single deliverable is the
+`apollo_mcp_server` executable, which speaks MCP 2025-11-25 over Streamable
+HTTP transport (served by OmniNet). Internally the RAG / KG code is
+organized in a static library CMake target — that's a build-system
+detail, not a separate product.
 
 This refactor:
 
