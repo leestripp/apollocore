@@ -131,6 +131,16 @@ struct HttpServer::Impl {
         });
 
         // ------------------------------------------------------------------
+        // GET /api/models — Discovered .gguf files in every models_dir
+        // Returns [{name, path, size_bytes, mtime, dir}, ...]. The Settings
+        // UI uses this as the source for the "pick a model" dropdown so
+        // the user doesn't have to type paths.
+        // ------------------------------------------------------------------
+        server->get("/api/models", [this](const onh::Request& /*req*/, onh::Response& resp) {
+            handle_get_models(resp);
+        });
+
+        // ------------------------------------------------------------------
         // POST /api/config — Apply a model configuration
         // Body: {"embed_model": "...", "llm_model": "..."} (both optional).
         // Empty values keep the current path. Models are hot-reloaded.
@@ -310,6 +320,31 @@ struct HttpServer::Impl {
         resp.setBody(body);
     }
 
+    // GET /api/models — return the discovered models as JSON.
+    void handle_get_models(onh::Response& resp)
+    {
+        auto list = state.list_models();
+        json out = json::array();
+        for (const auto& m : list) {
+            out.push_back({
+                {"name",       m.name},
+                {"path",       m.path},
+                {"size_bytes", m.size_bytes},
+                {"mtime",      static_cast<std::int64_t>(m.mtime)},
+                {"dir",        m.dir},
+            });
+        }
+        json body = {
+            {"models", out},
+            {"dirs",   [&]{
+                json a = json::array();
+                for (const auto& d : state.models_dirs()) a.push_back(d);
+                return a;
+            }()},
+        };
+        write_json(resp, 200, body);
+    }
+
     void handle_post_config(const onh::Request& req, onh::Response& resp)
     {
         std::string body(req.bodyAsString());
@@ -328,10 +363,58 @@ struct HttpServer::Impl {
             write_json(resp, 400, {{"error", "expected JSON object"}});
             return;
         }
+        // Order matters: every state mutation has to happen BEFORE
+        // set_models(), because set_models is what writes config.json
+        // to disk. If we wrote to disk first then mutated state, the
+        // on-disk file would miss the new verbose/mode/data_dir values.
         std::string embed = parsed.value("embed_model", "");
         std::string llm   = parsed.value("llm_model",   "");
+        std::vector<std::string> models_dirs;
+        bool data_dir_changed = false;
+        if (parsed.contains("data_dir") && parsed["data_dir"].is_string()) {
+            std::string new_dd = parsed["data_dir"].get<std::string>();
+            if (new_dd != state.data_dir() && !new_dd.empty()) {
+                state.set_data_dir(new_dd);
+                data_dir_changed = true;
+            }
+        }
+        if (parsed.contains("models_dir") && parsed["models_dir"].is_array()) {
+            for (const auto& item : parsed["models_dir"]) {
+                if (item.is_string()) models_dirs.push_back(item.get<std::string>());
+            }
+            state.set_models_dirs(models_dirs);
+            state.rescan_models();
+        }
+        if (parsed.contains("verbose") && parsed["verbose"].is_boolean()) {
+            state.set_verbose(parsed["verbose"].get<bool>());
+            if (state.verbose()) {
+                OmniNet::Logger::instance().setLevel(OmniNet::LogLevel::DEBUG);
+            } else {
+                OmniNet::Logger::instance().setLevel(OmniNet::LogLevel::INFO);
+            }
+        }
+        if (parsed.contains("default_search_mode") && parsed["default_search_mode"].is_string()) {
+            state.set_default_search_mode(parsed["default_search_mode"].get<std::string>());
+        }
 
+        // set_models LAST — it persists config.json using the current
+        // state (which now reflects all the changes above). It also
+        // hot-reloads the embed/llm models if their paths were set.
         auto r = state.set_models(embed, llm);
+
+        // Verbose logging toggle and default search mode are
+        // hot-reloadable. Apply immediately, no restart needed.
+        if (parsed.contains("verbose") && parsed["verbose"].is_boolean()) {
+            state.set_verbose(parsed["verbose"].get<bool>());
+            if (state.verbose()) {
+                OmniNet::Logger::instance().setLevel(OmniNet::LogLevel::DEBUG);
+            } else {
+                OmniNet::Logger::instance().setLevel(OmniNet::LogLevel::INFO);
+            }
+        }
+        if (parsed.contains("default_search_mode") && parsed["default_search_mode"].is_string()) {
+            state.set_default_search_mode(parsed["default_search_mode"].get<std::string>());
+        }
 
         // "ok" is true if the request completed AND any user-supplied
         // path loaded successfully. If a user supplied a path and that
@@ -345,14 +428,18 @@ struct HttpServer::Impl {
         bool ok = !any_failed;
 
         json out = {
-            {"ok",           ok},
-            {"embed_model",  r.embed_model},
-            {"llm_model",    r.llm_model},
-            {"embed_loaded", r.embed_loaded},
-            {"llm_loaded",   r.llm_loaded},
-            {"embed_error",  r.embed_error},
-            {"llm_error",    r.llm_error},
-            {"config_path",  state.config_path()},
+            {"ok",                 ok},
+            {"embed_model",        r.embed_model},
+            {"llm_model",          r.llm_model},
+            {"embed_loaded",       r.embed_loaded},
+            {"llm_loaded",         r.llm_loaded},
+            {"embed_error",        r.embed_error},
+            {"llm_error",          r.llm_error},
+            {"config_path",        state.config_path()},
+            {"data_dir",           state.data_dir()},
+            {"data_dir_restart_required", data_dir_changed},
+            {"default_search_mode", state.default_search_mode()},
+            {"verbose",            state.verbose()},
         };
         int status = ok ? 200 : 400;
         write_json(resp, status, out);

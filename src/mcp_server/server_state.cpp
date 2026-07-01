@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iomanip>
 #include <random>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -135,11 +136,39 @@ void ServerState::set_data_dir(const std::string& data_dir)
     std::lock_guard<std::recursive_mutex> lk(mu_);
     if (data_dir.empty()) {
         config_path_.clear();
+        data_dir_.clear();
         return;
     }
     std::error_code ec;
     fs::create_directories(data_dir, ec);
     config_path_ = (fs::path(data_dir) / "config.json").string();
+    data_dir_    = data_dir;
+}
+
+void ServerState::set_verbose(bool enabled)
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    verbose_ = enabled;
+}
+
+bool ServerState::verbose() const
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    return verbose_;
+}
+
+void ServerState::set_default_search_mode(const std::string& mode)
+{
+    // Reject unknown modes to keep the Search tab from sending garbage.
+    static const std::set<std::string> allowed = {"vector", "hybrid", "rerank", "full"};
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    if (allowed.count(mode)) default_search_mode_ = mode;
+}
+
+std::string ServerState::default_search_mode() const
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    return default_search_mode_;
 }
 
 void ServerState::add_search_dir(const std::string& dir)
@@ -147,6 +176,87 @@ void ServerState::add_search_dir(const std::string& dir)
     if (dir.empty()) return;
     std::lock_guard<std::recursive_mutex> lk(mu_);
     extra_search_dirs_.push_back(dir);
+}
+
+// ---------------------------------------------------------------------------
+// Models-dir scan
+// ---------------------------------------------------------------------------
+
+void ServerState::set_models_dirs(const std::vector<std::string>& dirs)
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    models_dirs_.clear();
+    for (const auto& d : dirs) {
+        if (!d.empty()) models_dirs_.push_back(d);
+    }
+}
+
+void ServerState::add_models_dir(const std::string& dir)
+{
+    if (dir.empty()) return;
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    if (std::find(models_dirs_.begin(), models_dirs_.end(), dir) == models_dirs_.end()) {
+        models_dirs_.push_back(dir);
+    }
+}
+
+std::vector<std::string> ServerState::models_dirs() const
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    return models_dirs_;  // copy
+}
+
+std::vector<ServerState::ModelInfo> ServerState::list_models() const
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    return models_cache_;  // copy
+}
+
+namespace {
+ServerState::ModelInfo make_model_info(const std::filesystem::path& p,
+                                       const std::string& dir)
+{
+    ServerState::ModelInfo m;
+    std::error_code ec;
+    m.name = p.filename().string();
+    m.path = std::filesystem::absolute(p, ec).string();
+    m.dir  = dir;
+    if (auto sz = std::filesystem::file_size(p, ec); !ec) m.size_bytes = sz;
+    // file_clock → system_clock → time_t. C++20/23.
+    if (auto t = std::filesystem::last_write_time(p, ec); !ec) {
+        auto sys = std::chrono::file_clock::to_sys(t);
+        m.mtime = std::chrono::system_clock::to_time_t(sys);
+    }
+    return m;
+}
+}  // namespace
+
+std::vector<ServerState::ModelInfo> ServerState::rescan_models()
+{
+    std::vector<ModelInfo> out;
+    {
+        std::lock_guard<std::recursive_mutex> lk(mu_);
+        std::set<std::string> seen;  // dedupe by canonical path
+        for (const auto& dir : models_dirs_) {
+            std::error_code ec;
+            if (!std::filesystem::is_directory(dir, ec)) continue;
+            for (auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+                if (ec) break;
+                if (!entry.is_regular_file(ec)) continue;
+                auto p = entry.path();
+                if (p.extension() != ".gguf") continue;
+                auto abs = std::filesystem::absolute(p, ec).string();
+                if (!seen.insert(abs).second) continue;  // already listed
+                out.push_back(make_model_info(p, dir));
+            }
+        }
+        std::sort(out.begin(), out.end(),
+                  [](const ModelInfo& a, const ModelInfo& b) {
+                      return a.name < b.name;
+                  });
+        models_cache_ = out;  // cache
+    }
+    return out;
 }
 
 // Resolve a path that may be a bare filename or a partial path.
@@ -236,7 +346,6 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
         result.embed_model = embed_model_path_;
         result.llm_model   = llm_model_path_;
     }
-
     // Reload embedding model if a path is set.
     if (!result.embed_model.empty()) {
         std::error_code ec;
@@ -276,11 +385,24 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
     // Both paths are always written — even if one failed to load — so the
     // user can come back later and see exactly which path is configured.
     if (!config_path_.empty()) {
+        std::lock_guard<std::recursive_mutex> lk(mu_);
         std::ofstream out(config_path_);
         if (out) {
-            out << "{\n"
-                << "  \"embed_model\": \"" << json_escape(result.embed_model) << "\",\n"
-                << "  \"llm_model\":   \"" << json_escape(result.llm_model)   << "\"\n"
+            out << "{\n";
+            // data_dir is informational; the binary writes its data-dir
+            // value so the Settings page can show it (and so a downstream
+            // tool can find the same KB store).
+            out << "  \"data_dir\": \"" << json_escape(data_dir_) << "\",\n";
+            out << "  \"models_dir\": [\n";
+            for (size_t i = 0; i < models_dirs_.size(); ++i) {
+                out << "    \"" << json_escape(models_dirs_[i]) << "\""
+                    << (i + 1 < models_dirs_.size() ? "," : "") << "\n";
+            }
+            out << "  ],\n";
+            out << "  \"embed_model\": \"" << json_escape(result.embed_model) << "\",\n"
+                << "  \"llm_model\":   \"" << json_escape(result.llm_model)   << "\",\n"
+                << "  \"default_search_mode\": \"" << json_escape(default_search_mode_) << "\",\n"
+                << "  \"verbose\": " << (verbose_ ? "true" : "false") << "\n"
                 << "}\n";
         }
     }
@@ -292,12 +414,22 @@ std::string ServerState::config_json() const
     std::lock_guard<std::recursive_mutex> lk(mu_);
     std::ostringstream o;
     o << "{\n"
+      << "  \"data_dir\": \""   << json_escape(data_dir_)   << "\",\n"
+      << "  \"models_dir\": [";
+    for (size_t i = 0; i < models_dirs_.size(); ++i) {
+        o << (i == 0 ? "\n" : ",\n")
+          << "    \"" << json_escape(models_dirs_[i]) << "\"";
+    }
+    if (!models_dirs_.empty()) o << "\n  ";
+    o << "],\n"
       << "  \"embed_model\": \"" << json_escape(embed_model_path_) << "\",\n"
       << "  \"llm_model\":   \"" << json_escape(llm_model_path_)   << "\",\n"
       << "  \"embed_loaded\": " << (embed_error_.empty() && !embed_model_path_.empty() ? "true" : "false") << ",\n"
       << "  \"llm_loaded\":   " << (llm_error_.empty()   && !llm_model_path_.empty()   ? "true" : "false") << ",\n"
       << "  \"embed_error\": \"" << json_escape(embed_error_) << "\",\n"
       << "  \"llm_error\":   \"" << json_escape(llm_error_)   << "\",\n"
+      << "  \"default_search_mode\": \"" << json_escape(default_search_mode_) << "\",\n"
+      << "  \"verbose\": " << (verbose_ ? "true" : "false") << ",\n"
       << "  \"config_path\": \"" << json_escape(config_path_) << "\"\n"
       << "}\n";
     return o.str();

@@ -137,6 +137,23 @@ int main(int argc, char** argv)
         }
     }
 
+    // Default models-dir: the project's models/ directory next to the
+    // source tree, plus the install-path models dir if it exists. The
+    // user can change this from the Settings page and the dropdown
+    // updates immediately.
+    {
+        std::vector<std::string> defaults;
+        if (fs::is_directory("./models"))             defaults.push_back(fs::absolute("./models").string());
+        std::error_code ec;
+        fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+        if (!ec) {
+            fs::path share = exe.parent_path().parent_path() / "share" / "apollocore" / "models";
+            if (fs::is_directory(share)) defaults.push_back(fs::absolute(share).string());
+        }
+        state.set_models_dirs(defaults);
+        state.rescan_models();
+    }
+
     // Resolve model paths. Priority:
     //   1. CLI / env override (user picked a path explicitly)
     //   2. <data-dir>/config.json (Settings page persistence)

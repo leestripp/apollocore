@@ -98,14 +98,71 @@ public:
     /// Where config.json lives. Empty until set_data_dir() is called.
     const std::string& config_path() const { return config_path_; }
 
+    /// Where the SQLite KB store lives. Set once at startup.
+    const std::string& data_dir() const { return data_dir_; }
+
     /// Tell the state where the data dir is. Called once at startup,
     /// after the data-dir is known. Sets up the config.json path.
+    /// Note: changing the data_dir at runtime needs a restart — the
+    /// SQLite KB and embedding files are open at startup. The Settings
+    /// page persists the user's choice to config.json and prompts the
+    /// user to restart.
     void set_data_dir(const std::string& data_dir);
+
+    /// Set the verbose logging flag at runtime. Hot-reloadable.
+    void set_verbose(bool enabled);
+
+    /// Whether verbose logging is currently on.
+    bool verbose() const;
+
+    /// Set the default search mode used by the Search tab when the user
+    /// doesn't override per-query. One of: vector / hybrid / rerank / full.
+    void set_default_search_mode(const std::string& mode);
+
+    /// Current default search mode.
+    std::string default_search_mode() const;
 
     /// Register an extra directory to search when a model path is a
     /// bare filename. Used at startup to add the install-path models
     /// directory and any other well-known location.
     void add_search_dir(const std::string& dir);
+
+    // -- Models-dir scan ----------------------------------------------
+    //
+    // The user-facing flow is "pick a model from a dropdown", not
+    // "type a path". ApolloCore scans one or more directories for
+    // *.gguf files and exposes them through /api/models. The Settings
+    // UI presents that as a filterable list.
+    //
+    // models_dir is RUNTIME-MUTABLE — change it from Settings, the
+    // server rescans, the dropdown refreshes. data_dir is NOT.
+
+    struct ModelInfo {
+        std::string name;          // basename (e.g. "nomic-embed.gguf")
+        std::string path;          // absolute path
+        std::uint64_t size_bytes = 0;
+        std::time_t mtime = 0;     // last-modified time
+        std::string dir;           // parent directory (which models_dir it came from)
+    };
+
+    /// Set the list of directories to scan for *.gguf models.
+    /// Replaces any previous list. Immediately rescans; the result is
+    /// cached until set_models_dirs() or add_models_dir() is called
+    /// again. Empty list is valid (no models dir; user must type paths).
+    void set_models_dirs(const std::vector<std::string>& dirs);
+
+    /// Add a directory to the models-dir list. Triggers a rescan.
+    void add_models_dir(const std::string& dir);
+
+    /// The current models-dir list.
+    std::vector<std::string> models_dirs() const;
+
+    /// Snapshot of the most recent scan result.
+    std::vector<ModelInfo> list_models() const;
+
+    /// Trigger a rescan of every models_dir and return the new list.
+    /// Synchronous; safe to call at runtime.
+    std::vector<ModelInfo> rescan_models();
 
     /// Read <config_path> from disk and apply model paths. If the file
     /// exists and has valid JSON, both paths are loaded and the
@@ -141,13 +198,18 @@ private:
     // and the model config below.)
     mutable std::recursive_mutex mu_;
 
-    // Runtime model config (under mu_).
+        // Runtime model config (under mu_).
     std::string embed_model_path_;
     std::string llm_model_path_;
     std::string embed_error_;
     std::string llm_error_;
     std::string config_path_;
+    std::string data_dir_;                            // mirror of --data-dir
+    std::string default_search_mode_ = "vector";      // user-facing default
+    bool        verbose_ = false;                     // verbose log toggle
     std::vector<std::string> extra_search_dirs_;
+    std::vector<std::string> models_dirs_;            // scanned for *.gguf
+    std::vector<ModelInfo>    models_cache_;          // last scan result
 
     /// Resolve a path that may be a bare filename. See .cpp for the
     /// full search order.
