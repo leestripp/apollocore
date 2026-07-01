@@ -155,18 +155,38 @@ sudo ./scripts/uninstall.sh --purge --purge-user
 If systemd isn't available (distrobox container, sandbox, etc.):
 
 ```bash
-# Foreground
+# Foreground (logs to terminal)
 ./scripts/start.sh
 
-# Detached
+# Detached (writes PID + log file)
 ./scripts/start.sh --detach
 ./scripts/stop.sh
+
+# Idempotent "ensure running" — preferred for agents and CI.
+# Probes /health; if not running, starts; if running, no-op.
+./scripts/ensure-running.sh
+# Exit codes:
+#   0  server is up and responding
+#   1  binary not built (cmake --build build)
+#   2  start.sh failed (unknown)
+#   3  port held by something that isn't apollo
+
+# Check status (no side effects)
+./scripts/start.sh --status   # 0 = running, 1 = not
 ```
 
 Environment overrides:
 
 ```bash
 APOLLO_PORT=9000 APOLLO_HOST=127.0.0.1 ./scripts/start.sh --no-ui --verbose
+```
+
+When the server runs on the host (e.g. as a systemd service) and
+the agent is in a distrobox container, point the probe at the
+host's network interface instead of 127.0.0.1:
+
+```bash
+APOLLO_PROBE_HOST=10.0.2.2 ./scripts/ensure-running.sh
 ```
 
 ## 8. Build from source

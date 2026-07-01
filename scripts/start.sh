@@ -25,9 +25,16 @@
 #
 # Exit codes:
 #   0  server started cleanly (foreground: Ctrl-C; detach: wrote pid file)
+#        OR already running (when --status / --check)
 #   1  binary not found (build it first: cmake --build build --target apollo_mcp_server)
+#        OR not running (when --status / --check)
 #   2  data dir could not be created
 #   3  port already in use
+#
+# --status / --check:
+#   exit 0 if the server is reachable at APOLLO_HOST:APOLLO_PORT (/health 200),
+#   exit 1 otherwise. Useful in shell conditionals:
+#       ./scripts/start.sh --status || ./scripts/start.sh --detach
 set -euo pipefail
 
 # ────────────────────────────────────────────────────────────────────
@@ -59,13 +66,28 @@ fi
 # Allow --no-ui via flag too (we still translate it for convenience).
 ARGS=()
 DETACH=0
+CHECK_ONLY=0
 for arg in "$@"; do
     case "$arg" in
         --detach|-d) DETACH=1 ;;
         --no-ui)      APOLLO_UI=0 ;;
+        --status|--check|--is-running)
+            CHECK_ONLY=1 ;;
         *)            ARGS+=("$arg") ;;
     esac
 done
+
+# --status short-circuit: probe and exit.
+if [[ "$CHECK_ONLY" == "1" ]]; then
+    HOST_FOR_PROBE=${APOLLO_PROBE_HOST:-127.0.0.1}
+    if curl -fsS --max-time 2 "http://${HOST_FOR_PROBE}:${APOLLO_PORT}/health" \
+            | grep -q '"status":"ok"'; then
+        echo "start.sh: APOLLO MCP server already running at ${HOST_FOR_PROBE}:${APOLLO_PORT}"
+        exit 0
+    fi
+    echo "start.sh: no server reachable at ${HOST_FOR_PROBE}:${APOLLO_PORT}" >&2
+    exit 1
+fi
 
 # Build CLI args from environment.
 ARGS+=(--host "$APOLLO_HOST")
