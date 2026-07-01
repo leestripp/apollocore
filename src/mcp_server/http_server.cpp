@@ -333,8 +333,19 @@ struct HttpServer::Impl {
 
         auto r = state.set_models(embed, llm);
 
+        // "ok" is true if the request completed AND any user-supplied
+        // path loaded successfully. If a user supplied a path and that
+        // path failed to load, ok is false → 400 so the client can show
+        // the error. If both fields are empty (keep current), ok is
+        // trivially true.
+        bool user_asked_embed = !embed.empty();
+        bool user_asked_llm   = !llm.empty();
+        bool any_failed = (user_asked_embed && !r.embed_loaded) ||
+                          (user_asked_llm   && !r.llm_loaded);
+        bool ok = !any_failed;
+
         json out = {
-            {"ok",           r.embed_loaded || r.llm_loaded || (embed.empty() && llm.empty())},
+            {"ok",           ok},
             {"embed_model",  r.embed_model},
             {"llm_model",    r.llm_model},
             {"embed_loaded", r.embed_loaded},
@@ -343,7 +354,7 @@ struct HttpServer::Impl {
             {"llm_error",    r.llm_error},
             {"config_path",  state.config_path()},
         };
-        int status = (out["ok"].get<bool>() ? 200 : 400);
+        int status = ok ? 200 : 400;
         write_json(resp, status, out);
     }
 };

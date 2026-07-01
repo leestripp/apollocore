@@ -125,6 +125,18 @@ int main(int argc, char** argv)
     // config (e.g. model paths changed via /api/config).
     state.set_data_dir(args.data_dir);
 
+    // Register the install-path models directory as a search target for
+    // resolving bare filenames (e.g. when the user picks a file via the
+    // browser's <input type="file">, which doesn't expose the full path).
+    {
+        std::error_code ec;
+        fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+        if (!ec) {
+            state.add_search_dir((exe.parent_path().parent_path() / "share" / "apollocore" / "models").string());
+            state.add_search_dir((exe.parent_path().parent_path() / "models").string());
+        }
+    }
+
     // Resolve model paths. Priority:
     //   1. CLI / env override (user picked a path explicitly)
     //   2. <data-dir>/config.json (Settings page persistence)

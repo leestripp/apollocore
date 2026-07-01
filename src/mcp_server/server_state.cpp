@@ -6,6 +6,7 @@
 
 #include "server_state.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <random>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 namespace apollo::mcp {
 
@@ -54,6 +56,19 @@ ServerState::ServerState()
 
 ServerState::~ServerState() = default;
 
+namespace {
+// `dirs_contains` declared early so set_models / record_resolved_models
+// can use it when assembling the search order for bare filenames.
+bool contains_dir(const std::vector<fs::path>& v, const fs::path& p) {
+    std::error_code e;
+    for (const auto& x : v) {
+        if (fs::equivalent(x, p, e)) return true;
+        e.clear();
+    }
+    return false;
+}
+}  // namespace
+
 bool ServerState::open_kb(const std::string& path, const std::string& name)
 {
     return core_->create(path, name);
@@ -61,7 +76,7 @@ bool ServerState::open_kb(const std::string& path, const std::string& name)
 
 std::string ServerState::get_or_create_session(const std::string& mcp_session_id)
 {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     auto now = std::chrono::system_clock::now();
 
     if (!mcp_session_id.empty()) {
@@ -85,7 +100,7 @@ std::string ServerState::get_or_create_session(const std::string& mcp_session_id
 
 void ServerState::reap_idle_sessions(std::chrono::seconds idle_ttl)
 {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     auto now = std::chrono::system_clock::now();
     for (auto it = sessions_.begin(); it != sessions_.end(); ) {
         if (now - it->second.last_used > idle_ttl) {
@@ -100,7 +115,7 @@ ServerState::Stats ServerState::snapshot() const
 {
     Stats s{};
     {
-        std::lock_guard<std::mutex> lk(mu_);
+        std::lock_guard<std::recursive_mutex> lk(mu_);
         s.live_sessions = sessions_.size();
     }
     auto apollo_stats = core_->get_stats();
@@ -117,7 +132,7 @@ ServerState::Stats ServerState::snapshot() const
 
 void ServerState::set_data_dir(const std::string& data_dir)
 {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     if (data_dir.empty()) {
         config_path_.clear();
         return;
@@ -127,14 +142,97 @@ void ServerState::set_data_dir(const std::string& data_dir)
     config_path_ = (fs::path(data_dir) / "config.json").string();
 }
 
+void ServerState::add_search_dir(const std::string& dir)
+{
+    if (dir.empty()) return;
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    extra_search_dirs_.push_back(dir);
+}
+
+// Resolve a path that may be a bare filename or a partial path.
+//  - If the input is already an existing absolute path, return as-is.
+//  - If the input contains a path separator, return as-is (the user
+//    was specific; the eventual "file not found" error is correct).
+//  - Otherwise, treat the input as a bare filename and search:
+//      1. The dir of the currently-configured embed_model_path_
+//      2. The dir of the currently-configured llm_model_path_
+//      3. <data_dir>/../models/  (sibling of data dir — common layout)
+//      4. <data_dir>/models/
+//      5. ./models/              (CWD-relative; dev default)
+//      6. Any extra search dirs registered via add_search_dir()
+//    The first match wins. The basename match is exact.
+std::string ServerState::resolve_model_path(const std::string& input) const
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    if (input.empty()) return input;
+
+    // 1. Already a real, existing path.
+    if (fs::exists(input, ec)) {
+        ec.clear();
+        return fs::absolute(input, ec).string();
+    }
+
+    // 2. Has a separator but doesn't exist — user was specific. Don't
+    //    search; the eventual "file not found" is the right outcome.
+    if (input.find('/') != std::string::npos || input.find('\\') != std::string::npos) {
+        return input;
+    }
+
+    // 3. Bare filename — build a deduped list of search dirs.
+    std::vector<fs::path> dirs;
+    {
+        std::lock_guard<std::recursive_mutex> lk(mu_);
+        auto push_dir = [&](const std::string& p) {
+            if (p.empty()) return;
+            fs::path d = fs::path(p).parent_path();
+            if (d.empty()) return;
+            // De-dup.
+            for (const auto& existing : dirs) {
+                std::error_code e;
+                if (fs::equivalent(existing, d, e)) return;
+            }
+            dirs.push_back(d);
+        };
+        push_dir(embed_model_path_);
+        push_dir(llm_model_path_);
+        for (const auto& d : extra_search_dirs_) push_dir(d);
+    }
+    if (!config_path_.empty()) {
+        fs::path data_dir = fs::path(config_path_).parent_path();
+        // <data_dir>/../models/  (project root models dir)
+        std::error_code e;
+        fs::path project_models = fs::canonical(data_dir.parent_path(), e) / "models";
+        if (!e && !contains_dir(dirs, project_models)) dirs.push_back(project_models);
+        // <data_dir>/models/
+        fs::path data_models = data_dir / "models";
+        if (!contains_dir(dirs, data_models)) dirs.push_back(data_models);
+    }
+    {
+        std::error_code e;
+        fs::path cwd_models = fs::current_path(e) / "models";
+        if (!e && !contains_dir(dirs, cwd_models)) dirs.push_back(cwd_models);
+    }
+
+    for (const auto& d : dirs) {
+        std::error_code e;
+        fs::path candidate = d / input;
+        if (fs::exists(candidate, e)) {
+            return fs::absolute(candidate, e).string();
+        }
+    }
+    return input;  // unresolved — let the caller show the "file not found" error.
+}
+
 ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
                                                   const std::string& llm_path)
 {
     ConfigResult result;
     {
-        std::lock_guard<std::mutex> lk(mu_);
-        if (!embed_path.empty()) embed_model_path_ = embed_path;
-        if (!llm_path.empty())   llm_model_path_   = llm_path;
+        std::lock_guard<std::recursive_mutex> lk(mu_);
+        if (!embed_path.empty()) embed_model_path_ = resolve_model_path(embed_path);
+        if (!llm_path.empty())   llm_model_path_   = resolve_model_path(llm_path);
         result.embed_model = embed_model_path_;
         result.llm_model   = llm_model_path_;
     }
@@ -143,7 +241,7 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
     if (!result.embed_model.empty()) {
         std::error_code ec;
         if (!fs::exists(result.embed_model, ec)) {
-            result.embed_error  = "file not found";
+            result.embed_error  = "file not found (tried: " + result.embed_model + ")";
             result.embed_loaded = false;
         } else if (!core_->load_embedding_model(result.embed_model)) {
             result.embed_error  = "load_embedding_model returned false";
@@ -157,7 +255,7 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
     if (!result.llm_model.empty()) {
         std::error_code ec;
         if (!fs::exists(result.llm_model, ec)) {
-            result.llm_error  = "file not found";
+            result.llm_error  = "file not found (tried: " + result.llm_model + ")";
             result.llm_loaded = false;
         } else if (!core_->load_llm_model(result.llm_model)) {
             result.llm_error  = "load_llm_model returned false";
@@ -169,12 +267,14 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
     }
 
     {
-        std::lock_guard<std::mutex> lk(mu_);
+        std::lock_guard<std::recursive_mutex> lk(mu_);
         embed_error_ = result.embed_error;
         llm_error_   = result.llm_error;
     }
 
     // Persist to disk (best-effort; failures here are non-fatal).
+    // Both paths are always written — even if one failed to load — so the
+    // user can come back later and see exactly which path is configured.
     if (!config_path_.empty()) {
         std::ofstream out(config_path_);
         if (out) {
@@ -189,7 +289,7 @@ ServerState::ConfigResult ServerState::set_models(const std::string& embed_path,
 
 std::string ServerState::config_json() const
 {
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     std::ostringstream o;
     o << "{\n"
       << "  \"embed_model\": \"" << json_escape(embed_model_path_) << "\",\n"
@@ -252,23 +352,23 @@ void ServerState::record_resolved_models(const std::string& embed_path,
     // will load below. We need the paths set first so config_json()
     // is meaningful even if the load fails.
     {
-        std::lock_guard<std::mutex> lk(mu_);
-        if (!embed_path.empty()) embed_model_path_ = embed_path;
-        if (!llm_path.empty())   llm_model_path_   = llm_path;
+        std::lock_guard<std::recursive_mutex> lk(mu_);
+        if (!embed_path.empty()) embed_model_path_ = resolve_model_path(embed_path);
+        if (!llm_path.empty())   llm_model_path_   = resolve_model_path(llm_path);
     }
 }
 
 void ServerState::report_embed_load(bool loaded, const std::string& error)
 {
     (void)loaded;  // success / failure is implicit in `error.empty()`
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     embed_error_ = error;
 }
 
 void ServerState::report_llm_load(bool loaded, const std::string& error)
 {
     (void)loaded;
-    std::lock_guard<std::mutex> lk(mu_);
+    std::lock_guard<std::recursive_mutex> lk(mu_);
     llm_error_ = error;
 }
 

@@ -102,6 +102,11 @@ public:
     /// after the data-dir is known. Sets up the config.json path.
     void set_data_dir(const std::string& data_dir);
 
+    /// Register an extra directory to search when a model path is a
+    /// bare filename. Used at startup to add the install-path models
+    /// directory and any other well-known location.
+    void add_search_dir(const std::string& dir);
+
     /// Read <config_path> from disk and apply model paths. If the file
     /// exists and has valid JSON, both paths are loaded and the
     /// underlying models are hot-reloaded. Returns true on success.
@@ -129,8 +134,12 @@ public:
 
 private:
     std::unique_ptr<apollocore_v2::ApolloCore> core_;
-    mutable std::mutex mu_;
     std::unordered_map<std::string, Session> sessions_;   // keyed by session id
+
+    // Reentrant because resolve_model_path() and set_models() /
+    // record_resolved_models() both take it. (Covers both sessions_
+    // and the model config below.)
+    mutable std::recursive_mutex mu_;
 
     // Runtime model config (under mu_).
     std::string embed_model_path_;
@@ -138,6 +147,11 @@ private:
     std::string embed_error_;
     std::string llm_error_;
     std::string config_path_;
+    std::vector<std::string> extra_search_dirs_;
+
+    /// Resolve a path that may be a bare filename. See .cpp for the
+    /// full search order.
+    std::string resolve_model_path(const std::string& input) const;
 
     static std::string make_uuid_v4();
 };

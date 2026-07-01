@@ -27,9 +27,11 @@ export async function renderSettings(panel) {
             <h3 style="margin-top: 0;">Models</h3>
             <p class="muted">
                 Pick a <code>.gguf</code> file with <strong>Browse</strong>, or paste a path.
-                Changes auto-apply on file-pick / Enter / blur — no Apply button needed.
-                They're hot-reloaded and persisted to <code>&lt;data-dir&gt;/config.json</code>,
-                so they survive restarts.
+                The browser can't expose the absolute path of a picked file, so the server
+                resolves bare filenames against well-known model directories and saves
+                the full path. Changes auto-apply on file-pick / Enter / blur — no Apply
+                button needed. They're hot-reloaded and persisted to
+                <code>&lt;data-dir&gt;/config.json</code>, so they survive restarts.
             </p>
             <table class="kv" style="table-layout: fixed;">
                 <colgroup>
@@ -125,6 +127,20 @@ export async function renderSettings(panel) {
         // accept .gguf only. The "system native file browser" here is
         // GTK file chooser on Linux, NSOpenPanel on macOS, the Win32
         // common dialog on Windows — same as any other app.
+        //
+        // NOTE: For SECURITY reasons, modern browsers (Firefox 70+,
+        // all current Chromium) do NOT expose the absolute path of a
+        // picked file. The File object only carries .name (and on
+        // some Chromium, a deprecated non-standard .path). So we
+        // send the bare name and let the server resolve it against
+        // a list of well-known model directories:
+        //   - dir of the currently-configured embed/llm path
+        //   - <data-dir>/../models/   (project sibling of data)
+        //   - <data-dir>/models/
+        //   - ./models/               (CWD-relative dev default)
+        //   - install-path models/
+        // If the file isn't in any of those, the user gets a clear
+        // "file not found" error and can paste the full path.
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = '.gguf';
@@ -132,12 +148,11 @@ export async function renderSettings(panel) {
         fileInput.addEventListener('change', () => {
             const f = fileInput.files?.[0];
             if (!f) return;
-            // showOpenFilePicker returns a File object with .path in
-            // Chromium and Firefox alike. The standard File API gives us
-            // name but not always full path; we use .path where available.
-            const path = f.path || f.name;
-            input.value = path;
-            applyConfig({ [fieldName]: path });
+            // f.path is non-standard; f.name is universally available.
+            // Send the name; server resolves to a full path.
+            const nameOnly = f.name;
+            input.value = nameOnly;
+            applyConfig({ [fieldName]: nameOnly });
         });
         document.body.appendChild(fileInput);
 
