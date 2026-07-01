@@ -83,6 +83,30 @@ curl -s http://127.0.0.1:8765/health | jq
 # → { "status": "ok", "tools": 12, "resources": 5, "prompts": 4, ... }
 ```
 
+### One-liner auto-start (recommended for agents, CI, distrobox)
+
+`scripts/ensure-running.sh` is idempotent: probes `/health`, starts the
+server if it isn't already running, waits for it to be ready, and
+prints the URL. Safe to run before any MCP work — running it 100×
+has the same effect as running it once.
+
+```bash
+# Build once, then:
+./scripts/ensure-running.sh
+# → ✓ server responding at http://127.0.0.1:8765
+#   MCP:    http://127.0.0.1:8765/mcp
+#   UI:     http://127.0.0.1:8765/
+#   Health: http://127.0.0.1:8765/health
+
+# Point the probe at a different host (e.g. when the server runs on
+# the host but the agent is in a distrobox container):
+APOLLO_PROBE_HOST=10.0.2.2 ./scripts/ensure-running.sh
+```
+
+If you'd rather do it yourself, `./scripts/start.sh --status` is a
+no-side-effect check that exits 0 when the server is up and 1
+otherwise.
+
 ---
 
 ## Web UI
@@ -137,6 +161,16 @@ For distrobox, CI sandboxes, or anything that doesn't have systemd:
 ./scripts/start.sh --detach        # write .apollo_mcp_server.pid, log to apollo_mcp_server.log
 ./scripts/stop.sh                  # send SIGTERM, then SIGKILL after 5s
 APOLLO_PORT=9000 ./scripts/start.sh --no-ui
+
+# Idempotent auto-start — preferred for agents and CI:
+./scripts/ensure-running.sh
+#   exit 0: server is up and responding at /health
+#   exit 1: binary not built
+#   exit 2: start.sh failed (unknown)
+#   exit 3: port held by something that isn't apollo
+
+# Probe-only (no side effects):
+./scripts/start.sh --status && echo "running" || echo "down"
 ```
 
 ---
@@ -326,13 +360,13 @@ cmake --build build -j$(nproc)
 cd build && ctest --output-on-failure
 ```
 
-16 test executables, all passing:
+17 test executables, all passing:
 
-- 14 pre-existing (`test_persistence`, `test_fbin`, `test_kb_persistence`,
+- 15 core (`test_persistence`, `test_fbin`, `test_kb_persistence`,
   `test_apollo_persistence`, `test_v2`, `test_embeddings`,
   `test_entity_extraction`, `test_cross_encoder`, `test_hyde`,
   `test_contextual_retrieval`, `test_hybrid_search`, `test_code_extractor`,
-  `test_multi_project`, `test_coverage_holes`)
+  `test_multi_project`, `test_coverage_holes`, `test_ui_static`)
 - 2 MCP-specific (`mcp_dispatcher` — JSON-RPC method routing,
   `mcp_tools` — handler-level tests using a real KB in tmpdir)
 
