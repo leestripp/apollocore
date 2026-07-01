@@ -6,6 +6,7 @@
 #include "apollocore/kb_persistence.hpp"
 #include "apollocore/fbin.hpp"
 #include "apollocore/persistence.hpp"
+#include "apollocore/text_chunker.hpp"
 #include "llama.h"
 #include <iostream>
 #include <sstream>
@@ -391,46 +392,9 @@ size_t ApolloCore::add_document(
         "", "document", "", current_project_
     );
     
-    // Simple chunking by sentences
-    std::vector<std::string> chunk_texts;
-    std::string current_chunk;
-
-    std::istringstream iss(text);
-    std::string sentence;
-    while (std::getline(iss, sentence, '.')) {
-        if (!sentence.empty()) sentence += ".";
-
-        // Sub-split sentences longer than chunk_size. Without this,
-        // a file containing one huge "sentence" (e.g. a minified JS
-        // blob or a long base64-encoded blob) bypasses the chunker
-        // entirely and ships to the embedder as a single chunk that
-        // can exceed n_ctx — crashing the process.
-        while (sentence.size() > chunk_size) {
-            std::string piece = sentence.substr(0, chunk_size);
-            sentence = sentence.substr(chunk_size);
-            if (!current_chunk.empty()) {
-                chunk_texts.push_back(current_chunk);
-                current_chunk.clear();
-            }
-            chunk_texts.push_back(std::move(piece));
-        }
-
-        if (current_chunk.length() + sentence.length() > chunk_size) {
-            if (!current_chunk.empty()) {
-                chunk_texts.push_back(current_chunk);
-            }
-            current_chunk = sentence;
-        } else {
-            current_chunk += sentence;
-        }
-    }
-    if (!current_chunk.empty()) {
-        chunk_texts.push_back(current_chunk);
-    }
-    
-    if (chunk_texts.empty()) {
-        chunk_texts.push_back(text);
-    }
+    // Chunk the input. apollocore::chunk_text is unit-tested in
+    // tests/test_text_chunker.cpp — keep this call simple.
+    auto chunk_texts = apollocore::chunk_text(text, chunk_size);
     
     // Save chunks
     kb_persistence_->begin_save();

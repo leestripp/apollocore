@@ -107,6 +107,21 @@ target_include_directories(test_apollo_persistence PRIVATE
 target_link_libraries(test_apollo_persistence PRIVATE apollo_core)
 add_test(NAME test_apollo_persistence COMMAND test_apollo_persistence)
 
+# Pure unit test for apollocore::chunk_text — no model, no DB, no
+# network. Runs in <1ms. The previous in-tree chunking inside
+# add_document() was untested and shipped a ggml_abort crash (see
+# git log for "stop the server from crashing on large or dot-less
+# files"). These tests are the regression net.
+add_executable(test_text_chunker
+    test_text_chunker.cpp
+)
+target_include_directories(test_text_chunker PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
+target_compile_features(test_text_chunker PRIVATE cxx_std_23)
+target_link_libraries(test_text_chunker PRIVATE apollo_core)
+add_test(NAME test_text_chunker COMMAND test_text_chunker)
+
 # M3.C Multi-Project tests (no embedding model required)
 add_executable(test_multi_project
     test_multi_project.cpp

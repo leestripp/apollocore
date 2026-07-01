@@ -162,6 +162,7 @@ target_sources(apollo_core PRIVATE
     src/fbin.cpp
     src/kb_persistence.cpp
     src/apollo_persistence.cpp
+    src/text_chunker.cpp
     src/apollo_hybrid_search.cpp   # Phase M2.7: vector + BM25 + graph fusion
     src/apollo_ts_wrapper.cpp   # Phase M3.B: tree-sitter C++ wrapper
     src/apollo_code_extractor.cpp   # Phase M3.B: AST → entities/relationships
