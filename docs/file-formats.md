@@ -1,7 +1,9 @@
 # ApolloCore File Formats
 
-This document describes all file formats used by ApolloCore for persistence,
-storage, and inter-process communication.
+This document describes every file format ApolloCore reads or writes.
+ApolloCore is delivered as a single `apollo_mcp_server` executable; all
+formats below are its on-disk artifacts plus the third-party model format
+it loads.
 
 ---
 
@@ -10,8 +12,9 @@ storage, and inter-process communication.
 1. [FBIN — Binary Embedding Format](#fbin--binary-embedding-format)
 2. [SQLite Database Schema](#sqlite-database-schema)
 3. [GGUF — AI Model Format](#gguf--ai-model-format)
-4. [JSON — Configuration & Metadata](#json--configuration--metadata)
-5. [Format Selection Guide](#format-selection-guide)
+4. [JSON-RPC over HTTP — MCP wire format](#json-rpc-over-http--mcp-wire-format)
+5. [JSON — Configuration & Metadata](#json--configuration--metadata)
+6. [Format Selection Guide](#format-selection-guide)
 
 ---
 
@@ -339,6 +342,119 @@ llama_model_free(model);
 
 ---
 
+## JSON-RPC over HTTP — MCP wire format
+
+**Purpose:** The protocol the MCP server speaks to clients over HTTP.
+This is the public contract of ApolloCore — agents speak this to the
+executable.
+
+**Spec:** MCP 2025-11-25, Streamable HTTP transport.
+JSON-RPC 2.0 envelopes, UTF-8, one request per `POST /mcp` body or batch
+as a JSON array. See `docs/mcp-quickstart.md` for the end-to-end flow.
+
+### Request envelope
+
+```jsonc
+{
+  "jsonrpc": "2.0",                 // always "2.0"
+  "id":      42,                    // string | number | null; absent for notifications
+  "method":  "tools/call",          // see "Methods" below
+  "params":  { /* method-specific */ }
+}
+```
+
+### Response envelope
+
+```jsonc
+{
+  "jsonrpc": "2.0",
+  "id":      42,                    // echoes the request id
+  "result":  { /* on success */ }
+}
+```
+
+or, on a transport-level failure:
+
+```jsonc
+{
+  "jsonrpc": "2.0",
+  "id":      42,
+  "error": {
+    "code":    -32601,             // see JSON-RPC error codes below
+    "message": "Method not found",
+    "data":    null
+  }
+}
+```
+
+### Tool-result vs error-result
+
+For `tools/call`, a failure inside the tool is **not** a protocol error.
+The server returns a normal `result` whose body has `isError: true`:
+
+```jsonc
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "content": [
+      {"type": "text", "text": "No embedding model loaded. Use --embed-model."}
+    ],
+    "isError": true
+  }
+}
+```
+
+This is so the LLM can see the error as an observation and self-correct,
+rather than seeing a transport-level failure it can't reason about.
+
+### JSON-RPC standard error codes
+
+| Code | Meaning |
+|------|---------|
+| -32700 | Parse error |
+| -32600 | Invalid request |
+| -32601 | Method not found |
+| -32602 | Invalid params |
+| -32603 | Internal error |
+
+### Methods
+
+| Method | Purpose |
+|--------|---------|
+| `initialize` | Capability handshake (returns `protocolVersion`, `capabilities`, `serverInfo`) |
+| `notifications/initialized` | Client confirms it received the welcome |
+| `ping` | Liveness check |
+| `tools/list` | List all 12 MCP tools with JSON Schema 2020-12 input |
+| `tools/call` | Invoke a tool, get a `CallToolResult` |
+| `resources/list` | List URI-addressed resources |
+| `resources/templates/list` | List URI templates (empty in ApolloCore) |
+| `resources/read` | Read a resource by URI |
+| `prompts/list` | List pre-built prompt templates |
+| `prompts/get` | Materialize a prompt with arguments |
+| `notifications/cancelled` | Cancel an in-flight request |
+
+### Content types
+
+`content` items in tool results and prompt messages are typed:
+
+```jsonc
+{"type": "text", "text": "..."}                 // only type emitted today
+{"type": "image", "data": "...", "mimeType": "image/png"}  // reserved for future
+{"type": "audio", "data": "...", "mimeType": "audio/wav"}  // reserved
+{"type": "resource", "resource": {...}}                      // reserved
+```
+
+### Why JSON over HTTP and not binary?
+
+- Debuggable with `curl` and `jq`.
+- Trivially parseable in any agent runtime.
+- Lossless round-trip with nlohmann/json on the server side.
+- The 0.5–2 KB per envelope cost is negligible compared to the cost of
+  loading a 700 MB embedding model.
+
+---
+
 ## JSON — Configuration & Metadata
 
 **Library:** nlohmann/json (header-only)
@@ -444,6 +560,7 @@ When to use each format:
 | Configuration | JSON | Human-editable |
 | Document metadata | SQLite (JSON col) | Queryable + flexible |
 | LLM weights | GGUF | Standard for local inference |
+| MCP wire format | JSON-RPC over HTTP | Standard for AI agents |
 | Temporary cache | FBIN | Fast load/save |
 
 ---

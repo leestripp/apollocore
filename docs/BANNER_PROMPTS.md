@@ -1,4 +1,12 @@
-# ApolloCore Banner Prompts - Knowledge Tree & Apollo the God
+# ApolloCore Banner Prompts
+
+LLM image-generation prompts for the project's hero banner. The current
+banner (`resources/banner.png`) shows Apollo, the Greek god of knowledge,
+enthroned beneath a tree whose branches form a knowledge graph. These
+prompts were used (or are candidates) for regenerating it.
+
+ApolloCore is the project's MCP server that exposes a local RAG knowledge
+base to AI agents — the mythological framing fits.
 
 ---
 

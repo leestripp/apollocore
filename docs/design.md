@@ -1,829 +1,483 @@
 # ApolloCore Design Document
-## State-of-the-Art Knowledge Graph RAG System (2026)
+
+The architectural design behind `apollo_mcp_server` and the RAG pipeline it
+exposes. Read this if you want to understand *why* the code is shaped this
+way, not just *what it does*.
 
 ---
 
-## Research Summary: RAG Landscape in 2026
+## Table of Contents
 
-### Key Findings from Web Research
+1. [Goals & non-goals](#goals--non-goals)
+2. [RAG landscape in 2026](#rag-landscape-in-2026)
+3. [System architecture](#system-architecture)
+4. [Module breakdown](#module-breakdown)
+5. [The query pipeline](#the-query-pipeline)
+6. [The ingestion pipeline](#the-ingestion-pipeline)
+7. [Storage layout](#storage-layout)
+8. [Embedding model integration](#embedding-model-integration)
+9. [MCP surface — how the agent sees ApolloCore](#mcp-surface)
+10. [Build system](#build-system)
+11. [Future work](#future-work)
+12. [References](#references)
+
+---
+
+## Goals & non-goals
+
+**Goals:**
+
+- One executable (`apollo_mcp_server`) that exposes a complete RAG
+  knowledge base to MCP-aware agents — no library to link, no SDK to embed.
+- Local-first. No API keys, no cloud, no data leaving the machine.
+- High recall from hybrid search (vector + BM25 + graph) fused with RRF.
+- Real, executable code at every layer — no aspirational abstractions.
+
+**Non-goals:**
+
+- Server-side answer generation. Agents generate answers themselves with
+  retrieved chunks as context. ApolloCore exposes the retrieval and the
+  knowledge graph; the LLM that synthesises the answer is the agent's.
+- Distributed deployment. One process per agent or shared agent pool.
+- Multi-language model serving other than what llama.cpp can load (GGUF).
+- Pre-2014 transport protocols (SSE-only, stdio MCP). We speak Streamable
+  HTTP only — clients catch up when they want to.
+
+---
+
+## RAG landscape in 2026
+
+### Findings from research
 
 | Technique | Status | Impact | Source |
 |-----------|--------|--------|--------|
 | **Hybrid Search (BM25 + Vector)** | Industry Standard | +40% recall improvement | MongoDB, Qdrant, OpenSearch |
 | **Reciprocal Rank Fusion (RRF)** | Dominant Fusion Method | No score normalization needed | Azure AI Search, OpenSearch |
-| **GraphRAG (Microsoft)** | Production Ready | Better global query answering | Microsoft Research, GitHub |
-| **LightRAG** | Rising Star | 10x faster than GraphRAG | arXiv:2410.05779 |
-| **Contextual Retrieval (Anthropic)** | Best Practice | Reduces chunk decontextualization | Anthropic Engineering Blog |
-| **RAPTOR** | Academic | Hierarchical summarization tree | ICLR 2024 |
-| **Self-RAG** | Adaptive | Reduces hallucinations | arXiv:2310.11511 |
-| **ColBERT Late Interaction** | Emerging | Token-level precision | IBM, OpenSearch Blog |
+| **GraphRAG (Microsoft)** | Production Ready | Better global query answering | Microsoft Research |
+| **LightRAG** | Rising | 10× faster than GraphRAG | arXiv:2410.05779 |
+| **Contextual Retrieval (Anthropic)** | Best Practice | Reduces chunk decontextualization | anthropic.com/engineering/contextual-retrieval |
 | **Cross-Encoder Reranking** | Production | Top-5 precision boost | Cohere, Jina AI |
+| **HyDE** | Established | Query expansion via hypothetical answer | [HyDE paper](https://arxiv.org/abs/2212.10496) |
+| Self-RAG | Academic | Adaptive retrieval/critique | arXiv:2310.11511 |
+| RAPTOR | Academic | Hierarchical summarization | ICLR 2024 |
+| ColBERT | Emerging | Token-level late interaction | SIGIR 2020 |
 
-### What Works in Production (2026)
+### What ships in ApolloCore
 
-```
-1. Hybrid Search = Vector + BM25 + RRF Fusion (default in 60% of new deployments)
-2. Knowledge Graph extraction for entity relationships
-3. Query rewriting (HyDE, step-back prompting)
-4. Contextual chunking to preserve meaning
-5. Cross-encoder reranking post-retrieval
-```
+- Hybrid search: vector + BM25 + graph, fused with RRF (M2.7).
+- Cross-encoder reranking using the local LLM (M2.8).
+- HyDE query enhancement.
+- Anthropic-style contextual retrieval.
+- LLM-driven entity & relationship extraction.
+- Tree-sitter-based code symbol extraction (M3.B).
+- Multi-project scoping with optional cross-project reads (M3.C).
 
----
+### What doesn't ship (yet)
 
-## Current Code State: What We Have vs. What's Missing
-
-### Current Implementation (as of June 2026)
-| Component | Status | Implementation |
-|-----------|--------|----------------|
-| Knowledge graph | ✅ Implemented | SQLite + entity/relationship extraction |
-| Embeddings | ✅ Real | llama.cpp / nomic-embed GGUF (768-dim) |
-| Vector similarity | ✅ Real | Cosine similarity on real embeddings |
-| BM25Index | ✅ Real | Proper BM25 implementation in `apollo_hybrid_search.hpp` |
-| Hybrid search | ✅ Implemented | Vector + BM25 + graph, weighted-sum fusion |
-| Hybrid search API | ✅ Wired | `ApolloCore::query_hybrid()` returns `HybridResult[]` |
-| Cross-encoder reranking | ✅ Implemented | `cross_encoder.hpp` |
-| Reranking API | ✅ Wired | `ApolloCore::query_with_rerank()` uses `CrossEncoderReranker` |
-| Full pipeline | ✅ Wired | `ApolloCore::query_full()` = hybrid → rerank |
-| LLM entity extraction | ✅ Implemented | Qwen2.5 via llama.cpp |
-| Knowledge graph storage | ✅ Implemented | entities + relationships tables |
-| Contextual chunking | ✅ Implemented | `contextual_retrieval.cpp` |
-| Query enhancement (HyDE) | ✅ Implemented | `hyde.hpp` |
-| Code extraction (M3.B) | ✅ Implemented | tree-sitter AST parsing |
-| Multi-project scoping (M3.C) | ✅ Implemented | Schema-level `project_id` column |
-
-### Aspirational / Not Yet Implemented
-- RAPTOR-style hierarchical summarization
-- Self-RAG adaptive retrieval
-- ColBERT late interaction (token-level)
-- Production eval benchmarks (RAGAS, BEIR)
-
-### What We Need for True SOTA RAG
+- Hierarchical community detection (Leiden/Louvain) and global queries.
+- Self-RAG reflection tokens.
+- ColBERT late-interaction reranking.
+- Production RAGAS / BEIR benchmarks.
+- Multi-language GGUF "anything works" — we ship with sensible defaults;
+  power users supply their own models.
 
 ---
 
-## Epic Architecture Design
+## System architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                           APOLLOCORE v2.0 - SOTA RAG                                │
-│                                                                                     │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │                          INGESTION PIPELINE                                 │   │
-│  │                                                                           │   │
-│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐                   │   │
-│  │  │Document  │───▶│ Smart Chunking  │───▶│  Contextual  │                   │   │
-│  │  │ (raw)    │    │ (semantic +     │    │  Enrichment  │                   │   │
-│  │  │          │    │  overlap)       │    │  (LLM-based) │                   │   │
-│  │  └──────────┘    └─────────────────┘    └──────────────┘                   │   │
-│  │                                               │                              │   │
-│  │                                               ▼                              │   │
-│  │  ┌──────────────────────────────────────────────────────────────────────┐   │   │
-│  │  │                    ENTITY EXTRACTION (LLM)                            │   │   │
-│  │  │  • Extract entities (PERSON, ORG, LOC, CONCEPT)                      │   │   │
-│  │  │  • Extract relationships between entities                             │   │   │
-│  │  │  • Generate community summaries                                       │   │   │
-│  │  └──────────────────────────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────────────────────────┘   │
-│                                           │                                         │
-│                    ┌──────────────────────┼──────────────────────┐                 │
-│                    ▼                      ▼                      ▼                 │
-│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐     │
-│  │    VECTOR STORE     │  │   KNOWLEDGE GRAPH   │  │   BM25 INDEX        │     │
-│  │  (embeddings +      │  │  (entities +        │  │  (keyword +         │     │
-│  │   contextual chunks) │  │   relationships)     │  │   positional)       │     │
-│  └─────────────────────┘  └─────────────────────┘  └─────────────────────┘     │
-│                                                                                     │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │                          QUERY PIPELINE                                     │   │
-│  │                                                                           │   │
-│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────────┐              │   │
-│  │  │  Query   │───▶│  Query Rewrite  │───▶│  Multi-Query     │              │   │
-│  │  │          │    │  (HyDE +        │    │  Expansion       │              │   │
-│  │  │          │    │   step-back)    │    │                  │              │   │
-│  │  └──────────┘    └─────────────────┘    └──────────────────┘              │   │
-│  │                                               │                              │   │
-│  │                    ┌──────────────────────────┼────────────────┐            │   │
-│  │                    ▼                          ▼                ▼            │   │
-│  │  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐ │   │
-│  │  │   SEMANTIC SEARCH   │  │   GRAPH TRAVERSAL   │  │   KEYWORD SEARCH    │ │   │
-│  │  │  (vector similarity)│  │  (entity expansion)│  │     (BM25)          │ │   │
-│  │  └─────────────────────┘  └─────────────────────┘  └─────────────────────┘ │   │
-│  │                    │                          │                │             │   │
-│  │                    └──────────────────────────┼────────────────┘             │   │
-│  │                                             ▼                                │   │
-│  │                          ┌─────────────────────────────────┐                  │   │
-│  │                          │    RRF FUSION (k=60)           │                  │   │
-│  │                          │    Score = Σ 1/(k + rank)     │                  │   │
-│  │                          └─────────────────────────────────┘                  │   │
-│  │                                             │                                │   │
-│  │                                             ▼                                │   │
-│  │                          ┌─────────────────────────────────┐                  │   │
-│  │                          │     CROSS-ENCODER RERANKING    │                  │   │
-│  │                          │     (precision boost)           │                  │   │
-│  │                          └─────────────────────────────────┘                  │   │
-│  └─────────────────────────────────────────────────────────────────────────────┘   │
-│                                           │                                         │
-│                                           ▼                                         │
-│                          ┌─────────────────────────────────┐                       │
-│                          │         GENERATION               │                       │
-│                          │   (context + citations)          │                       │
-│                          └─────────────────────────────────┘                       │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Component Specifications
-
-### 1. Intelligent Chunking Strategy
-
-**Problem with naive chunking:**
-- Context lost at boundaries
-- Related concepts separated
-- No overlap awareness
-
-**Solution: Semantic Chunking with Overlap**
-
-```cpp
-struct ChunkConfig {
-    size_t target_size = 512;           // tokens
-    size_t overlap = 128;               // tokens overlap
-    bool sentence_aware = true;          // don't split mid-sentence
-    bool paragraph_aware = true;         // respect paragraph boundaries
-    float semantic_threshold = 0.85f;   // similarity threshold for merge
-    bool recursive = true;               // try smaller if too large
-};
-```
-
-**Algorithm:**
-1. Split by paragraphs first
-2. Merge paragraphs until target_size reached
-3. If paragraph alone exceeds target_size, split by sentences
-4. Add overlap region (last N% of chunk prepended to next)
-5. Store source position for citation
-
-### 2. Contextual Enrichment (Anthropic Method)
-
-**Why:** Chunks lose context when extracted from document.
-
-**Solution:** For each chunk, generate contextual summary:
-
-```
-Original chunk: "The model achieved 95% accuracy."
-
-Context-enriched chunk:
-"From the paper 'ImageNet Classification with Deep CNNs':
-[Context] This section discusses experimental results on the ImageNet dataset.
-[Chunk] The model achieved 95% accuracy.
-[Context] This result outperformed previous methods by 3%.
-```
-
-**Implementation:**
-- LLM call to generate context for each chunk
-- Embed the enriched chunk, not the raw chunk
-- Store original + enriched for retrieval + display
-
-### 3. Knowledge Graph Construction
-
-**Microsoft GraphRAG Approach:**
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                      ENTITY EXTRACTION                              │
-│                                                                     │
-│  Input Text: "Apple Inc. was founded by Steve Jobs in California." │
-│                                                                     │
-│  Extracted Entities:                                                │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐       │
-│  │ Apple Inc.     │  │ Steve Jobs     │  │ California     │       │
-│  │ Type: ORG      │  │ Type: PERSON   │  │ Type: LOC      │       │
-│  │ Confidence: 0.9│ │ Confidence: 0.95│ │ Confidence: 0.9│       │
-│  └────────────────┘  └────────────────┘  └────────────────┘       │
-│                                                                     │
-│  Extracted Relationships:                                           │
+┌─────────────────────────────────────────────────────────────────────┐
+│                      AI Agent (Claude, Cursor, ...)                 │
+│                   speaks MCP JSON-RPC over HTTP                      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │  POST /mcp  (Streamable HTTP)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                apollo_mcp_server                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │ (Steve Jobs) --[founded]--> (Apple Inc.)    Confidence: 0.95 │  │
-│  │ (Apple Inc.)  --[located_in]--> (California) Confidence: 0.8 │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────┘
+│  │              OmniNet HTTP+WS server                          │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Dispatcher       — routes JSON-RPC methods to handlers     │  │
+│  │  ServerState      — owns one ApolloCore, maps session → pro… │  │
+│  │  ToolRegistry     — 12 outcome-oriented tools                │  │
+│  │  ResourceRegistry —  5 URI-addressed data sources             │  │
+│  │  PromptRegistry   —  4 pre-built prompt templates            │  │
+│  └──────────────────────┬───────────────────────────────────────┘  │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │  internal link (organizational only)
+                          ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│   apollo_core  (STATIC LIBRARY — internal CMake target, not installed) │
+│       RAG, hybrid search, knowledge graph, entity extraction          │
+└─────────────────────────────────────────────────────────────────────┘
+                          │  SQLite + FBIN + llama.cpp + tree-sitter
+                          ▼
+                   files on disk
 ```
 
-**Community Detection (Leiden Algorithm):**
-- Group related entities into communities
-- Generate community summaries (LLM)
-- Hierarchical structure: Local → Global queries
-
-### 4. Hybrid Search with RRF
-
-**Reciprocal Rank Fusion Formula:**
-
-```
-RRF_score(d) = Σ 1/(k + rank_i(d))
-
-Where:
-- d = document
-- k = fusion constant (typically 60)
-- rank_i = rank in result list i
-```
-
-**Why RRF over score-based fusion:**
-- No need to normalize scores between systems
-- Rank-based = more robust to score variance
-- Proven effective in production (Azure, OpenSearch, Qdrant)
-
-**Implementation:**
-
-```cpp
-struct SearchResult {
-    std::string chunk_id;
-    std::string content;
-    std::string source_node_id;
-    float hybrid_score;
-    float vector_score;
-    float bm25_score;
-    float graph_score;
-    std::vector<std::string> entities;
-};
-
-// See apollo_hybrid_search.hpp for the actual HybridResult struct.
-// Returns std::vector<HybridResult> with per-source scores.
-// Searchable via ApolloCore::query_hybrid(query, top_k, alpha, beta, gamma).
-// Also wired into ApolloCore::query_with_rerank() (vector → LLM rerank) and
-// ApolloCore::query_full() (hybrid → LLM rerank).
-```
-
-### 5. Query Enhancement Pipeline
-
-**Techniques to implement:**
-
-1. **HyDE (Hypothetical Document Embeddings)**
-   - Generate hypothetical answer with LLM
-   - Embed the hypothetical answer
-   - Use for retrieval
-
-2. **Step-back Prompting**
-   - Abstract query to higher-level concept
-   - Retrieve on abstract level
-   - Refine with specific retrieval
-
-3. **Multi-Query Expansion**
-   - Generate N variations of query
-   - Retrieve for each variation
-   - Deduplicate results
-
-```cpp
-class QueryEnhancer {
-public:
-    struct EnhancementConfig {
-        bool use_hyde = true;
-        bool use_step_back = true;
-        int multi_query_count = 3;
-        float hyde_temperature = 0.7f;
-    };
-    
-    // Generate enhanced queries
-    std::vector<EnhancedQuery> enhance(const Query& original);
-};
-
-struct EnhancedQuery {
-    std::string text;
-    enum class Type { Original, HyDE, StepBack, MultiQuery };
-    Type type;
-    float weight;  // Some queries more important than others
-};
-```
-
-### 6. Cross-Encoder Reranking
-
-**Architecture:**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    RERANKING PIPELINE                          │
-│                                                                 │
-│  Top-100 from RRF ──▶ Cross-Encoder ──▶ Top-10 to Generator   │
-│                       (BERT-based)                               │
-│                                                                 │
-│  Why Cross-Encoder over Bi-Encoder:                            │
-│  • Full cross-attention between query and document              │
-│  • Higher precision at cost of speed                            │
-│  • Late interaction (ColBERT) balances speed/precision          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Implementation Options:**
-1. **Cohere Rerank** - API-based, high quality
-2. **BERT cross-encoder** - Local, from HuggingFace
-3. **Jina AI reranker** - Open source, GGUF support
-4. **ColBERT late interaction** - Token-level precision
-
-### 7. Self-RAG Integration (Future)
-
-**Reflection Tokens:**
-- `[Retrieval]` - Should we retrieve?
-- `[Relevant]` - Is the chunk relevant?
-- `[Fully Supported]` - Is the claim supported?
-- `[Useful]` - Should we use this?
+The `apollo_core` static library is a build-system organization primitive
+only. It is not installed, not exported, not meant to be linked into
+downstream code. Removing it as a target would mean inlining its 14
+sources into the server executable — would make a 6,000-line monolith
+harder to navigate. As a private library it stays as a CMake nicety.
 
 ---
 
-## Data Model Design
+## Module breakdown
 
-### Knowledge Graph Schema
+### Top of stack (`src/mcp_server/`)
 
-```cpp
-namespace apollocore {
+| File | Purpose |
+|------|---------|
+| `main.cpp` | CLI parsing, model loading, OmniNet bootstrap |
+| `http_server.cpp` | OmniNet HTTP routes: `/mcp`, `/health`, `/info` |
+| `dispatcher.cpp` | Routes JSON-RPC methods to registries |
+| `jsonrpc.cpp` | Envelope parser/serializer |
+| `server_state.cpp` | Owns `ApolloCore`, manages `session_id → project_id` |
+| `tools.cpp` | 12 `apollo_*` tool handlers |
+| `resources.cpp` | 5 `apollo://*` resource handlers |
+| `prompts.cpp` | 4 prompt templates |
+| `CMakeLists.txt` | Links server, library, OmniNet, threads |
 
-// Core graph entities
-struct Entity {
-    std::string id;                    // UUID
-    std::string name;                  // "Steve Jobs"
-    std::string type;                  // PERSON, ORG, LOC, CONCEPT, EVENT
-    std::string description;            // LLM-generated description
-    float confidence;                   // Extraction confidence
-    std::vector<std::string> aliases;   // Alternative names
-    
-    // Graph position
-    std::string community_id;           // Community membership
-    size_t community_level;             // Hierarchical level
-    
-    // Embedding
-    std::vector<float> embedding;      // Entity embedding
-    
-    // Source tracking
-    std::string source_chunk_id;
-    std::string source_document_id;
-};
+The stack is layered: HTTP → JSON-RPC → dispatcher → registries →
+ApolloCore methods. Each layer only knows about the one below.
 
-struct Relationship {
-    std::string id;
-    std::string source_id;             // Entity ID
-    std::string target_id;             // Entity ID
-    std::string type;                  // founded, located_in, works_for, etc.
-    std::string description;           // LLM-generated description
-    
-    float confidence;                   // Extraction confidence
-    std::string source_chunk_id;
-};
+### Library (`src/` — internal `apollo_core` target)
 
-struct Community {
-    std::string id;
-    size_t level;                      // Hierarchy level (0=root)
-    std::string summary;               // LLM-generated community summary
-    std::vector<std::string> entity_ids;
-    std::vector<std::string> child_community_ids;
-    std::string parent_community_id;
-    
-    std::vector<float> summary_embedding;  // For global queries
-};
+| File | Purpose |
+|------|---------|
+| `embedding_model.cpp` | llama.cpp-backed embeddings (768-dim default) |
+| `entity_extractor.cpp` | LLM-driven entity & relationship extraction |
+| `cross_encoder.cpp` | LLM-based reranking |
+| `hyde.cpp` | Hypothetical Document Embeddings |
+| `contextual_retrieval.cpp` | Anthropic-style chunk enrichment |
+| `persistence.cpp` | SQLite schema + migrations |
+| `kb_persistence.cpp` | Project registry + M3.C scoping |
+| `apollo_persistence.cpp` | The unified `ApolloCore` class (v2 wiring) |
+| `apollo_hybrid_search.cpp` | Vector + BM25 + RRF fusion |
+| `apollo_ts_wrapper.cpp` | tree-sitter C++ RAII |
+| `apollo_code_extractor.cpp` | AST → entities/relationships |
+| `fbin.cpp` | Binary embedding read/write |
+| `apollo_core.cpp` | Intentionally empty (legacy header-only API) |
 
-struct CommunityReport {
-    std::string community_id;
-    std::string level;                 // "1", "2", "3" (full hierarchy)
-    std::string title;                 // Short title
-    std::string summary;               // Full LLM-generated report
-    std::vector<float> report_embedding;
-    
-    // Findings
-    std::vector<std::string> findings;
-    std::vector<std::string> key_entities;
-};
+### Public headers (`include/apollocore/`)
 
-} // namespace
-```
+These describe the internal library's surface. Even though external code
+shouldn't link `apollo_core`, the headers are still the canonical
+documentation of "what methods exist on ApolloCore":
 
-### Document & Chunk Schema
-
-```cpp
-struct Document {
-    std::string id;
-    std::string title;
-    std::string source_path;
-    std::string content;               // Full text
-    
-    // Metadata
-    std::unordered_map<std::string, std::string> metadata;
-    std::chrono::system_clock::time_point created_at;
-    
-    // Processing state
-    enum class ProcessingState { 
-        Pending, 
-        Chunking, 
-        Extracting, 
-        Embedding, 
-        Complete,
-        Failed 
-    };
-    ProcessingState state;
-    std::string error_message;
-};
-
-struct Chunk {
-    std::string id;
-    std::string document_id;
-    
-    // Content
-    std::string content;               // Original chunk
-    std::string enriched_content;      // With contextual prefix
-    size_t start_char;                 // Position in document
-    size_t end_char;
-    
-    // Chunking metadata
-    size_t chunk_index;
-    bool is_continuation;              // Has overlap prefix
-    
-    // Embeddings (multiple for flexibility)
-    std::vector<float> content_embedding;
-    std::vector<float> enriched_embedding;
-    
-    // For reranking
-    std::string formatted_for_reranker;  // "[Query] ... [Document] ..."
-};
-
-struct ChunkMetadata {
-    std::string document_id;
-    std::string title;
-    std::vector<std::string> headings;    // Section hierarchy
-    std::string entity_summary;           // Key entities in chunk
-};
-```
+| Header | Class / concept |
+|--------|------------------|
+| `apollocore.hpp` | Legacy single-header API with `HashEmbedding` fallback |
+| `apollocore_v2.hpp` | V2 umbrella (legacy; superseded) |
+| `apollo_persistence.hpp` | The actual `ApolloCore` class — where everything wires up |
+| `kb_persistence.hpp` | `KnowledgeBasePersistence` (lower level) |
+| `entity_extractor.hpp` | LLM entity/relationship extraction |
+| `cross_encoder.hpp` | Cross-encoder reranker |
+| `hyde.hpp` | HyDE query enhancer |
+| `contextual_retrieval.hpp` | Contextual chunking |
+| `persistence.hpp` | Schema & migrations |
+| `fbin.hpp` | Binary embedding I/O |
+| `apollo_hybrid_search.hpp` | `BM25Index`, `HybridResult` |
+| `apollo_ts_wrapper.hpp` | `TSParser`, `TSNode` |
+| `apollo_code_extractor.hpp` | `extract_code()` |
+| `apollo_codebase_ingest.hpp` | `ingest_directory()` (declared; impl is in server) |
+| `apollo_hybrid_search.hpp` | Already listed |
 
 ---
 
-## API Design
+## The query pipeline
 
-### Core Interfaces
+Four pipeline modes are exposed, ordered by cost vs. quality.
 
-```cpp
-namespace apollocore {
+### Mode: `vector` (fastest, pure semantic)
 
-class ApolloCoreV2 {
-public:
-    // Document ingestion
-    struct IngestOptions {
-        bool extract_entities = true;
-        bool extract_relationships = true;
-        bool generate_communities = true;
-        bool contextual_enrich = true;
-        int community_levels = 3;
-    };
-    
-    // Single document
-    struct IngestResult {
-        std::string document_id;
-        size_t chunks_created;
-        size_t entities_extracted;
-        size_t relationships_extracted;
-        size_t communities_created;
-    };
-    
-    IngestResult ingest_document(
-        const std::string& content,
-        const std::string& title,
-        const IngestOptions& options = {}
-    );
-    
-    // Batch ingestion
-    std::vector<IngestResult> ingest_documents(
-        const std::vector<Document>& documents,
-        const IngestOptions& options = {}
-    );
-
-    // Query pipeline
-    struct QueryOptions {
-        size_t max_results = 20;
-        float similarity_threshold = 0.5f;
-        
-        // Search strategy
-        bool use_semantic = true;
-        bool use_keyword = true;
-        bool use_graph = true;
-        bool use_hyde = false;
-        bool use_reranking = true;
-        
-        // Weights for RRF fusion
-        float semantic_weight = 0.4f;
-        float keyword_weight = 0.3f;
-        float graph_weight = 0.3f;
-        
-        // Reranking
-        int rerank_top_k = 10;
-        std::string reranker_model = "cross-encoder";
-    };
-    
-    struct QueryResult {
-        struct Source {
-            std::string chunk_id;
-            std::string content;
-            std::string document_title;
-            float score;
-            float vector_score;
-            float bm25_score;
-            float graph_score;
-            std::vector<std::string> cited_entities;
-        };
-        
-        std::vector<Source> sources;
-        std::string generated_response;
-        float response_confidence;
-        std::vector<std::string> citations;
-        
-        // For debugging
-        std::vector<std::string> queries_used;
-        size_t chunks_evaluated;
-    };
-    
-    QueryResult query(
-        const std::string& question,
-        const QueryOptions& options = {}
-    );
-
-    // Knowledge graph queries
-    struct GraphQueryOptions {
-        size_t max_hops = 2;
-        size_t max_entities = 50;
-        bool include_relationships = true;
-        bool include_community_reports = true;
-    };
-    
-    // Local queries (specific entities)
-    std::vector<Entity> find_entities(const std::string& query);
-    std::vector<Relationship> find_relationships(const std::string& entity_id);
-    
-    // Global queries (use community reports)
-    std::vector<CommunityReport> global_query(const std::string& query);
-    
-    // Community browsing
-    std::vector<Community> get_communities(size_t level = 0);
-    CommunityReport get_community_report(const std::string& community_id);
-    
-    // Statistics
-    struct Stats {
-        size_t document_count;
-        size_t chunk_count;
-        size_t entity_count;
-        size_t relationship_count;
-        size_t community_count;
-        size_t community_report_count;
-    };
-    
-    Stats get_stats() const;
-};
-
-} // namespace
+```text
+query  ──►  embed (llama.cpp)  ──►  cosine over FBIN files  ──►  top-K
 ```
+
+Single signal: dense semantic similarity. Good for "find me passages like
+this one". Misses exact keyword matches that don't appear in the
+embedding's training data.
+
+### Mode: `hybrid` (default)
+
+```text
+                              ┌──►  vector cosine  ──► rank₁ ──┐
+query  ──►  embed (llama.cpp)  ──┤                              │
+       └──►  BM25 over chunks  ────►  rank₂ ──┤
+                              └──►  graph expand ──►  rank₃ ──┘
+                                                ▼
+                                       RRF fusion (k=60)
+                                                ▼
+                                            top-K
+```
+
+Three independent signals are searched in parallel:
+
+- **Vector:** cosine similarity over chunk embeddings (magnitude-aware).
+- **BM25:** classic Okapi BM25 over a tokenized index of every chunk in the
+  active project. Tokens are lowercased, alphanumeric-only, with a small
+  built-in stop-word set.
+- **Graph:** a lightweight expansion — chunks containing query-relevant
+  entities score higher via the entity embedding lookup in
+  `kb_persistence`.
+
+The three ranked lists are fused with Reciprocal Rank Fusion:
+
+```
+RRF_score(d) = Σᵢ  1 / (k + rankᵢ(d))      with k = 60
+```
+
+The same formula is used by Azure AI Search, OpenSearch, Qdrant, and most
+production hybrid-search stacks — it sidesteps score normalization entirely.
+
+### Mode: `rerank`
+
+Hybrid scoring, then a single round of LLM-based reranking. The local LLM
+scores each candidate as a relevance judgment; candidates are re-ordered
+and the top-K returned.
+
+### Mode: `full`
+
+Hybrid + rerank, end to end. Highest precision, slowest.
+
+### Why no "complete answer"
+
+ApolloCore returns chunks with score, not prose. Generation is the agent's
+job — the agent already has an LLM and it sees the chunks verbatim.
+Returning synthesized text would (a) duplicate the LLM work, (b) make
+context citations harder, (c) preclude RAG architectures where multiple
+agents gather chunks independently.
 
 ---
 
-## Embedding Model Integration
+## The ingestion pipeline
 
-### llama.cpp Integration (Production Ready)
+### `apollo_add_document(text, doc_id, chunk_size)` — happy path
 
-```cpp
-class EmbeddingModel {
-public:
-    struct Config {
-        std::string model_path;         // GGUF file path
-        int context_length = 8192;       // Nomic supports 8k
-        int n_threads = 4;
-        int n_gpu_layers = 32;          // For Vulkan/CUDA
-        bool use_vulkan = true;          // AMD GPU support
-    };
-    
-    bool load(const Config& config);
-    bool is_loaded() const;
-    
-    // Single embedding
-    EmbeddingVector embed(const std::string& text);
-    
-    // Batch embedding (more efficient)
-    std::vector<EmbeddingVector> embed_batch(const std::vector<std::string>& texts);
-    
-    size_t dimensions() const { return dimensions_; }
-    std::string model_name() const { return model_name_; }
-
-private:
-    llama_model* model_ = nullptr;
-    llama_context* ctx_ = nullptr;
-    size_t dimensions_ = 0;
-    std::string model_name_;
-};
+```
+text  ──►  chunk by character window  ──►  embed each chunk (llama.cpp)
+       ──►  save to FBIN
+       ──►  write SQLite row in `nodes` + `chunks` (scoped to current project)
 ```
 
-### Recommended Models (GGUF Format)
+The default chunk strategy is a 512-character sliding window per the
+existing chunker. `chunk_size` is configurable per call.
 
-| Model | Dimensions | Context | Size | Notes |
-|-------|-----------|---------|------|-------|
-| **nomic-embed-text-v1.5** | 768 | 8k | 274MB | Best overall, 8k context |
-| **nomic-embed-text-v1.5-Q4_K_M** | 768 | 8k | 84MB | Quantized, great quality/size |
-| **all-MiniLM-L6-v2** | 384 | 256 | 90MB | Fast, good for short text |
-| **gte-Qwen2-1.5B-instruct** | 1536 | 8k | 3GB | High quality, larger |
+### `apollo_ingest_codebase(path, project)` — code-aware path
 
-### Model Download Instructions
-
-```bash
-mkdir -p models
-
-# Nomic Embed Text v1.5 (recommended)
-wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf \
-    -O models/nomic-embed-text-v1.5.Q4_K_M.gguf
-
-# Alternative: Full precision
-wget https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.gguf \
-    -O models/nomic-embed-text-v1.5.gguf
 ```
+path  ──►  walk recursively  ──►  per file:
+            ├──  .cpp/.h/.py/etc. ──►  tree-sitter AST  ──►  entities
+            └──  anything else      ──►  chunk + embed
+       ──►  optionally run entity extraction (LLM)
+```
+
+This is the inverse of "tools that hide the implementation": the agent
+walks its own codebase, then asks the KB about what it just walked. We do
+this rather than training fine-tuned embeddings because:
+
+- The model keeps full source-level ground truth (chunks are byte-exact
+  source, not summaries).
+- Re-indexing is cheap and deterministic.
+- No retraining lag when a function changes.
+
+### Entity extraction (`apollo_extract_entities`)
+
+Walks every chunk in the KB and asks the local LLM to emit entities with
+`type ∈ {PERSON, ORGANIZATION, LOCATION, EVENT, CONCEPT, PRODUCT, DATE,
+NUMBER, DISEASE, DRUG, MEDICAL_PROCEDURE, SCIENTIFIC_TERM, FUNCTION,
+CLASS, FILE, MODULE, NAMESPACE, VARIABLE, ENUM, MACRO}`. Type coverage
+includes code-aware categories so the same extractor works on prose and
+on source code.
+
+The agent can then ask for neighbors of an entity via
+`apollo_get_neighbors`, which is implemented as: find chunks that mention
+the entity, list the other entities in those chunks.
 
 ---
 
-## Implementation Roadmap
+## Storage layout
 
-### Phase 1: Foundation (This Session)
-- [ ] Replace HashEmbedding with real llama.cpp EmbeddingModel
-- [ ] Add configurable embedding model loading
-- [ ] Verify real embeddings work
+```
+my_kb/
+├── apollo.db           # SQLite: nodes, chunks, entities, relationships, projects
+├── apollo.db-wal       # Write-Ahead Log (auto-managed by SQLite)
+└── embeddings/
+    ├── chunk_001.fbin  # 16-byte header + float32[] vector
+    └── chunk_002.fbin
+```
 
-### Phase 2: Knowledge Graph (Next Session)
-- [ ] Implement Entity extraction interface (LLM-based)
-- [ ] Implement Relationship extraction
-- [ ] Build graph storage (in-memory or SQLite)
-- [ ] Add graph traversal queries
+About 1 KB of SQLite metadata per chunk + 3 KB per 768-dim FBIN vector.
+Roughly **45 MB total** for 1,000 docs averaging 10 chunks each.
 
-### Phase 3: Hybrid Search Enhancement
-- [ ] Parallelize semantic + keyword + graph search
-- [ ] Implement RRF fusion properly
-- [ ] Add configurable weights
+### SQLite tables (current schema)
 
-### Phase 4: Contextual Chunking
-- [ ] Implement semantic chunking with overlap
-- [ ] Add contextual enrichment (LLM call)
-- [ ] Store both original and enriched
+```
+nodes           (id PK, title, content, source_path, project_id, created_at)
+chunks          (id PK, node_id FK, content, project_id, embedding_file)
+entities        (id PK, name, type, description, project_id, source_chunk_id)
+relationships   (id PK, source, target, type, project_id, source_chunk_id)
+projects        (name PK, description, is_shared, owner, created_at)
+migrations      (version INT PK, applied_at)
+```
 
-### Phase 5: Advanced Retrieval
-- [ ] Add HyDE query enhancement
-- [ ] Implement cross-encoder reranking
-- [ ] Add query expansion (multi-query)
+All node/scoped tables have a `project_id` column added in the v1
+migration that introduced M3.C. Reads can optionally include data from
+projects marked `is_shared = 1`.
 
-### Phase 6: Community Detection
-- [ ] Implement Leiden/Louvain community detection
-- [ ] Generate community summaries (LLM)
-- [ ] Add global query capability
+Full schema in `docs/file-formats.md`. Field-level documentation lives in
+the SQLite migration code (`src/persistence.cpp`).
 
 ---
 
-## File Structure
+## Embedding model integration
 
-```
-ApolloCore/
-├── CMakeLists.txt                  # Top-level build (links libapollo_core.a)
-├── README.md                       # Main docs
-├── CodeMax.md                      # Planning + status doc
-├── docs/
-│   ├── design.md                   # This document
-│   ├── BANNER_PROMPTS.md           # Prompts for LLM extraction
-│   └── file-formats.md             # ApolloCore file formats
-├── include/apollocore/
-│   ├── apollo_persistence.hpp      # Main high-level API (ApolloCore)
-│   ├── kb_persistence.hpp          # SQLite + FBIN + project registry
-│   ├── entity_extractor.hpp        # LLM entity extraction (Qwen2.5)
-│   ├── cross_encoder.hpp           # Cross-encoder reranking
-│   ├── hyde.hpp                    # HyDE query enhancement
-│   ├── contextual_retrieval.hpp    # Anthropic-style chunking
-│   ├── embedding_model.hpp         # GGUF embeddings
-│   ├── onnx_embedding.hpp          # ONNX embeddings (alt)
-│   ├── persistence.hpp             # Schema + migrations
-│   ├── fbin.hpp                    # Binary embedding storage
-│   ├── apollo_hybrid_search.hpp    # Hybrid vector + BM25 + RRF
-│   ├── apollo_ts_wrapper.hpp       # tree-sitter C++ RAII wrapper
-│   └── apollo_code_extractor.hpp   # M3.B AST → entities/relationships
-├── src/
-│   ├── apollocore.cpp              # ApolloEngine (LLM driver)
-│   ├── entity_extractor.cpp        # Entity extraction (uses llama.cpp)
-│   ├── cross_encoder.cpp           # Cross-encoder reranking
-│   ├── hyde.cpp                    # HyDE
-│   ├── contextual_retrieval.cpp    # Contextual chunking
-│   ├── embedding_model.cpp         # llama.cpp embeddings wrapper
-│   ├── onnx_embedding.cpp          # ONNX embeddings
-│   ├── persistence.cpp             # Schema + apply_project_migrations
-│   ├── fbin.cpp                    # FBIN storage format
-│   ├── kb_persistence.cpp          # SQLite + project registry
-│   ├── apollo_persistence.cpp      # ApolloCore v2 + M3.C scoping
-│   ├── apollo_hybrid_search.cpp    # Hybrid search impl
-│   ├── apollo_ts_wrapper.cpp       # tree-sitter wrapper impl
-│   └── apollo_code_extractor.cpp   # Code extraction impl
-├── models/                         # GGUF models (user-provided, auto-downloaded)
-│   └── README.md
-├── examples/
-│   └── full_demo.cpp               # End-to-end demo
-└── tests/
-    ├── test_v2.cpp                 # Hybrid search v2 tests
-    ├── test_embeddings.cpp         # Embedding model tests
-    ├── test_entity_extraction.cpp  # LLM extraction tests
-    ├── test_cross_encoder.cpp      # Cross-encoder tests
-    ├── test_persistence.cpp        # Schema/persistence tests
-    ├── test_fbin.cpp               # FBIN format tests
-    ├── test_kb_persistence.cpp     # KB persistence tests
-    ├── test_apollo_persistence.cpp # ApolloCore integration tests
-    ├── test_multi_project.cpp      # M3.C tests (15 tests)
-    ├── test_code_extractor.cpp     # M3.B tests (12 tests)
-    ├── test_hyde.cpp               # HyDE query enhancement tests
-    ├── test_contextual_retrieval.cpp # Anthropic-style chunking tests
-    └── test_hybrid_search.cpp      # M2.7+M2.8 wiring tests (6 tests)
+### Default embedding model
 
-**Active tests: 13 suites, all passing via `ctest`**
+`nomic-embed-text-v1.5.Q4_K_M` — 768 dimensions, ~81 MB on disk.
+Quantized Q4_K_M, near-lossless for retrieval. Hosted in
+`models/nomic-embed-text-v1.5.Q4_K_M.gguf` (auto-downloaded by
+`models/CMakeLists.txt`).
+
+### Default LLM
+
+`qwen2.5-0.5b-instruct-q4_k_m.gguf` — used for entity extraction,
+cross-encoder reranking, HyDE, contextual retrieval. ~469 MB on disk.
+
+### GPU selection
+
+llama.cpp picks the first available device, in this order:
+Vulkan → CUDA → Metal → CPU. Selection is controllable via the build
+options (`-DLLAMA_VULKAN=ON`, `-DLLAMA_CUBLAS=ON`, etc.).
+
+ApolloCore doesn't manage model lifecycle: it's "load once at startup,
+keep warm, unload on shutdown". The MCP server owns one model pair; a
+single process is the design, not a model-pool abstraction.
 
 ---
 
-## Evaluation Metrics
+## MCP surface
 
-### Retrieval Metrics (Standard)
+This section is the **public contract** of the project — what every
+agent-compatible client sees.
 
-| Metric | Description | Target |
-|--------|-------------|--------|
-| **Recall@K** | Relevant docs in top-K | >0.85 |
-| **MRR** | Mean Reciprocal Rank | >0.70 |
-| **NDCG@K** | Normalized DCG | >0.75 |
+### Transport
 
-### RAG-Specific Metrics
+`POST /mcp` over Streamable HTTP. JSON-RPC 2.0 in, JSON-RPC 2.0 out.
+Optional `Mcp-Session-Id` header round-trips a UUID v4 session id.
 
-| Metric | Description |
-|--------|-------------|
-| **Context Precision** | Retrieved chunks actually relevant |
-| **Answer Faithfulness** | Answer grounded in context |
-| **Answer Relevance** | Answer addresses the question |
+### Tools (12)
 
-### Evaluation Framework
+All service-prefixed `apollo_*`. Each has a JSON Schema 2020-12 input
+schema and the appropriate `readOnlyHint`/`destructiveHint`/`idempotentHint`
+annotations.
 
-```cpp
-class RAGEvaluator {
-public:
-    struct TestCase {
-        std::string question;
-        std::vector<std::string> ground_truth_chunks;
-        std::string expected_answer_type;
-    };
-    
-    struct EvaluationResult {
-        float recall;
-        float precision;
-        float mrr;
-        float ndcg;
-        float faithfulness;
-        float relevance;
-    };
-    
-    EvaluationResult evaluate(
-        ApolloCoreV2& system,
-        const std::vector<TestCase>& test_cases
-    );
-};
+| Tool | Reads | Writes | Idempotent |
+|------|-------|--------|------------|
+| `apollo_query_kb` | ✓ | | ✓ |
+| `apollo_add_document` | | ✓ | |
+| `apollo_extract_entities` | | ✓ | ✓ |
+| `apollo_ingest_codebase` | | ✓ | |
+| `apollo_search_symbols` | ✓ | | ✓ |
+| `apollo_get_neighbors` | ✓ | | ✓ |
+| `apollo_create_kb` | | ✓ | |
+| `apollo_open_kb` | | ✓ | |
+| `apollo_save_kb` | | ✓ | ✓ |
+| `apollo_get_stats` | ✓ | | ✓ |
+| `apollo_set_project` | | ✓ | |
+| `apollo_list_projects` | ✓ | | ✓ |
+
+### Resources (5)
+
+`apollo://projects`, `apollo://stats`, `apollo://entities`,
+`apollo://graph`, `apollo://chunk/{id}`. URIs the agent can subscribe to
+or fetch on demand.
+
+### Prompts (4)
+
+`summarize_kb`, `answer_with_citations`, `code_review_summary`,
+`entity_research`. Pre-built workflows the user can invoke from the
+client UI.
+
+### Error policy
+
+- Transport-level failures (bad JSON, missing id) → JSON-RPC error envelope
+  (`code`, `message`, `data`).
+- Tool-level failures (bad args, KB not open, no model loaded) →
+  `CallToolResult { isError: true, content: [{type:"text", text: "..."}] }`
+  with an actionable message.
+
+The LLM then sees the tool error as an observation and self-corrects on
+the next turn. Transport-level errors don't carry enough domain context
+for the model to recover.
+
+Full worked example in `docs/mcp-quickstart.md`.
+
+---
+
+## Build system
+
+Top-level `CMakeLists.txt` uses `FetchContent` for everything except
+SQLite3 and (optionally) Vulkan. The fetch graph:
+
 ```
+nlohmann_json (via URL)
+    │
+llama.cpp  (GIT master)
+    └── ggml + Vulkan compute shaders
+tree-sitter (GIT v0.26.9)
+tree-sitter-cpp (GIT master)
+OmniNet  (GIT main) ───►  nlohmann_json, sqlite-vec, OpenSSL, sqlite3
+    │
+ApolloCore ───►  apollo_core (static lib, internal)
+                 apollo_mcp_server (executable, the only product)
+                 tests/ (16 CTest binaries)
+                 examples/full_demo
+                 models/ (auto-downloads GGUF on first configure)
+```
+
+Build options:
+
+- `-DCMAKE_BUILD_TYPE=Release|Debug`
+- `-DLLAMA_VULKAN=ON` (AMD/Intel), `-DLLAMA_CUBLAS=ON` (NVIDIA),
+  `-DLLAMA_METAL=ON` (Apple)
+- `-DTREE_SITTER_SKIP_FETCH=ON` / `-DOMNINET_SKIP_FETCH=ON` (use system libs)
+
+First configure is ~5 min (builds llama.cpp + OmniNet + transitive deps);
+subsequent builds are incremental.
+
+---
+
+## Future work
+
+- Hierarchical community detection (Leiden/Louvain) and global queries.
+  Requires a graph-traversal API surface beyond the current `get_neighbors`.
+- Self-RAG reflection tokens. Would require plumbing a second LLM call
+  per token of output.
+- ColBERT late interaction for token-level reranking precision.
+- Production RAGAS / BEIR benchmarks — needs a curated eval dataset.
+- MCP 2026-07-28 migration. The current dispatcher is architected so
+  swapping the `initialize` handshake for an `_meta`-per-request model
+  is mostly a one-file change.
 
 ---
 
 ## References
 
-1. **GraphRAG**: Microsoft Research - "From Local to Global: A GraphRAG Approach to Query-Focused Summarization" (arXiv:2404.16130)
-
-2. **LightRAG**: "LightRAG: Simple and Fast Retrieval-Augmented Generation" (arXiv:2410.05779)
-
-3. **RAPTOR**: "Recursive Abstractive Processing for Tree-Organized Retrieval" (ICLR 2024)
-
-4. **Self-RAG**: "Self-RAG: Learning to Retrieve, Generate, and Critique" (arXiv:2310.11511)
-
-5. **Anthropic Contextual Retrieval**: https://www.anthropic.com/engineering/contextual-retrieval
-
-6. **Hybrid Search with RRF**: Azure AI Search, OpenSearch, Qdrant documentation
-
-7. **ColBERT**: "ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction" (SIGIR 2020)
-
----
-
-## Appendix: llama.cpp Embedding API
-
-```cpp
-// From llama.cpp include/llama.h
-
-// Get embeddings from context
-const float* llama_get_embeddings(const struct llama_context * ctx);
-
-// Embed a single token sequence
-struct llama_batch {
-    llama_token * token;     // token IDs
-    float * pos;             // positions
-    int32_t * n_seq_id;      // number of sequences
-    llama_seq_id * seq_id;   // sequence IDs
-    int32_t  n_tokens;
-    int32_t  n_seq_total;
-};
-
-// Simplified embedding extraction
-float* embeddings = llama_get_embeddings(ctx);
-std::vector<float> vec(embeddings, embeddings + n_embd);
-```
-
----
-
-*Document Version: 1.0*  
-*Created: 2026-06-21*  
-*Status: Design Complete - Implementation Pending*
+1. **MCP 2025-11-25 spec** — modelcontextprotocol.io/specification/2025-11-25
+2. **MCP 2026-07-28 RC** — blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+3. **GraphRAG** — Microsoft Research, "From Local to Global: A GraphRAG
+   Approach to Query-Focused Summarization" (arXiv:2404.16130)
+4. **LightRAG** — "LightRAG: Simple and Fast Retrieval-Augmented Generation"
+   (arXiv:2410.05779)
+5. **RAPTOR** — "Recursive Abstractive Processing for Tree-Organized
+   Retrieval" (ICLR 2024)
+6. **Self-RAG** — arXiv:2310.11511
+7. **Anthropic Contextual Retrieval** — anthropic.com/engineering/contextual-retrieval
+8. **RRF** — Azure AI Search, OpenSearch, Qdrant documentation
+9. **ColBERT** — SIGIR 2020
+10. **HyDE** — arXiv:2212.10496
+11. **llama.cpp** — github.com/ggerganov/llama.cpp
+12. **OmniNet** — gitlab.com/leestripp/omninet
