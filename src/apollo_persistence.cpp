@@ -24,64 +24,95 @@ namespace apollocore_v2 {
 class Embedder {
 public:
     Embedder() = default;
-    
+
     bool load(const std::string& path) {
         llama_backend_init();
-        
+
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers = 0;
-        
+
         model_ = llama_model_load_from_file(path.c_str(), model_params);
         if (!model_) {
             std::cerr << "[Embedder] Failed to load model: " << path << "\n";
             return false;
         }
-        
+
         llama_context_params ctx_params = llama_context_default_params();
         ctx_params.n_ctx = 2048;
         ctx_params.n_threads = 4;
-        
+
         ctx_ = llama_init_from_model(model_, ctx_params);
         if (!ctx_) {
             llama_model_free(model_);
             model_ = nullptr;
             return false;
         }
-        
+
         // CRITICAL: Enable embeddings extraction
         llama_set_embeddings(ctx_, true);
-        
+
         // Cache encoder flag and pooling type for embed()
         has_encoder_ = llama_model_has_encoder(model_);
-        
+
+        std::cerr << "[Embedder] Loaded: " << path
+                  << "  n_ctx=" << n_ctx() << "  n_embd=" << dimensions() << "\n";
         return true;
     }
-    
+
     ~Embedder() {
         if (ctx_) llama_free(ctx_);
         if (model_) llama_model_free(model_);
     }
-    
+
     bool is_loaded() const { return ctx_ != nullptr; }
-    
+
+    int n_ctx() const { return 2048; }   // mirrors ctx_params.n_ctx above
+
     int dimensions() const {
         return model_ ? llama_model_n_embd(model_) : 0;
     }
-    
+
     std::vector<float> embed(const std::string& text) {
         std::vector<float> result(dimensions(), 0.0f);
         if (!ctx_ || !model_) return result;
-        
+
         const llama_vocab* vocab = llama_model_get_vocab(model_);
-        
-        std::vector<llama_token> tokens(2048);
+
+        // Reserve a large initial buffer; resize up if tokenize needs more.
+        std::vector<llama_token> tokens(4096);
         int n_tokens = llama_tokenize(
             vocab, text.c_str(), (int)text.size(),
             tokens.data(), (int)tokens.size(), true, true
         );
-        if (n_tokens <= 0) return result;
+        if (n_tokens < 0) {
+            // Need more space. Resize and retry once.
+            tokens.resize(-n_tokens);
+            n_tokens = llama_tokenize(
+                vocab, text.c_str(), (int)text.size(),
+                tokens.data(), (int)tokens.size(), true, true
+            );
+        }
+        if (n_tokens <= 0) {
+            // Tokenization failed even after resize — return zero vector
+            // rather than crashing.
+            std::cerr << "[Embedder] tokenize failed (rc=" << n_tokens << ")\n";
+            return result;
+        }
+
+        // === Defensive cap ===
+        // llama_context::encode asserts if batch.n_tokens > n_ctx. Leave
+        // a small safety margin for special tokens (BOS / EOS / pad).
+        const int safety = 16;
+        const int max_tokens = n_ctx() - safety;
+        if (n_tokens > max_tokens) {
+            std::cerr << "[Embedder] WARNING: text produced " << n_tokens
+                      << " tokens, truncating to " << max_tokens
+                      << " (n_ctx=" << n_ctx() << "). "
+                      << "Pre-chunk the input so chunks fit n_ctx.\n";
+            n_tokens = max_tokens;
+        }
         tokens.resize(n_tokens);
-        
+
         // Use proper batch setup with logits enabled for all tokens
         llama_batch batch = llama_batch_init((int32_t)n_tokens, 0, 1);
         for (int i = 0; i < n_tokens; i++) {
@@ -92,10 +123,10 @@ public:
             batch.logits[i] = 1;  // Required to get embeddings
         }
         batch.n_tokens = n_tokens;
-        
+
         int rc;
         // Use cached encoder flag. Also treat pooled models as encoders.
-        bool is_encoder = has_encoder_ || 
+        bool is_encoder = has_encoder_ ||
                          (llama_pooling_type(ctx_) != LLAMA_POOLING_TYPE_NONE);
         if (is_encoder) {
             // Encoder model (nomic-bert) - use llama_encode
@@ -363,12 +394,27 @@ size_t ApolloCore::add_document(
     // Simple chunking by sentences
     std::vector<std::string> chunk_texts;
     std::string current_chunk;
-    
+
     std::istringstream iss(text);
     std::string sentence;
     while (std::getline(iss, sentence, '.')) {
         if (!sentence.empty()) sentence += ".";
-        
+
+        // Sub-split sentences longer than chunk_size. Without this,
+        // a file containing one huge "sentence" (e.g. a minified JS
+        // blob or a long base64-encoded blob) bypasses the chunker
+        // entirely and ships to the embedder as a single chunk that
+        // can exceed n_ctx — crashing the process.
+        while (sentence.size() > chunk_size) {
+            std::string piece = sentence.substr(0, chunk_size);
+            sentence = sentence.substr(chunk_size);
+            if (!current_chunk.empty()) {
+                chunk_texts.push_back(current_chunk);
+                current_chunk.clear();
+            }
+            chunk_texts.push_back(std::move(piece));
+        }
+
         if (current_chunk.length() + sentence.length() > chunk_size) {
             if (!current_chunk.empty()) {
                 chunk_texts.push_back(current_chunk);

@@ -234,7 +234,7 @@ void EmbeddingModel::normalize(EmbeddingVector& vec) {
 
 EmbeddingResult EmbeddingModel::embed(std::string_view text) {
     EmbeddingVector vec;
-    
+
     if (!is_loaded()) {
         // Fallback: return zero vector
         fprintf(stderr, "Warning: Model not loaded, returning zero embedding\n");
@@ -243,7 +243,7 @@ EmbeddingResult EmbeddingModel::embed(std::string_view text) {
         auto tokens = tokenize(text);
         vec = run_inference(tokens);
     }
-    
+
     return {std::move(vec), model_name(), dimensions_};
 }
 

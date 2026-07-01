@@ -40,16 +40,33 @@ FetchContent_Declare(llama_cpp
 set(GGML_VULKAN ON CACHE BOOL "Enable ggml Vulkan backend" FORCE)
 FetchContent_MakeAvailable(llama_cpp)
 
-# Patch: GGML_VULKAN option is declared in ggml/CMakeLists.txt but never used,
-# so the Vulkan backend is never built. Add it after CPU backend.
-file(READ "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt" _ggml_src)
-string(REPLACE
-    "ggml_add_backend(CPU)"
-    "ggml_add_backend(CPU)\n\n# Patch: enable Vulkan backend (GGML_VULKAN option was declared but never used)\nif (GGML_VULKAN)\n    ggml_add_backend(VULKAN)\nendif()"
-    _ggml_src_patched
-    "${_ggml_src}")
-file(WRITE "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt" "${_ggml_src_patched}")
-message(STATUS "Patched llama.cpp to enable Vulkan backend")
+# Patch: GGML_VULKAN option is declared in ggml/CMakeLists.txt but
+# never used, so the Vulkan backend is never built. The original
+# file also has a final `ggml_add_backend(Vulkan)` at the bottom
+# that collides with our patch (both call add_subdirectory(ggml-vulkan)
+# → CMake error: "binary directory already used").
+#
+# We do TWO things, idempotently:
+#   1. Strip every `ggml_add_backend(Vulkan)` and `ggml_add_backend(VULKAN)`
+#      (and any prior patches wrapping them).
+#   2. After `ggml_add_backend(CPU)`, insert exactly one
+#      `ggml_add_backend(VULKAN)` activation.
+#
+# Done via a Python helper instead of CMake's string(REGEX REPLACE)
+# because CMake's regex has no multiline ^ anchor, which makes
+# line-start matching fiddly. Python handles this cleanly with
+# `re.MULTILINE`. See scripts/patch_llama_vulkan.py for the
+# idempotent implementation.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/patch_llama_vulkan.py
+            ${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt
+    RESULT_VARIABLE _vulkan_patch_rc
+)
+if (_vulkan_patch_rc EQUAL 0)
+    message(STATUS "Patched llama.cpp to enable Vulkan backend")
+else()
+    message(FATAL_ERROR "Failed to apply Vulkan patch to llama.cpp (rc=${_vulkan_patch_rc})")
+endif()
 
 # ============================================================================
 # Tree-sitter — proper AST parsing for code (M3.B)

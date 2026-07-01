@@ -77,6 +77,7 @@ public:
     
     bool is_loaded() const { return ctx_ != nullptr; }
     size_t dimensions() const { return n_embd_; }
+    int n_ctx() const { return n_ctx_; }       // context size used for encoding
     std::string model_name() const { return model_path_; }
     
     // Embed text

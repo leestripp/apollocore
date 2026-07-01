@@ -223,3 +223,16 @@ target_compile_features(test_ui_static PRIVATE cxx_std_23)
 target_link_libraries(test_ui_static PRIVATE apollo_core)
 add_test(NAME test_ui_static COMMAND test_ui_static
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# ============================================================================
+# Regression test: ingest_codebase torture files (regression for the
+# chunker sub-split + embedder truncation fix). Runs against a live
+# apollo_mcp_server on $APOLLO_PORT. Requires the server to be up.
+# ============================================================================
+add_test(NAME test_ingest_codebase
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_ingest_codebase.py
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_ingest_codebase PROPERTIES
+    ENVIRONMENT "APOLLO_PORT=$ENV{APOLLO_PORT}"
+    LABELS "browser_required;live_server"
+)
