@@ -24,7 +24,7 @@
 
 ---
 
-# 🔨 CURRENT TASK — ApolloCore → MCP Server Refactor
+# 🔨 CURRENT TASK — ApolloCore (MCP Server)
 
 **Source of truth:** `./prompt.txt`
 **Started:** 2026-06-30 (this session)
@@ -32,17 +32,22 @@
 
 ## Task Summary
 
-Refactor **ApolloCore** — currently a C++23 static library (`libapollo_core.a`) —
-into an **MCP (Model Context Protocol) server** for AI agents. The refactor must:
+ApolloCore **is** an MCP (Model Context Protocol) server. Period.
 
-1. Expose ApolloCore's RAG/KG capabilities over MCP via **OmniNet** (HTTP + WebSocket).
-2. Implement the **current stable** MCP spec (2025-11-25) using **Streamable HTTP**
-   transport, with an eye toward the 2026-07-28 RC breaking changes (stateless core,
-   `Mcp-Method`/`Mcp-Name` headers, removable session).
-3. Apply **2026 MCP best practices** (outcome-oriented tool design, flat arguments,
-   service-prefixed names, paginated, curated).
-4. **Preserve** `libapollo_core.a` (do not rewrite the library). The MCP server is a
-   **thin transport-layer executable** that links against it.
+The deliverable is a single executable, `apollo_mcp_server`, that AI agents
+connect to over HTTP. Internally the RAG / knowledge-graph code is still
+organized in a static library target (`apollo_core`) — that's a CMake
+implementation detail, not a public-facing product. There is no opt-in
+flag, no alternative mode, no library for downstream consumers to link.
+
+This refactor:
+
+1. Exposes the RAG/KG capabilities over MCP via **OmniNet** (HTTP + WebSocket).
+2. Implements **MCP 2025-11-25** (Streamable HTTP transport), with a forward path
+   to the 2026-07-28 RC breaking changes (stateless core, `Mcp-Method` /
+   `Mcp-Name` headers, removable session).
+3. Applies **2026 MCP best practices** (outcome-oriented tool design, flat
+   arguments, service-prefixed names, paginated, curated).
 
 ## Why MCP and Why Now
 
@@ -134,7 +139,7 @@ define.
 
 ---
 
-## Architecture — MCP Server on Top of ApolloCore
+## Architecture — ApolloCore (the only deliverable)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -144,7 +149,7 @@ define.
                                │  POST /mcp   (Streamable HTTP transport)
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│           apollo_mcp_server  (this refactor — new executable)       │
+│           apollo_mcp_server  ←  THE ONLY DELIVERABLE                │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │                 OmniNet HTTP+WS server                        │  │
 │  │  Route table:                                                 │  │
@@ -154,22 +159,23 @@ define.
 │  │    GET  /info       → Server card-style info                   │  │
 │  │    /*               → admin dashboard (OmniNet built-in)      │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  McpDispatcher (new — src/mcp/dispatcher.cpp)                 │  │
-│  │    routes JSON-RPC methods → MCPTool/Resource/Prompt handlers │  │
+│  │  McpDispatcher (src/mcp_server/dispatcher.cpp)                 │  │
+│  │    routes JSON-RPC methods → Tool/Resource/Prompt handlers    │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  McpServerState (new — src/mcp/server_state.cpp)              │  │
+│  │  ServerState (src/mcp_server/server_state.cpp)                │  │
 │  │    one ApolloCore instance, session_id → project_id map       │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  McpTools   (new — src/mcp/tools.cpp)     ~10 tools            │  │
-│  │  McpResources (new — src/mcp/resources.cpp) ~5 resources     │  │
-│  │  McpPrompts  (new — src/mcp/prompts.cpp)  ~4 prompts          │  │
+│  │  Tools      (src/mcp_server/tools.cpp)        — 12 tools      │  │
+│  │  Resources  (src/mcp_server/resources.cpp)    —  5 resources  │  │
+│  │  Prompts     (src/mcp_server/prompts.cpp)      —  4 prompts    │  │
 │  └──────────────────────┬───────────────────────────────────────┘  │
 └─────────────────────────┼───────────────────────────────────────────┘
-                          │  links against
+                          │  internal link (CMake target)
                           ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│           libapollo_core.a  (UNCHANGED static library)             │
+│           apollo_core  (INTERNAL static library target)            │
 │            apollo_persistence.hpp / ApolloCore class               │
+│            RAG, hybrid search, KG, entity extraction                │
 └─────────────────────────────────────────────────────────────────────┘
                           │  SQLite + FBIN + llama.cpp
                           ▼
@@ -247,10 +253,10 @@ self-correct. We always return informative strings:
 - System info captured
 
 ### **Phase 1 — CMake glue + OmniNet FetchContent** ✅ DONE
-- `CMakeLists.txt` updated: OmniNet declared via FetchContent (tag `main`), new
-  `apollo_mcp_server` target wired into `src/mcp_server/`.
-- `OMNINET_SKIP_FETCH` escape hatch added.
-- `APOLLO_BUILD_MCP_SERVER` opt-in flag added (defaults to ON).
+- `CMakeLists.txt` updated: OmniNet declared via FetchContent (tag `main`),
+  new `apollo_mcp_server` target wired into `src/mcp_server/` directly
+  (no opt-in flag — the MCP server IS ApolloCore).
+- `OMNINET_SKIP_FETCH` escape hatch added for power users.
 - **Verified:** Configure succeeded; OmniNet 0.7.7, OpenSSL 3.5.5, sqlite-vec,
   tree-sitter all detected.
 

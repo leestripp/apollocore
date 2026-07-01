@@ -2,9 +2,13 @@
 
 # ApolloCore
 
-> **A state-of-the-art, production-ready C++23 RAG (Retrieval-Augmented Generation) knowledge base framework with local AI inference.**
+> **A C++23 MCP (Model Context Protocol) server that exposes a local RAG /
+> retrieval-augmented knowledge base to AI agents.**
 
-ApolloCore is a self-contained, embeddable knowledge base that runs **100% locally** with no external API dependencies. It combines vector search, keyword search, knowledge graphs, entity extraction, and LLM-powered query enhancement into a single high-performance C++23 library.
+This is the only way ApolloCore is delivered: as a single executable,
+`apollo_mcp_server`, that any MCP-aware agent can talk to. There is no
+library to link, no SDK to embed — agents connect over HTTP and call
+tools.
 
 ---
 
@@ -21,7 +25,7 @@ ApolloCore is a self-contained, embeddable knowledge base that runs **100% local
 | 📄 **Contextual Retrieval** | Context-aware chunk processing |
 | 🌳 **Code-Aware Extraction** | tree-sitter AST parsing auto-extracts FUNCTION/CLASS/etc. |
 | 👥 **Multi-Project Scoping** | Multiple agents share one KB, isolated by project |
-| 📚 **Static Library** | Drop into your agent — single `libapollo_core.a`, no MCP/HTTP deps |
+| 🤖 **MCP Server** | Single `apollo_mcp_server` executable — speaks MCP 2025-11-25, Streamable HTTP, ready for Claude/Cursor/Cline |
 | ⚡ **High Performance** | C++23, zero-copy, mmap-backed embeddings, Vulkan GPU |
 
 ---
@@ -111,27 +115,14 @@ int main() {
 }
 ```
 
----
-
-## 🤖 MCP Server Mode (NEW)
-
-ApolloCore ships an **MCP (Model Context Protocol) server** so any MCP-aware
-agent (Claude Desktop, Cursor, Cline, Windsurf, Continue.dev, etc.) can use
-the knowledge base as a tool without writing glue code.
-
-The server implements **MCP 2025-11-25** over the **Streamable HTTP** transport
-(JSON-RPC 2.0 over `POST /mcp`), built on **OmniNet** (HTTP+TLS+WS in C++23).
+## 🚀 Quick Start
 
 ### Build
-
-The MCP server is built by default alongside the static library:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc) --target apollo_mcp_server
 ```
-
-Opt out with `-DAPOLLO_BUILD_MCP_SERVER=OFF`.
 
 ### Run
 
@@ -290,9 +281,11 @@ cmake -S . -B build -DLLAMA_METAL=ON   # Apple Metal
 └─────────────────────────────────────────────────────────────┘
                               │
                   ┌───────────┴───────────┐
-                  │  libapollo_core.a    │  ← Single static library
-                  │  (link this)         │
+                  │  apollo_mcp_server   │  ← The only deliverable
+                  │  (the executable)    │
                   └─────────────────────┘
+                              │  AI agent connects via HTTP
+                              ▼  (Claude, Cursor, Cline, …)
 ```
 
 ### Module Overview
@@ -649,54 +642,42 @@ my_kb/
 
 ## 🔨 Building
 
-### Standard Build
+### Build the MCP server
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc) --target apollo_mcp_server
+```
+
+This produces `build/src/mcp_server/apollo_mcp_server` — a single
+self-contained executable. Run it:
+
+```bash
+./build/src/mcp_server/apollo_mcp_server --port 8765
+```
+
+### Build everything (server + tests)
+
+```bash
 cmake --build build -j$(nproc)
+cd build && ctest --output-on-failure
 ```
 
-This produces `build/libapollo_core.a` — link this static library
-into your agent.
+### Build options
 
-### Run the Example
+- `-DCMAKE_BUILD_TYPE=Debug|Release`
+- `-DLLAMA_CUBLAS=ON` (NVIDIA)
+- `-DLLAMA_VULKAN=ON` (AMD/Intel)
+- `-DLLAMA_METAL=ON` (Apple)
+- `-DTREE_SITTER_SKIP_FETCH=ON` (use system tree-sitter)
+- `-DOMNINET_SKIP_FETCH=ON` (use system OmniNet)
 
-```bash
-./build/examples/full_demo
-```
-
-### Build Only the Library
-
-```bash
-cmake --build build --target apollo_core -j$(nproc)
-# Produces: build/libapollo_core.a
-```
-
-### Build and Run Tests
-
-```bash
-cmake --build build --target test_code_extractor test_multi_project -j$(nproc)
-./build/tests/test_code_extractor   # 12 tests
-./build/tests/test_multi_project    # 15 tests
-```
-
-### Install System-Wide
+### Install the executable
 
 ```bash
 cmake --install build --prefix /usr/local
-# Installs: libapollo_core.a + headers to /usr/local/include/apollocore/
+# Installs: /usr/local/bin/apollo_mcp_server
 ```
-
-### Link ApolloCore Into Your Agent
-
-```cmake
-# In your agent's CMakeLists.txt:
-add_executable(my_agent main.cpp)
-target_link_libraries(my_agent PRIVATE apollo_core)
-```
-
-The library exposes a single header (`<apollocore/apollo_persistence.hpp>`)
-plus optional code-extraction (`<apollocore/apollo_code_extractor.hpp>`).
 
 ---
 
@@ -762,22 +743,21 @@ cd build && ctest --output-on-failure
 | M3.A | LLM Entity Extraction (Qwen) | ✅ |
 | **M3.B** | **tree-sitter Code Extraction** | ✅ |
 | **M3.C** | **Multi-Project Scoping** | ✅ |
-| — | **Static Library Refactor** (no MCP/HTTP) | ✅ |
+| — | **MCP Server** (Streamable HTTP, OmniNet) | ✅ |
 
-**Status: Production-ready core. All phases complete. 13 test suites, all passing.**
+**Status: Production-ready. The MCP server is the only way ApolloCore is delivered.**
 
-### Library vs MCP History
+### Why an MCP server?
 
-ApolloCore started as an MCP server (Model Context Protocol addon) but has
-been refactored into a **static library** suitable for linking directly into
-an AI agent. The MCP transport layer was removed because:
+ApolloCore exists to give AI agents a knowledge base without making each
+agent author its own glue code. The Model Context Protocol is the standard
+way agents discover and call external tools — by speaking MCP, ApolloCore
+works with Claude Desktop, Cursor, Cline, Windsurf, Continue.dev, and any
+other MCP-aware client with zero integration work.
 
-- An agent needs the KB as a **library**, not a separate process
-- Network IPC adds latency and complexity
-- Static linking gives the agent full control
-
-If you need MCP transport, write a thin wrapper around `libapollo_core.a`
-in your own codebase (~200 lines).
+The server is a single `apollo_mcp_server` executable that runs as a
+separate process and accepts JSON-RPC 2.0 over `POST /mcp`. There is no
+library to embed; the HTTP boundary is the API.
 
 ---
 

@@ -177,23 +177,21 @@ if(Vulkan_FOUND)
     target_link_libraries(apollo_core PRIVATE Vulkan::Vulkan)
 endif()
 
-# Install
-install(TARGETS apollo_core ARCHIVE DESTINATION lib)
-install(DIRECTORY include/apollocore DESTINATION include)
+# Note: the apollo_core static library target exists purely so the MCP server
+# (and the CTest targets) can link against the RAG/KG code in one place. It is
+# NOT installed or exported — `apollo_mcp_server` is the only public artifact.
 
 # ============================================================================
-# MCP Server (new — Phase 4 of the refactor plan)
+# MCP Server — ApolloCore's ONLY public artifact
 # ============================================================================
-# A thin executable that exposes ApolloCore over MCP via OmniNet's HTTP server.
-# Streams JSON-RPC 2.0 over Streamable HTTP transport (MCP spec 2025-11-25).
+# ApolloCore is delivered exclusively as the `apollo_mcp_server` executable
+# below. It speaks MCP (Model Context Protocol) 2025-11-25 over Streamable
+# HTTP transport (JSON-RPC 2.0 over `POST /mcp`), served by OmniNet.
 #
-# The MCP server is OPT-IN: when APOLLO_BUILD_MCP_SERVER=ON (default), the
-# executable `apollo_mcp_server` is built. This lets downstream consumers
-# continue to link only the static lib if they want.
-option(APOLLO_BUILD_MCP_SERVER "Build the ApolloCore MCP server executable" ON)
-if(APOLLO_BUILD_MCP_SERVER)
-    add_subdirectory(src/mcp_server)
-endif()
+# There is no opt-in flag, no alternative mode, no library for downstream
+# consumers to link. The static-library target above is an internal
+# organization primitive only — it is not installed or exported.
+add_subdirectory(src/mcp_server)
 
 # ============================================================================
 # Tests
