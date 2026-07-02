@@ -6,6 +6,8 @@
 
 #include "server_state.hpp"
 
+#include "mcp_security.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -110,6 +112,28 @@ void ServerState::reap_idle_sessions(std::chrono::seconds idle_ttl)
             ++it;
         }
     }
+}
+
+void ServerState::set_negotiated_version(const std::string& session_id,
+                                         const std::string& version) {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it != sessions_.end()) {
+        it->second.negotiated_version = version;
+    }
+    // Unknown session: ignore. Sessions are lazily created on first
+    // request, and `initialize` is normally the first request that
+    // creates one — but if a client calls `initialize` twice (legal)
+    // we just update the existing entry.
+}
+
+std::string ServerState::negotiated_version(const std::string& session_id) const {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it != sessions_.end() && !it->second.negotiated_version.empty()) {
+        return it->second.negotiated_version;
+    }
+    return std::string(security::PINNED_VERSION);
 }
 
 ServerState::Stats ServerState::snapshot() const

@@ -18,6 +18,7 @@
 //   OMNINET_DATA_DIR    OmniNet's own ~/.omninet location
 //   APOLLO_NO_UI        set to "1" or "true" to disable the web UI
 
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -105,6 +106,25 @@ CliArgs parse_args(int argc, char** argv)
 int main(int argc, char** argv)
 {
     auto args = parse_args(argc, argv);
+
+    // Ignore SIGPIPE. OmniNet's Socket::send does a raw ::send() and
+    // when a client closes the connection, the kernel sends SIGPIPE to
+    // the whole process — which would terminate the server even though
+    // the offending write is in a worker thread that's already
+    // supposed to clean up on socket failure. Disabling SIGPIPE at
+    // process startup means ::send returns -1/EPIPE and our writer
+    // thread can exit cleanly. This is the standard pattern for
+    // long-running HTTP servers (nginx, redis, etc. all do this).
+#ifdef __APPLE__
+    (void)std::signal(SIGPIPE, SIG_IGN);
+#else
+    // POSIX.1-2008 marks signal() as obsolete for SIG_IGN; use
+    // sigaction for portability on Linux.
+    struct sigaction sa{};
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    (void)sigaction(SIGPIPE, &sa, nullptr);
+#endif
 
     // Bootstrap OmniNet (logger, signal handlers, config dir).
     OmniNet::init();

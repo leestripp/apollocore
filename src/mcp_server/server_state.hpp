@@ -29,6 +29,7 @@ namespace apollo::mcp {
 struct Session {
     std::string id;
     std::string project;                         // current project (or "")
+    std::string negotiated_version;              // Phase B3 — set by `initialize`
     std::chrono::system_clock::time_point created;
     std::chrono::system_clock::time_point last_used;
 };
@@ -55,6 +56,18 @@ public:
 
     /// Drop sessions idle longer than `idle_ttl`.
     void reap_idle_sessions(std::chrono::seconds idle_ttl);
+
+    /// Record the negotiated MCP protocol version for a session.
+    /// Phase B3 — used to verify a client's protocol-version header on
+    /// post-init requests. Falls back to the server's pinned version
+    /// if the session is unknown.
+    void set_negotiated_version(const std::string& session_id,
+                                const std::string& version);
+
+    /// Look up the negotiated version for a session, or the server's
+    /// pinned default if unknown. Returns empty string only if the
+    /// server's default is unset (shouldn't happen).
+    std::string negotiated_version(const std::string& session_id) const;
 
     /// Search statistics for diagnostics.
     struct Stats {

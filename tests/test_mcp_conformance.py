@@ -20,6 +20,13 @@ Runs against an already-running apollo_mcp_server on $APOLLO_PORT (default
   A4 — DELETE /mcp terminates the session.
         * first DELETE → 200
         * second DELETE → 404 (spec §Session-Management)
+
+  B1 — GET /mcp SSE endpoint (Phase B1).
+        * no SSE Accept        → 405
+        * SSE + no session     → 400
+        * SSE + valid session  → 200, text/event-stream,
+          Cache-Control: no-cache, Connection: keep-alive,
+          X-Accel-Buffering: no, and the initial `: connected` comment.
 """
 
 import os
@@ -72,6 +79,65 @@ def delete_mcp(sid):
             return resp.status
     except urllib.error.HTTPError as e:
         return e.code
+
+
+# ---------------------------------------------------------------------------
+# B1 — GET /mcp Server-Sent Events
+# ---------------------------------------------------------------------------
+def test_get_mcp_no_sse_accept():
+    """GET /mcp without Accept: text/event-stream → 405."""
+    req = urllib.request.Request(f"{URL}/mcp", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assert False, f"expected 405, got {r.status}"
+    except urllib.error.HTTPError as e:
+        assert e.code == 405, f"expected 405, got {e.code}"
+    print("  B1 no SSE Accept -> HTTP 405 ✓")
+
+
+def test_get_mcp_no_session():
+    """GET /mcp with SSE Accept but no Mcp-Session-Id → 400."""
+    req = urllib.request.Request(f"{URL}/mcp", method="GET",
+                                  headers={"Accept": "text/event-stream"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assert False, f"expected 400, got {r.status}"
+    except urllib.error.HTTPError as e:
+        assert e.code == 400, f"expected 400, got {e.code}"
+    print("  B1 SSE no session -> HTTP 400 ✓")
+
+
+def test_get_mcp_sse(sid):
+    """GET /mcp with SSE Accept + session → 200 + event-stream headers +
+    initial `: connected` comment."""
+    req = urllib.request.Request(f"{URL}/mcp", method="GET",
+                                  headers={"Accept": "text/event-stream",
+                                           "Mcp-Session-Id": sid})
+    try:
+        # The server holds the connection open and pumps keep-alives.
+        # We use a short timeout to capture the headers + first chunk
+        # then bail.
+        with urllib.request.urlopen(req, timeout=3) as r:
+            assert r.status == 200, f"expected 200, got {r.status}"
+            ct = r.headers.get("Content-Type", "")
+            assert ct.startswith("text/event-stream"), \
+                f"Content-Type={ct!r}"
+            assert r.headers.get("Cache-Control") == "no-cache", \
+                f"Cache-Control={r.headers.get('Cache-Control')!r}"
+            assert r.headers.get("Connection") == "keep-alive", \
+                f"Connection={r.headers.get('Connection')!r}"
+            assert r.headers.get("X-Accel-Buffering") == "no", \
+                f"X-Accel-Buffering={r.headers.get('X-Accel-Buffering')!r}"
+            # Read up to the first ': connected' event.
+            chunk = r.read(64).decode(errors="replace")
+            assert ": connected" in chunk, \
+                f"missing ': connected' in initial chunk: {chunk!r}"
+    except (urllib.error.URLError, TimeoutError) as e:
+        # A clean 200 + headers read may be interrupted by timeout —
+        # the server holds the connection open for keep-alives.
+        # If we got here without seeing the headers, fail.
+        assert False, f"GET /mcp SSE failed before headers: {e}"
+    print(f"  B1 SSE stream    -> 200, text/event-stream, ': connected' ✓")
 
 
 def must_alive():
@@ -155,13 +221,16 @@ def test_delete_session(sid):
 
 
 def main():
-    print("Running MCP conformance smoke test (Phase A):\n")
+    print("Running MCP conformance smoke test (Phase A + B1):\n")
     must_alive()
     test_origin_rejects_evil()
     sid = test_origin_accepts_localhost()
     test_protocol_version_rejects_unknown()
     test_protocol_version_accepts_known()
     test_delete_session(sid)
+    test_get_mcp_no_sse_accept()
+    test_get_mcp_no_session()
+    test_get_mcp_sse(sid)
     print("\nALL OK")
 
 

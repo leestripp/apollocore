@@ -10,7 +10,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include "dispatcher.hpp"
 #include "jsonrpc.hpp"
+#include "mcp_sse_bus.hpp"
 #include "prompts.hpp"
 #include "resources.hpp"
 #include "server_state.hpp"
@@ -23,6 +25,7 @@ using nlohmann::json;
 class Dispatcher {
 public:
     Dispatcher(ServerState& state,
+               McpSseBus& sse_bus,
                const ToolRegistry& tools,
                const ResourceRegistry& resources,
                const PromptRegistry& prompts);
@@ -31,6 +34,16 @@ public:
     /// For notifications (no `id`), the response has neither `result` nor
     /// `error` and the caller (HTTP layer) should NOT send anything.
     JsonRpcResponse dispatch(const JsonRpcRequest& req);
+
+    /// Phase B2 — push a `notifications/{tools,resources,prompts}/list_changed`
+    /// JSON-RPC notification into every active SSE channel for `session_id`.
+    /// If `session_id` is empty, broadcasts to ALL live SSE channels on the
+    /// bus (useful when a static registry is reloaded server-wide). The
+    /// dispatcher does NOT itself emit these — they're opt-in plumbing for
+    /// future code paths that mutate the registries. Today the registries
+    /// are static, so nothing calls this.
+    void notify_list_changed(const std::string& kind,
+                             const std::string& session_id = "");
 
     /// Server-side metadata used in `initialize` and `/health`.
     struct Info {
@@ -55,6 +68,7 @@ private:
     json handle_prompts_get(const JsonRpcRequest& req);
 
     ServerState& state_;
+    McpSseBus& sse_bus_;
     const ToolRegistry& tools_;
     const ResourceRegistry& resources_;
     const PromptRegistry& prompts_;

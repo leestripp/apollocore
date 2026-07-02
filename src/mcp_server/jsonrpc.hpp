@@ -60,6 +60,12 @@ struct JsonRpcRequest {
     std::string method;           // e.g. "tools/list", "initialize"
     json params = json::object(); // method-specific
 
+    /// The MCP session id (parsed from Mcp-Session-Id header on the HTTP
+    /// request). Empty for stdio transport or unknown. Phase B — used by
+    /// initialize to record the negotiated protocol version, and by the
+    /// SSE bridge to scope notifications.
+    std::string session_id;
+
     /// True if this is a notification (no `id` field).
     bool is_notification() const { return !id.has_value(); }
 };

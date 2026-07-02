@@ -29,6 +29,8 @@
 #include "http/StaticHandler.h"
 
 #include "mcp_security.hpp"
+#include "mcp_sse.hpp"
+#include "mcp_sse_bus.hpp"
 
 namespace apollo::mcp {
 
@@ -53,13 +55,19 @@ struct HttpServer::Impl {
     std::unique_ptr<onh::StaticHandler> static_handler;
     std::atomic<bool> stop_requested{false};
 
+    // Phase B — SSE notification bus + bridge. The bus is the
+    // shared state (one queue per session). The bridge is the
+    // HTTP-layer plumbing that maps GET /mcp → queue pops.
+    McpSseBus sse_bus;
+    std::unique_ptr<McpSseBridge> sse_bridge;
+
     Impl(ServerState& s, const HttpConfig& c)
         : cfg(c),
           state(s),
           tools(build_default_registry()),
           resources(build_default_resource_registry()),
           prompts(build_default_prompt_registry()),
-          dispatcher(state, tools, resources, prompts)
+          dispatcher(state, sse_bus, tools, resources, prompts)
     {
         onh::Server::Config sc;
         sc.address        = cfg.host;
@@ -87,6 +95,14 @@ struct HttpServer::Impl {
             }
         }
 
+        // ------------------------------------------------------------------
+        // SSE bridge (Phase B1). Registered BEFORE the regular routes so
+        // OmniNet's protocol-switch wiring runs first and the Router
+        // doesn't get a chance to 404 the GET. McpSseBridge owns its
+        // thread(s) and is destroyed with `*this`.
+        // ------------------------------------------------------------------
+        sse_bridge = std::make_unique<McpSseBridge>(*server, sse_bus);
+
         register_routes();
     }
 
@@ -99,15 +115,9 @@ struct HttpServer::Impl {
             handle_post_mcp(req, resp);
         });
 
-        // ------------------------------------------------------------------
-        // GET /mcp — Streamable HTTP SSE endpoint (only if Accept says SSE)
-        // Per spec 2025-11-25: when client GETs /mcp with Accept: text/event-stream
-        // the server may open an SSE channel for server-initiated requests.
-        // For Phase 1 we accept but immediately 405 — Phase 4 (SSE) can extend.
-        // ------------------------------------------------------------------
-        server->get("/mcp", [this](const onh::Request& req, onh::Response& resp) {
-            handle_get_mcp(req, resp);
-        });
+        // NOTE: GET /mcp is handled by the protocol-switch handler registered
+        // in the ctor (McpSseBridge), NOT here. Adding server->get("/mcp", ...)
+        // would shadow the protocol-switch path.
 
         // ------------------------------------------------------------------
         // DELETE /mcp — terminate the session identified by MCP-Session-Id.
@@ -349,7 +359,7 @@ struct HttpServer::Impl {
         resp.setHeader("Mcp-Session-Id", effective_session);
     }
 
-    json handle_one(const json& raw_request, const std::string& /*session_id*/)
+    json handle_one(const json& raw_request, const std::string& session_id)
     {
         JsonRpcRequest req;
         try {
@@ -357,6 +367,7 @@ struct HttpServer::Impl {
         } catch (const std::exception& e) {
             return make_error(std::nullopt, errc::INVALID_REQUEST, e.what()).to_json();
         }
+        req.session_id = session_id;  // Phase B — propagate for SSE/version
         auto resp = dispatcher.dispatch(req);
         if (resp.id || resp.result || resp.err) {
             return resp.to_json();
@@ -365,23 +376,9 @@ struct HttpServer::Impl {
         return json::object();
     }
 
-    void handle_get_mcp(const onh::Request& req, onh::Response& resp)
-    {
-        // Security guards apply here too.
-        if (!check_security(req, resp, /*effective_session*/ "",
-                            /*pre_init*/ true)) return;
-
-        // Phase B1 will wire actual SSE; for now keep the 405 stub but
-        // also honor an empty-Mcp-Session-Id GET (it gets a clean 405
-        // instead of an Origin/auth fail).
-        auto accept = req.header("accept");
-        if (accept && std::string(*accept).find("text/event-stream") != std::string::npos) {
-            write_json(resp, 405, {{"error",
-                "SSE server-initiated requests not implemented yet (Phase 4 work)"}});
-            return;
-        }
-        write_json(resp, 405, {{"error", "GET /mcp requires Accept: text/event-stream"}});
-    }
+    // GET /mcp is no longer handled here — McpSseBridge's
+    // protocol-switch handler intercepts it before the Router.
+    // The stub below is kept commented for historical context.
 
     void handle_delete_mcp(const onh::Request& req, onh::Response& resp)
     {

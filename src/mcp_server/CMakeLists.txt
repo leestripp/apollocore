@@ -17,6 +17,8 @@ add_executable(apollo_mcp_server
     dispatcher.cpp
     jsonrpc.cpp
     mcp_security.cpp
+    mcp_sse_bus.cpp
+    mcp_sse.cpp
     tools.cpp
     resources.cpp
     prompts.cpp

@@ -6,6 +6,7 @@
 // a `json` value that becomes the `result` field of the JSON-RPC response.
 
 #include "dispatcher.hpp"
+#include "mcp_security.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -15,10 +16,12 @@ namespace apollo::mcp {
 using nlohmann::json;
 
 Dispatcher::Dispatcher(ServerState& state,
+                       McpSseBus& sse_bus,
                        const ToolRegistry& tools,
                        const ResourceRegistry& resources,
                        const PromptRegistry& prompts)
-    : state_(state), tools_(tools), resources_(resources), prompts_(prompts)
+    : state_(state), sse_bus_(sse_bus),
+      tools_(tools), resources_(resources), prompts_(prompts)
 {}
 
 // ---------------------------------------------------------------------------
@@ -57,13 +60,34 @@ JsonRpcResponse Dispatcher::dispatch(const JsonRpcRequest& req)
 
 json Dispatcher::handle_initialize(const JsonRpcRequest& req)
 {
-    // We don't strictly validate protocolVersion yet — accept whatever the
-    // client offers and respond with our pinned version. Strict version
-    // negotiation can be added in Phase 5.
-    (void)req;
+    // Phase B3 — protocol-version negotiation.
+    //
+    // Per spec §Transports#Version-Negotiation: if the client offers a
+    // version we support, we reply with that exact version (so client
+    // and server agree on the negotiated dialect). Otherwise we reply
+    // with our latest supported version and let the client decide
+    // whether to continue.
+    //
+    // The negotiated version is recorded on the session so post-init
+    // requests can verify it (server-side check is defence-in-depth;
+    // the protocol-version header is the actual wire check).
+    std::string negotiated = info_.protocol_version;  // our preferred default
+    if (req.params.is_object()) {
+        auto& p = req.params;
+        if (p.contains("protocolVersion") && p["protocolVersion"].is_string()) {
+            const std::string requested = p["protocolVersion"].get<std::string>();
+            for (const auto& v : security::supported_protocol_versions()) {
+                if (v == requested) { negotiated = v; break; }
+            }
+            // If requested is unknown, we fall back to our pinned default
+            // (2025-11-25). The client should re-initialize if it can't
+            // accept that version.
+        }
+    }
     initialized_ = true;
+    state_.set_negotiated_version(req.session_id, negotiated);
     return {
-        {"protocolVersion", info_.protocol_version},
+        {"protocolVersion", negotiated},
         {"capabilities", {
             {"tools",     json::object()},
             {"resources", {{"subscribe", false}}},
@@ -158,6 +182,48 @@ json Dispatcher::handle_prompts_get(const JsonRpcRequest& req)
     json args = req.params.value("arguments", json::object());
     auto result = prompts_.get(name, args, state_);
     return result.to_json();
+}
+
+// ---------------------------------------------------------------------------
+// list_changed notifications (Phase B2)
+// ---------------------------------------------------------------------------
+
+void Dispatcher::notify_list_changed(const std::string& kind,
+                                      const std::string& session_id) {
+    // Spec §Notifications/List_Changed:
+    //   { "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }
+    //   { "jsonrpc": "2.0", "method": "notifications/resources/list_changed" }
+    //   { "jsonrpc": "2.0", "method": "notifications/prompts/list_changed" }
+    //
+    // We validate `kind` so callers can't push arbitrary junk. Future work
+    // (when the registries become mutable) will call this from tool_call /
+    // resource_register paths.
+    std::string method;
+    if      (kind == "tools")     method = "notifications/tools/list_changed";
+    else if (kind == "resources") method = "notifications/resources/list_changed";
+    else if (kind == "prompts")   method = "notifications/prompts/list_changed";
+    else {
+        return;  // bad kind — silently ignore to avoid leaking method names
+    }
+
+    json notification = {
+        {"jsonrpc", "2.0"},
+        {"method",  method},
+        // Spec: notifications MUST NOT have an `id`.
+    };
+
+    if (session_id.empty()) {
+        // Broadcast to every subscribed session. Walk the bus's session
+        // map and push to each queue. The bus only stores a key when
+        // there's at least one SSE subscriber, so this is naturally
+        // scoped to "live SSE clients".
+        std::vector<std::string> sids = sse_bus_.session_ids();
+        for (const auto& sid : sids) {
+            sse_bus_.push(sid, notification);
+        }
+    } else {
+        sse_bus_.push(session_id, notification);
+    }
 }
 
 }  // namespace apollo::mcp
