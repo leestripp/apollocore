@@ -31,6 +31,7 @@
 #include "mcp_security.hpp"
 #include "mcp_sse.hpp"
 #include "mcp_sse_bus.hpp"
+#include "mcp_dispatch.hpp"
 
 namespace apollo::mcp {
 
@@ -361,19 +362,12 @@ struct HttpServer::Impl {
 
     json handle_one(const json& raw_request, const std::string& session_id)
     {
-        JsonRpcRequest req;
-        try {
-            req = parse_request(raw_request.dump());
-        } catch (const std::exception& e) {
-            return make_error(std::nullopt, errc::INVALID_REQUEST, e.what()).to_json();
-        }
-        req.session_id = session_id;  // Phase B — propagate for SSE/version
-        auto resp = dispatcher.dispatch(req);
-        if (resp.id || resp.result || resp.err) {
-            return resp.to_json();
-        }
-        // Notification — no response.
-        return json::object();
+        // Delegates to the shared dispatch_one() helper (see mcp_dispatch.{hpp,cpp})
+        // so the parse + dispatch logic isn't duplicated here. Returns json::object()
+        // for notifications (vs. nullopt from the helper) because the HTTP layer
+        // here needs a concrete "no body" sentinel for the no-response path.
+        auto resp = dispatch_one(dispatcher, raw_request, session_id);
+        return resp.value_or(json::object());
     }
 
     // GET /mcp is no longer handled here — McpSseBridge's
