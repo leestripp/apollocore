@@ -998,5 +998,36 @@ PRs:
 - `python3 tests/test_mcp_conformance.py` → 5/5 pass
 
 ### Next session
-- **Phase B** (B1 SSE on GET /mcp, B2 list_changed notifications, B3 protocol-version negotiation)
-- Then **Phase C** stdio transport
+- **Phase C** (stdio transport — line-buffered JSON-RPC over stdin/stdout,
+  separate transport but reuses Dispatcher)
+- **Phase D** (missing handlers: `logging/setLevel`, `completion/complete`,
+  `notifications/cancelled`, `notifications/progress`, default bind host,
+  README no-auth note)
+- **Phase E** (full MCP conformance test suite per modelcontextprotocol/conformance)
+- **Phase F** (cleanup: remove `vendor` from serverInfo, tighten tool
+  annotations)
+
+### Phase B — SSE + list_changed + version negotiation (shipped in `f5bd4e4`)
+- **B1** GET /mcp Server-Sent Events endpoint. McpSseBridge uses OmniNet's
+  `registerProtocolSwitch()` so POST/DELETE fall through to the Router while
+  GET + Accept: text/event-stream takes the socket and pumps events from a
+  per-session NotificationQueue. 15s keep-alive heartbeat. Headers include
+  Cache-Control: no-cache, X-Accel-Buffering: no.
+- **B2** `Dispatcher::notify_list_changed(kind, sid)` plumbing for
+  `notifications/{tools,resources,prompts}/list_changed`. No code path
+  emits these today (registries are static), but it's wired and ready.
+- **B3** Protocol-version negotiation: handle_initialize reads
+  `params.protocolVersion`, echoes it if supported, falls back to our
+  pinned default (2025-11-25) otherwise. Session records the negotiated
+  version for future defence-in-depth.
+- **Bugfix SIGPIPE-OMNINET-FATAL**: OmniNet's Socket::send does a raw
+  ::send() without MSG_NOSIGNAL. When a long-lived SSE client disconnects,
+  the kernel SIGPIPE's the whole process — terminating even though the
+  offending write is in a worker thread. Fix: SIG_IGN via sigaction at
+  startup in main.cpp.
+
+### Phase B verification
+- `ctest -E test_ingest_codebase` → 18/18 pass
+- `python3 tests/test_mcp_conformance.py` → 9/9 pass (5 Phase A + 4 Phase B1)
+- `python3 tests/test_sse_streaming.py` → `: connected` + 1+ keep-alive observed
+- B3 manual round-trip: 2025-06-18 echoes back, 1999-01-01 falls back
