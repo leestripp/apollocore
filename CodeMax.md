@@ -998,14 +998,31 @@ PRs:
 - `python3 tests/test_mcp_conformance.py` → 5/5 pass
 
 ### Next session
-- **Phase C** (stdio transport — line-buffered JSON-RPC over stdin/stdout,
-  separate transport but reuses Dispatcher)
 - **Phase D** (missing handlers: `logging/setLevel`, `completion/complete`,
   `notifications/cancelled`, `notifications/progress`, default bind host,
   README no-auth note)
 - **Phase E** (full MCP conformance test suite per modelcontextprotocol/conformance)
 - **Phase F** (cleanup: remove `vendor` from serverInfo, tighten tool
   annotations)
+
+### Transport decision: HTTP-only
+We will NOT implement the stdio transport. The MCP spec defines two
+equally-valid transports (stdio and Streamable HTTP) and lets servers
+pick what fits their architecture. ApolloCore is a long-running
+daemon that loads 80 MB embedding + 491 MB LLM models once at startup
+and serves multiple AI agents from one process with shared state.
+stdio would require a fresh process per agent (each one re-loading
+the GGUF models from disk), which defeats the design. Confirmed by
+re-reading the spec §6 ("use stdio for local tools, Streamable HTTP
+for remote/multi-client tools").
+
+### Refactor: dispatch_one() helper
+While exploring stdio, extracted the parse + dispatch + notification
+branch from http_server.cpp's handle_one() into a free function
+`dispatch_one(dispatcher, raw_request, session_id)` in
+mcp_dispatch.{hpp,cpp}. handle_one() now delegates. Makes the JSON-RPC
+core testable in isolation, and is the natural seam for any future
+transport.
 
 ### Phase B — SSE + list_changed + version negotiation (shipped in `f5bd4e4`)
 - **B1** GET /mcp Server-Sent Events endpoint. McpSseBridge uses OmniNet's
