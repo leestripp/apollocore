@@ -22,6 +22,7 @@
 #include <apollocore/apollo_persistence.hpp>
 #include <apollocore/apollo_codebase_ingest.hpp>
 #include <apollocore/entity_extractor.hpp>
+#include <set>
 
 namespace apollo::mcp {
 
@@ -152,6 +153,8 @@ struct IngestReport {
     size_t files_processed = 0;
     size_t files_skipped   = 0;
     size_t total_chunks    = 0;
+    size_t total_bytes     = 0;     // sum of bytes ingested (per-file cap, not stop)
+    bool   safety_limit_hit = false;
     std::vector<std::string> errors;
     std::vector<std::string> doc_ids;
 };
@@ -166,6 +169,41 @@ bool has_extension(const std::string& path, const std::vector<std::string>& exts
     }
     return false;
 }
+
+// Safety limits on apollo_ingest_codebase. The walker is recursive with
+// no bounds by default — a path like /home/me/projects/myrepo will
+// happily descend into myrepo/build/_deps/llama_cpp-src/ and ingest
+// hundreds of MB of third-party sources. The user gets the agent
+// they asked for (a runaway recursive scan), not the one they wanted
+// (their code). These constants cap that blast radius.
+namespace ingest_limits {
+    constexpr size_t MAX_FILES            = 5000;   // hard cap per call
+    constexpr size_t MAX_TOTAL_BYTES      = 64 * 1024 * 1024;  // 64 MB
+    constexpr int    MAX_DEPTH            = 12;      // recursive_directory_iterator depth
+    // Directories that should NEVER be walked, even if they exist inside
+    // the user's "ingest this repo" path. They contain huge generated/
+    // vendored content that makes the embeddings KB useless and burns
+    // hours of GPU. Matched against any path component.
+    static const std::set<std::string> EXCLUDED_DIRS = {
+        "build",         "dist",        "out",         "target",
+        ".git",          ".hg",         ".svn",
+        ".cache",        ".npm",        ".next",       ".parcel-cache",
+        "node_modules",  "__pycache__", ".pytest_cache", ".mypy_cache",
+        ".venv",         "venv",        "env",          ".tox",
+        ".idea",         ".vscode",     ".gradle",      ".terraform",
+        "CMakeFiles",    "CMakeCache",
+    };
+    // Hidden directories (any leading dot) are skipped by default.
+    inline bool is_hidden(const std::filesystem::path& p) {
+        auto s = p.filename().string();
+        return !s.empty() && s[0] == '.';
+    }
+    inline bool is_excluded(const std::filesystem::path& p) {
+        auto name = p.filename().string();
+        if (is_hidden(p)) return true;
+        return EXCLUDED_DIRS.count(name) > 0;
+    }
+}  // namespace ingest_limits
 
 IngestReport ingest_directory_impl(
     apollocore_v2::ApolloCore& kb,
@@ -182,48 +220,124 @@ IngestReport ingest_directory_impl(
         return rep;
     }
 
+    // Hard-cap the walk. Once we hit either limit we stop and report
+    // a clear error so the caller knows we stopped, not "ran forever".
+    bool limit_hit = false;
+    std::string limit_reason;
+
     auto walker = [&](const fs::path& dir) {
-        for (auto it = fs::recursive_directory_iterator(
-                 dir, fs::directory_options::skip_permission_denied, ec);
-             it != fs::recursive_directory_iterator(); ++it) {
-            if (ec) { rep.errors.push_back(ec.message()); ec.clear(); continue; }
-            if (recursive == false &&
-                it->path().parent_path() != fs::path(root)) {
-                it.disable_recursion_pending();
+        try {
+            // depth(0) = root itself. Skip descending past MAX_DEPTH.
+            auto it = fs::recursive_directory_iterator(
+                dir,
+                fs::directory_options::skip_permission_denied,
+                ec);
+            if (ec) return;
+            for (const auto& entry : it) {
+                if (limit_hit) break;
+
+                // Skip excluded/hidden directories BEFORE descending.
+                if (entry.is_directory(ec) && !ec) {
+                    if (ingest_limits::is_excluded(entry.path())) {
+                        it.disable_recursion_pending();
+                        ++rep.files_skipped;
+                        continue;
+                    }
+                }
+                // (Also skip them as files, just in case.)
+                if (ingest_limits::is_excluded(entry.path()) && !entry.is_directory(ec)) {
+                    ++rep.files_skipped;
+                    continue;
+                }
+
+                if (ec) { rep.errors.push_back(ec.message()); ec.clear(); continue; }
+
+                // Depth check (root = 0, next dir down = 1, ...).
+                if (recursive == false) {
+                    if (entry.path().parent_path() != fs::path(root)) {
+                        it.disable_recursion_pending();
+                    }
+                }
+                // When recursive=true we still cap the descent.
+                if (recursive) {
+                    auto rel = fs::relative(entry.path(), fs::path(root));
+                    int depth = 0;
+                    for (auto p = rel.begin(); p != rel.end(); ++p) ++depth;
+                    if (depth > ingest_limits::MAX_DEPTH) {
+                        it.disable_recursion_pending();
+                        ++rep.files_skipped;
+                        continue;
+                    }
+                }
+
+                if (!entry.is_regular_file(ec)) continue;
+                const auto& p = entry.path();
+                const std::string path_str = p.string();
+
+                if (!has_extension(path_str, extensions)) {
+                    ++rep.files_skipped;
+                    continue;
+                }
+
+                std::ifstream f(p, std::ios::binary);
+                if (!f) { ++rep.files_skipped; continue; }
+                f.seekg(0, std::ios::end);
+                const auto sz = f.tellg();
+                if (sz < 0) { ++rep.files_skipped; continue; }
+                const size_t fsize = (size_t)sz;
+                if (fsize > max_file_size) {
+                    ++rep.files_skipped;
+                    continue;
+                }
+                // Per-file size already capped; stop if total bytes would
+                // exceed our blast-radius cap.
+                if (rep.total_bytes + fsize > ingest_limits::MAX_TOTAL_BYTES) {
+                    limit_hit = true;
+                    limit_reason =
+                        "total ingest bytes would exceed " +
+                        std::to_string(ingest_limits::MAX_TOTAL_BYTES) +
+                        " (already at " +
+                        std::to_string(rep.total_bytes) + ")";
+                    break;
+                }
+                f.seekg(0);
+                std::stringstream ss; ss << f.rdbuf();
+                try {
+                    size_t chunks = kb.add_document(ss.str(), path_str, 512);
+                    rep.total_bytes += fsize;
+                    rep.total_chunks += chunks;
+                    rep.doc_ids.push_back(path_str);
+                    ++rep.files_processed;
+                } catch (const std::exception& e) {
+                    rep.errors.push_back(std::string(path_str) + ": " + e.what());
+                }
+
+                // Hard file-count cap.
+                if (rep.files_processed >= ingest_limits::MAX_FILES) {
+                    limit_hit = true;
+                    limit_reason = "reached max-files cap of " +
+                                   std::to_string(ingest_limits::MAX_FILES);
+                    break;
+                }
             }
-            if (!it->is_regular_file(ec)) continue;
-            const auto& p = it->path();
-            const std::string path_str = p.string();
-            if (!has_extension(path_str, extensions)) {
-                ++rep.files_skipped;
-                continue;
-            }
-            std::ifstream f(p, std::ios::binary);
-            if (!f) { ++rep.files_skipped; continue; }
-            f.seekg(0, std::ios::end);
-            const auto sz = f.tellg();
-            if (sz > 0 && (size_t)sz > max_file_size) {
-                ++rep.files_skipped;
-                continue;
-            }
-            f.seekg(0);
-            std::stringstream ss; ss << f.rdbuf();
-            try {
-                size_t chunks = kb.add_document(ss.str(), path_str, 512);
-                rep.total_chunks += chunks;
-                rep.doc_ids.push_back(path_str);
-                ++rep.files_processed;
-            } catch (const std::exception& e) {
-                rep.errors.push_back(std::string(path_str) + ": " + e.what());
-            }
+        } catch (const std::exception& e) {
+            rep.errors.push_back(std::string("walker threw: ") + e.what());
         }
     };
     walker(root);
+
+    if (limit_hit) {
+        rep.errors.insert(rep.errors.begin(),
+            "SAFETY LIMIT HIT: " + limit_reason +
+            ". Re-run with a narrower path, exclude noise directories, or split the work into smaller batches.");
+    }
 
     nlohmann::json out = {
         {"files_processed", rep.files_processed},
         {"files_skipped",   rep.files_skipped},
         {"total_chunks",    rep.total_chunks},
+        {"total_bytes",     rep.total_bytes},
+        {"safety_limit_hit", limit_hit},
         {"errors",          rep.errors},
         {"doc_ids",         rep.doc_ids}
     };
@@ -328,25 +442,47 @@ static CallToolResult apollo_add_document(const json& args, ServerState& state)
     return CallToolResult::text("Added " + std::to_string(added) + " chunk(s).");
 }
 
-static CallToolResult apollo_extract_entities(const json& /*args*/, ServerState& state)
+static CallToolResult apollo_extract_entities(const json& args, ServerState& state)
 {
     if (!state.core().is_llm_loaded()) {
         return CallToolResult::error(
             "No LLM model loaded. Load one by setting APOLLO_LLM_MODEL before "
             "starting the server (or call apollo_load_llm_model).");
     }
+
+    // `limit` caps how many chunks we run the LLM on in a single call.
+    // Without a cap, a 4000-chunk KB takes ~30 minutes of GPU time
+    // (entity extraction is LLM-bound, ~500 ms per chunk). Default 500:
+    // enough to populate a useful graph, fast enough for an interactive
+    // tool call. Pass 0 for "no limit" (use sparingly).
+    int limit = args.value("limit", 500);
+
+    // `skip_already_extracted` is default-on so calling this tool twice
+    // is idempotent — second call only processes chunks that weren't
+    // covered the first time.
+    bool skip = args.value("skip_already_extracted", true);
+
     // ApolloCore's extract_entities() processes chunks already in the KB;
     // there is no per-text entry point. Run it now.
     size_t n = 0;
     try {
-        n = state.core().extract_entities();
+        if (limit > 0) {
+            n = state.core().extract_entities(/*min_confidence=*/0.5f,
+                                             /*skip_already_extracted=*/skip,
+                                             /*limit=*/static_cast<size_t>(limit));
+        } else {
+            n = state.core().extract_entities(/*min_confidence=*/0.5f,
+                                             /*skip_already_extracted=*/skip);
+        }
     } catch (const std::exception& e) {
         return CallToolResult::error(std::string("Entity extraction failed: ") + e.what());
     }
     return CallToolResult::text(
-        "Extraction pass complete: processed " + std::to_string(n) +
-        " chunk(s). Use apollo_get_stats to see updated entity counts, or "
-        "apollo://entities resource to list them.");
+        "Extraction pass complete: extracted " + std::to_string(n) +
+        " entity/relation(s)" +
+        (limit > 0 ? " (limit=" + std::to_string(limit) + ")" : " (no limit)") +
+        ". Use apollo_get_stats to see updated counts, or apollo://entities "
+        "resource to list them.");
 }
 
 static CallToolResult apollo_ingest_codebase(const json& args, ServerState& state)
@@ -377,10 +513,54 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
                               report["total_chunks"].is_number_integer()
                                   ? report["total_chunks"].get<size_t>()
                                   : 0;
-        return CallToolResult::text(
+        size_t files_processed = report.contains("files_processed") &&
+                                report["files_processed"].is_number_integer()
+                                    ? report["files_processed"].get<size_t>()
+                                    : 0;
+
+        // Optionally trigger an entity-extraction pass right after
+        // ingest. The graph is the value-add for codebases (entities
+        // like FUNCTION, CLASS, plus relationships) and many agents
+        // never remember to call apollo_extract_entities separately.
+        //
+        // Default true so users get a populated graph by default;
+        // capped at `auto_extract_limit` chunks (default 200) so the
+        // tool call doesn't take 30 minutes on a 4000-chunk KB.
+        // Skip if the LLM isn't loaded (extract_entities would just
+        // fail anyway).
+        size_t extracted = 0;
+        bool auto_extract = args.value("auto_extract", true);
+        size_t auto_limit = args.value("auto_extract_limit", 200);
+        if (auto_extract && total_chunks > 0 &&
+            state.core().is_llm_loaded()) {
+            try {
+                extracted = state.core().extract_entities(
+                    /*min_confidence=*/0.5f,
+                    /*skip_already_extracted=*/true,
+                    /*limit=*/auto_limit);
+            } catch (const std::exception& e) {
+                // Don't fail the whole ingest if extraction fails —
+                // the agent can retry apollo_extract_entities separately.
+                std::string warn = std::string("(warning: auto_extract failed: ") + e.what() + ")";
+                return CallToolResult::text(
+                    "Ingested " + std::to_string(total_chunks) +
+                    " chunk(s) from " + path + " into project '" + project + "'. "
+                    "Report: " + report.dump(2) + "\n" + warn);
+            }
+        }
+
+        std::string summary =
             "Ingested " + std::to_string(total_chunks) +
-            " chunk(s) from " + path + " into project '" + project + "'. " +
-            "Report: " + report.dump(2));
+            " chunk(s) from " + path + " into project '" + project + "'. ";
+        if (auto_extract && total_chunks > 0 && state.core().is_llm_loaded()) {
+            summary += "Auto-extracted " + std::to_string(extracted) +
+                       " entity/relation(s) on up to " +
+                       std::to_string(auto_limit) + " chunk(s). ";
+        } else if (auto_extract && !state.core().is_llm_loaded()) {
+            summary += "(no LLM loaded — call apollo_extract_entities separately). ";
+        }
+        summary += "Report: " + report.dump(2);
+        return CallToolResult::text(summary);
     } catch (const std::exception& e) {
         return CallToolResult::error(
             std::string("Codebase ingest failed: ") + e.what());
@@ -582,10 +762,32 @@ json schema_add_document() {
     };
 }
 json schema_extract_entities() {
-    // No args: runs an extraction pass over all chunks already in the KB.
     return json{
         {"type", "object"},
-        {"properties", json::object()},
+        {"properties", {
+            {"limit", {
+                {"type", "integer"},
+                {"minimum", 0},
+                {"default", 500},
+                {"description", "Max chunks to process in this call. "
+                                "0 = no limit (use sparingly). Default 500 — "
+                                "entity extraction is LLM-bound (~500 ms per "
+                                "chunk) so a 4000-chunk KB would take ~30 "
+                                "minutes without a cap."}
+            }},
+            {"skip_already_extracted", {
+                {"type", "boolean"},
+                {"default", true},
+                {"description", "If true, skip chunks that already have "
+                                "entities extracted. Makes repeated calls "
+                                "idempotent."}
+            }},
+            {"min_confidence", {
+                {"type", "number"},
+                {"default", 0.5},
+                {"minimum", 0.0}, {"maximum", 1.0}
+            }}
+        }},
         {"required", json::array()}
     };
 }
@@ -600,6 +802,24 @@ json schema_ingest_codebase() {
                 {"items", {{"type", "string"}}},
                 {"description", "File extensions to include. "
                                 "Defaults to a sensible code+docs set."}
+            }},
+            {"auto_extract", {
+                {"type", "boolean"},
+                {"default", true},
+                {"description", "Run an entity-extraction pass on the "
+                                "ingested chunks immediately after ingest. "
+                                "Default true so the knowledge graph is "
+                                "populated by default; pass false to skip."}
+            }},
+            {"auto_extract_limit", {
+                {"type", "integer"},
+                {"minimum", 1},
+                {"default", 200},
+                {"description", "When auto_extract=true, max chunks to "
+                                "extract entities from in this call. "
+                                "Default 200 (fast). The user can call "
+                                "apollo_extract_entities later to process "
+                                "more."}
             }}
         }},
         {"required", json::array({"path","project"})}

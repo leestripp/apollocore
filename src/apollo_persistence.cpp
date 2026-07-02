@@ -842,28 +842,31 @@ size_t ApolloCore::extract_entities_for_chunk(
 
 size_t ApolloCore::extract_entities(
     float min_confidence,
-    bool skip_already_extracted)
+    bool skip_already_extracted,
+    size_t limit)
 {
     if (!is_llm_loaded()) {
         std::cerr << "[ApolloCore] LLM not loaded. Call load_llm_model() first.\n";
         return 0;
     }
-    
+
     if (!is_open_) {
         std::cerr << "[ApolloCore] No knowledge base open\n";
         return 0;
     }
-    
-    std::cerr << "[ApolloCore] Starting entity extraction for all chunks...\n";
-    
+
+    std::cerr << "[ApolloCore] Starting entity extraction";
+    if (limit > 0) std::cerr << " (limit=" << limit << " chunks)";
+    std::cerr << "...\n";
+
     // Get all chunks from DB
     auto all_chunks = kb_persistence_->load_all_chunks();
-    
+
     if (all_chunks.empty()) {
         std::cerr << "[ApolloCore] No chunks to process\n";
         return 0;
     }
-    
+
     // Track which chunks have entities (for skip_already_extracted)
     std::unordered_set<std::string> chunks_with_entities;
     if (skip_already_extracted) {
@@ -872,28 +875,40 @@ size_t ApolloCore::extract_entities(
             chunks_with_entities.insert(e.chunk_id);
         }
     }
-    
+
     size_t total_entities = 0;
     size_t chunks_processed = 0;
-    
+    bool cap_reached = false;
+
     for (const auto& chunk : all_chunks) {
-        if (skip_already_extracted && 
+        if (skip_already_extracted &&
             chunks_with_entities.count(chunk.id)) {
             // Skip already-processed chunk
             continue;
         }
-        
+
+        if (limit > 0 && chunks_processed >= limit) {
+            cap_reached = true;
+            break;
+        }
+
         size_t count = extract_entities_for_chunk(chunk.id, min_confidence);
         if (count > 0) {
             total_entities += count;
             chunks_processed++;
+        } else {
+            // count == 0 means no entities were extracted; we still
+            // count this chunk as processed so the skip_already_extracted
+            // path doesn't loop on it forever.
+            chunks_processed++;
         }
     }
-    
+
     std::cerr << "[ApolloCore] Entity extraction complete.\n";
     std::cerr << "  Total entities extracted: " << total_entities << "\n";
-    std::cerr << "  Chunks processed: " << chunks_processed << "\n";
-    
+    std::cerr << "  Chunks processed: " << chunks_processed
+              << (cap_reached ? " (limit reached)\n" : "\n");
+
     return total_entities;
 }
 

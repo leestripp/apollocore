@@ -275,7 +275,8 @@ public:
      */
     size_t extract_entities(
         float min_confidence = 0.5f,
-        bool skip_already_extracted = true
+        bool skip_already_extracted = true,
+        size_t limit = 0           // 0 = no limit; >0 = stop after this many chunks
     );
     
     /**
