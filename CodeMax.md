@@ -974,3 +974,29 @@ PRs:
 - `feat/mcp-protocol-version-header` — A2
 - `feat/mcp-session-id-validation`   — A3
 - `feat/mcp-delete-session`          — A4
+
+---
+
+## 7. Status as of 2026-07-02 (after Phase A shipped)
+
+### Shipped in commit `c148ff0`
+- **A1** Origin validation (`mcp_security.cpp`): 403 on evil origin, allow loopback+null
+- **A2** MCP-Protocol-Version header check: 400 on unknown, skip pre-init
+- **A3** Bearer-token scaffold: env-gated via APOLLO_AUTH_TOKEN
+- **A4** DELETE /mcp route: 200 first DELETE, 404 second DELETE; always echo `Mcp-Session-Id` from initialize
+- `tests/test_mcp_conformance.py` — live HTTP conformance smoke test, all 5 cases passing
+- Two pre-existing bugs uncovered and fixed:
+  - **OMNINET-ROUTER-404-TRAP**: `Router::handle()` overwrites status=200 with 404 when body is empty. handle_post_mcp refactor broke the single-request path; single-request write_json is now restored.
+  - `test_mcp_dispatcher.cpp` had hard-coded counts (12 tools, 5 resources); registry has grown. Loosened to `>= 12` and `>= 5`.
+
+### Build infra fix
+- Installed `tree-sitter-cli` v0.22.6 (cargo) so CMake find_program succeeds
+- Reconfigured with `-DTREE_SITTER_CLI=/home/lee/.cargo/bin/tree-sitter`
+
+### Verification
+- `ctest -E test_ingest_codebase` → 18/18 pass (test_ingest_codebase excluded because it ingests the whole repo and is too slow for inner loop)
+- `python3 tests/test_mcp_conformance.py` → 5/5 pass
+
+### Next session
+- **Phase B** (B1 SSE on GET /mcp, B2 list_changed notifications, B3 protocol-version negotiation)
+- Then **Phase C** stdio transport
