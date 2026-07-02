@@ -504,6 +504,12 @@ void ServerState::report_llm_load(bool loaded, const std::string& error)
     llm_error_ = error;
 }
 
+bool ServerState::end_session(const std::string& session_id)
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    return sessions_.erase(session_id) > 0;
+}
+
 // Helper used by both set_models and config_json. Keeps the on-disk and
 // on-wire JSON clean even when paths contain quotes or backslashes.
 std::string json_escape(const std::string& s)

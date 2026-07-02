@@ -779,3 +779,198 @@ loading + error states; the rest can land in a v2 patch.
 
 UI shipped end-to-end. **All 17/17 tests pass; install + run both work.**
 
+---
+
+# 🔨 CURRENT SUB-TASK — MCP 2025-11-25 Conformance Audit & Plan
+
+**Started:** 2026-07-02
+**Owner:** user `lee`
+**Trigger:** "does apollocore follow the mcp standard? If not create a Plan"
+
+## 1. Audit — what we already do right
+
+Reviewed `src/mcp_server/` end-to-end against the official spec at
+`https://modelcontextprotocol.io/specification/2025-11-25/`:
+
+| Spec area | ApolloCore status | File |
+|-----------|-------------------|------|
+| JSON-RPC 2.0 envelope (request/response/notification, id handling, error codes) | ✅ Correct | `jsonrpc.hpp/cpp` |
+| `initialize` / `notifications/initialized` lifecycle | ✅ Correct (parses client version, pins 2025-11-25) | `dispatcher.cpp` |
+| Capability declaration (`tools`, `resources`, `prompts`, `logging`) | ✅ Declared, but **sub-keys wrong** | `dispatcher.cpp` |
+| `tools/list` / `tools/call` | ✅ Correct, 12 tools, JSON Schemas with `enum`/`minimum`/`maximum`/`default`, annotations | `tools.cpp` |
+| `resources/list` / `resources/read` | ✅ Correct, 6 `apollo://` resources | `resources.cpp` |
+| `prompts/list` / `prompts/get` | ✅ Correct, 4 prompts, argument descriptions | `prompts.cpp` |
+| Tool-result error model (`isError: true` with text content for tool errors; JSON-RPC `error` for protocol errors) | ✅ Correct, used throughout | `tools.cpp` |
+| `ping` | ✅ | `dispatcher.cpp` |
+| JSON-RPC batch requests | ✅ `is_array()` branch in POST handler | `http_server.cpp` |
+| `Mcp-Session-Id` header round-trip (read → echo → reuse) | ✅ | `http_server.cpp` |
+| `Accept` header validation (406 on wrong type) | ✅ With `*/*` and `application/*` lenience | `http_server.cpp` |
+
+## 2. The gaps — ranked by spec-mandated severity
+
+### 🔴 CRITICAL — spec-mandated; will fail conformance tests
+
+| # | Gap | Severity | Spec clause |
+|---|-----|---------|-------------|
+| **C1** | `GET /mcp` SSE is **stubbed with 405** | Blocker for Streamable HTTP | `basic/transports#listening-for-messages-from-the-server` |
+| **C2** | `MCP-Protocol-Version` header not validated | Required; servers MUST 400 on bad version | `basic/transports#protocol-version-header` |
+| **C3** | `Origin` header not validated → DNS-rebind attack vector | Required; servers MUST 403 on bad Origin | `basic/transports#security-warning` |
+| **C4** | Capability sub-keys wrong: `"resources": {"subscribe": false}` is invalid | Required (the presence = yes; there is no `false`) | `basic/lifecycle#capabilities`, `server/tools.md` |
+| **C5** | No `list_changed` notifications on tools/resources/prompts once `listChanged: true` is declared | Required if capability is declared | `server/tools.md#capabilities` |
+| **C6** | No protocol-version negotiation — clients offering older versions are met with our pinned version instead of ours | Should-do (server SHOULD respond with a version it supports) | `basic/lifecycle#version-negotiation` |
+| **C7** | **stdio transport missing** (only HTTP) | Spec lists stdio as the default; many MCP hosts (Claude Desktop) primarily use stdio | `basic/transports#stdio` |
+| **C8** | `DELETE /mcp` not handled (session termination) | SHOULD per spec | `basic/transports#session-management` |
+
+### 🟡 HIGH — should-haves that real clients use
+
+| # | Gap | Notes |
+|---|-----|-------|
+| **H1** | `logging/setLevel` declared as capability but **no handler** | Returns `METHOD_NOT_FOUND` for clients that try it |
+| **H2** | `completion/complete` declared, **no handler** | Same |
+| **H3** | `resources/subscribe` and `resources/unsubscribe` not implemented (only relevant if we set `subscribe: true`) | Future-proofing for live-update push |
+| **H4** | `notifications/cancelled` not handled (server-side cancellation) | Long-running tools (entity extract) should respect it |
+| **H5** | `notifications/progress` not emitted | Long-running tools should report progress |
+| **H6** | No `outputSchema` on tools that produce structured data | Best practice; lets clients validate results |
+| **H7** | No authentication on `/mcp` (HTTP transport = spec says SHOULD implement OAuth 2.1) | Out of scope for local-only, document the limitation |
+| **H8** | Server default-binds `0.0.0.0` — spec says local servers **SHOULD bind 127.0.0.1** | Security best practice |
+
+### 🟢 POLISH — extras
+
+| # | Gap | Notes |
+|---|-----|-------|
+| **P1** | No `_meta` key in any response (extensions hook) | Optional |
+| **P2** | No `icons`/`title`/`description` enrichment on tools, resources, prompts | `title` is half-done on tools/resources/prompts; `icons` missing |
+| **P3** | HTTP body size not capped | Spec doesn't require, but DoS risk |
+| **P4** | Tool annotations should match reality — `apollo_set_config` is `destructive: true` ✓, but `apollo_extract_entities` writes to KB without announcing it | Patch labels |
+| **P5** | `vendor` field in `serverInfo` is non-spec — remove or document as extension in `_meta` | Minor |
+
+## 3. Plan
+
+Working in **priority order**: critical first (spec must-haves), then high (real-client breakage), then polish. Each phase lands as one or more ctest-passing PR-able commits.
+
+### Phase A — Spec-mandated security & framing fixes **(must ship together)**
+
+1. **A1 — `Origin` validation in POST/GET/DELETE /mcp**
+   - New `McpSecurity::is_valid_origin(req, allowed_origins) -> bool`
+   - Default: allow empty Origin + loopback + `localhost` + any explicitly-listed entry
+   - ENV override: `APOLLO_ALLOWED_ORIGINS` (comma-sep)
+   - On failure: `403 Forbidden` with a JSON-RPC error body that has no `id`
+2. **A2 — `MCP-Protocol-Version` validation**
+   - After `initialize`: extract `MCP-Protocol-Version` header, echo back the
+     negotiated version, error 400 if missing/invalid post-init
+   - Allow omitting the header pre-init (back-compat)
+3. **A3 — Wire `Mcp-Session-Id` validation**
+   - Validate received id against known sessions; unknown id ⇒ 400 (per spec)
+     instead of silently creating a new one. Keep the "create-or-attach"
+     behaviour opt-in via env flag for dev.
+4. **A4 — DELETE /mcp handler** for session termination. 200 on success, 404
+   if session gone, 405 if server disallows client-initiated termination.
+
+### Phase B — SSE on GET /mcp **+** `list_changed` notifications **+** version negotiation
+
+5. **B1 — SSE on `GET /mcp`** when `Accept: text/event-stream`
+   - Use OmniNet's response writer with `Content-Type: text/event-stream`
+   - Hold the connection open, push server-initiated messages as needed
+   - Outbound heartbeat at `retry:` interval; client reconnect via
+     `Last-Event-ID` honours our optional `id:` field
+6. **B2 — `list_changed` notifications**
+   - New `Dispatcher::notify_list_changed("tools"|"resources"|"prompts")`
+   - Hook it into the static registries so a future "register at runtime" path
+     can trigger it (no current hot-add UI; the hook is plumbing)
+7. **B3 — Protocol-version negotiation**
+   - In `handle_initialize`: read `params.protocolVersion`, if we don't pin it,
+     parse the requested version, if it's `YYYY-MM-DD` we know about, reply with
+     that, otherwise reply with `2025-11-25`. Persist negotiated version per
+     session. On `MCP-Protocol-Version` mismatch, return 400 with the
+     version we'd accept.
+
+### Phase C — stdio transport
+
+8. **C1 — Add `StdioTransport` class**
+   - Same wire format as HTTP body transport; reads JSON-RPC messages line-
+     by-line from stdin, writes responses to stdout. **stderr for logs only.**
+   - CLI: `apollo_mcp_server --transport stdio`
+9. **C2 — Common dispatcher testbed**: extract the JSON-RPC I/O loop into a
+   function shared by HTTP and stdio transports so they can't drift
+10. **C3 — Conformance smoke test**: spawn stdio server with a JSON-RPC client
+    over a pipe, run a handshake, list tools, call one — assert the round trip
+    matches the spec byte-for-byte
+
+### Phase D — Missing handlers + best practices
+
+11. **D1 — `logging/setLevel`** handler (declared capability now honored)
+12. **D2 — `completion/complete`** handler with basic argument-type completion
+    (stub returns empty unless we have a use case — bookkeeping fix only)
+13. **D3 — `notifications/cancelled`** handler: store a per-request
+    cancel-flag map; long-running tool handlers check it periodically
+14. **D4 — `notifications/progress`** emitter: long tools (entity extraction,
+    codebase ingest) emit `progress/now/total` updates via the new SSE channel
+15. **D5 — Add `outputSchema` to the structured tools**:
+    `apollo_get_stats`, `apollo_list_projects`, `apollo_get_neighbors`
+16. **D6 — Default bind host** to `127.0.0.1`; `--host 0.0.0.0` opt-in for LAN
+17. **D7 — Doc the no-auth limitation** in `README.md` and `/info`
+
+### Phase E — Test hardening
+
+18. **E1 — Conformance test**: adopt the `modelcontextprotocol/conformance`
+    subset we can run in a single process (initialize handshake, tools/list,
+    tools/call with structured output, error responses). Publish a CI job
+    that runs `tests/test_mcp_conformance.py` against a spawned `apollo_mcp_server`.
+19. **E2 — Per-transport tests** (HTTP+SSE, stdio); both must pass the
+    full protocol exchange identically.
+20. **E3 — Origin-rejection, version-negotiation, listChanged-emission
+    negative tests.
+
+### Phase F — Cleanup
+
+21. F1 — Remove non-spec `vendor` from `serverInfo` (move to `_meta`).
+22. F2 — Tighten tool `annotations` (mark `apollo_extract_entities` and
+    `apollo_save_kb` correctly).
+23. F3 — Update `README.md` and `docs/mcp_compliance.md` with the conformance
+    matrix above.
+
+## 4. Sequencing & parallelism
+
+- **Phases A + B** are split by file — `jsonrpc.cpp`, `dispatcher.cpp`,
+  `http_server.cpp`, `main.cpp`, `server_state.cpp`. Single author OK;
+  one PR per phase (A1-A4 in PR #1, B1-B3 in PR #2).
+- **Phase C** (stdio) is its own PR — adds `StdioTransport.{hpp,cpp}`,
+  CLI flag, dispatcher refactor.
+- **Phase D** can fan out into 3 PRs: missing-handlers, SSE progress,
+  defaults/docs.
+- **Phase E** runs only after C lands — conformance assertions need both
+  transports.
+
+## 5. Out of scope (explicit non-goals for THIS task)
+
+- Implementing **OAuth 2.1 with PKCE** — the spec says SHOULD for HTTP
+  transports. We deliver a clean "Authorization" header on POST that accepts
+  an opaque Bearer token (configurable via `APOLLO_AUTH_TOKEN`). Full OAuth
+  flows are a future task.
+- Migrating to **2026-07-28 stateless** — separate task.
+- Implementing the **registry / OAuth-client-credentials / enterprise-managed-auth
+  extensions** — separate tasks.
+- Wrapping stdio in a WebSocket transport — that's a custom transport and
+  the spec discourages it.
+
+---
+
+## 6. Execution — begun
+
+Phase A is in progress. Starting with **A1 — Origin validation** and
+**A2 — MCP-Protocol-Version validation** because they're the simplest
+spec violations to fix (small `http_server.cpp` patch) and unblock the
+conformance tests downstream.
+
+Work plan for this session:
+- **A1** — Origin header validation in `http_server.cpp` (new helper in
+  a `McpSecurity` namespace, called from every `/mcp` handler)
+- **A2** — `MCP-Protocol-Version` header validation + session header check
+- **A3** — Tighter session-id validation
+- **A4** — DELETE /mcp handler
+
+PRs:
+- `feat/mcp-origin-validation`       — A1
+- `feat/mcp-protocol-version-header` — A2
+- `feat/mcp-session-id-validation`   — A3
+- `feat/mcp-delete-session`          — A4

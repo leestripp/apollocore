@@ -189,6 +189,11 @@ public:
     /// Record the outcome of an LLM-model load attempt.
     void report_llm_load(bool loaded, const std::string& error);
 
+    /// Phase A4 — terminate a session by id. Returns true if the session
+    /// existed and was erased; false if it was already gone (so the
+    /// HTTP layer can reply 404 per spec §Session-Management).
+    bool end_session(const std::string& session_id);
+
 private:
     std::unique_ptr<apollocore_v2::ApolloCore> core_;
     std::unordered_map<std::string, Session> sessions_;   // keyed by session id

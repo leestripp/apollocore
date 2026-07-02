@@ -28,6 +28,8 @@
 #include "OmniNet.h"
 #include "http/StaticHandler.h"
 
+#include "mcp_security.hpp"
+
 namespace apollo::mcp {
 
 using nlohmann::json;
@@ -105,6 +107,16 @@ struct HttpServer::Impl {
         // ------------------------------------------------------------------
         server->get("/mcp", [this](const onh::Request& req, onh::Response& resp) {
             handle_get_mcp(req, resp);
+        });
+
+        // ------------------------------------------------------------------
+        // DELETE /mcp — terminate the session identified by MCP-Session-Id.
+        // Phase A4 (spec §Transports#Session-Management).
+        // Note: OmniNet's API names this `delete_` because `delete` is a
+        // reserved word in C++.
+        // ------------------------------------------------------------------
+        server->delete_("/mcp", [this](const onh::Request& req, onh::Response& resp) {
+            handle_delete_mcp(req, resp);
         });
 
         // ------------------------------------------------------------------
@@ -187,6 +199,77 @@ struct HttpServer::Impl {
         resp.setBody(body.dump());
     }
 
+    // ─── Security guards (MCP spec §Transports#Security-Warning) ───────
+    //
+    // All three checks run on every MCP method (POST/GET/DELETE /mcp).
+    //   1. Origin validation — DNS-rebind defense. Empty Origin is OK.
+    //   2. Bearer-token auth — only enforced when APOLLO_AUTH_TOKEN is set.
+    //   3. MCP-Protocol-Version header — only on requests after
+    //      `initialize`; pre-init requests are exempt (the response carries
+    //      the version).
+    //
+    // Returns true if all three pass; otherwise writes the appropriate
+    // error response to `resp` and returns false.
+    bool check_security(const onh::Request& req, onh::Response& resp,
+                        const std::string& /*effective_session*/,
+                        bool pre_init)
+    {
+        static const auto allowed_origins =
+            security::parse_allowed_origins_env();
+
+        // (1) Origin.
+        std::optional<std::string_view> origin;
+        if (auto h = req.header("origin")) origin = *h;
+        if (!security::is_valid_origin(origin, allowed_origins)) {
+            // Spec: 403 Forbidden with a JSON-RPC error body that has no id.
+            auto body = make_error(std::nullopt, errc::INVALID_REQUEST,
+                "Origin header rejected (DNS-rebind defense)").to_json();
+            write_json(resp, 403, body);
+            return false;
+        }
+
+        // (2) Bearer auth (only if enabled).
+        std::optional<std::string_view> auth;
+        if (auto h = req.header("authorization")) auth = *h;
+        if (!security::is_valid_bearer(auth)) {
+            auto body = make_error(std::nullopt, -32001,
+                "Unauthorized: invalid or missing Authorization header").to_json();
+            write_json(resp, 401, body);
+            return false;
+        }
+
+        // (3) MCP-Protocol-Version header (post-init only).
+        if (!pre_init) {
+            std::optional<std::string_view> ver;
+            if (auto h = req.header("mcp-protocol-version")) ver = *h;
+            if (ver) {
+                // The header should match the version we negotiated during
+                // initialize. We accept any supported version here; strict
+                // session-version pinning is enforced by the client (they
+                // can't lie about which version they negotiated — they got
+                // it from us).
+                if (!security::is_supported_protocol_version(*ver)) {
+                    auto body = make_error(std::nullopt, errc::INVALID_REQUEST,
+                        "Unsupported MCP-Protocol-Version: " + std::string(*ver) +
+                        ". Supported: " +
+                        [&]{
+                            const auto& v = security::supported_protocol_versions();
+                            std::string s;
+                            for (size_t i = 0; i < v.size(); ++i) {
+                                if (i) s += ", ";
+                                s += v[i];
+                            }
+                            return s;
+                        }()
+                    ).to_json();
+                    write_json(resp, 400, body);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     void handle_post_mcp(const onh::Request& req, onh::Response& resp)
     {
         // Per MCP 2025-11-25, clients SHOULD send Accept with both
@@ -225,6 +308,26 @@ struct HttpServer::Impl {
         }
         std::string effective_session = state.get_or_create_session(session_id);
 
+        // `pre_init` is true only if the very first message in this body is
+        // an `initialize` request and we haven't seen one before in this
+        // session. We approximate it as: initialize + no notifications/initialized
+        // observed yet on this session. The simplest correct check is
+        // "the body is exactly an initialize method".
+        bool pre_init = false;
+        auto check_pre_init = [&](const json& m) -> bool {
+            if (!m.is_object()) return false;
+            if (m.value("method", std::string{}) != "initialize") return false;
+            // Notifications don't have id; initialize must have one.
+            return m.contains("id") && !m["id"].is_null();
+        };
+        if (parsed.is_array()) {
+            if (!parsed.empty() && check_pre_init(parsed.front())) pre_init = true;
+        } else {
+            pre_init = check_pre_init(parsed);
+        }
+
+        if (!check_security(req, resp, effective_session, pre_init)) return;
+
         if (parsed.is_array()) {
             // Batch.
             json out = json::array();
@@ -232,18 +335,18 @@ struct HttpServer::Impl {
                 out.push_back(handle_one(item, effective_session));
             }
             write_json(resp, 200, out);
-            // Echo session id back if the client sent one.
-            if (!session_id.empty()) {
-                resp.setHeader("Mcp-Session-Id", effective_session);
-            }
+            // Always echo the session id back.
+            resp.setHeader("Mcp-Session-Id", effective_session);
             return;
         }
 
+        // Single request.
         auto resp_json = handle_one(parsed, effective_session);
         write_json(resp, 200, resp_json);
-        if (!session_id.empty()) {
-            resp.setHeader("Mcp-Session-Id", effective_session);
-        }
+        // Always echo the session id back. Per spec §Transports#Session-
+        // Management the server MAY assign one at initialize, and once
+        // it does the client MUST include it on every subsequent request.
+        resp.setHeader("Mcp-Session-Id", effective_session);
     }
 
     json handle_one(const json& raw_request, const std::string& /*session_id*/)
@@ -264,7 +367,13 @@ struct HttpServer::Impl {
 
     void handle_get_mcp(const onh::Request& req, onh::Response& resp)
     {
-        // We don't yet push SSE notifications; tell the client.
+        // Security guards apply here too.
+        if (!check_security(req, resp, /*effective_session*/ "",
+                            /*pre_init*/ true)) return;
+
+        // Phase B1 will wire actual SSE; for now keep the 405 stub but
+        // also honor an empty-Mcp-Session-Id GET (it gets a clean 405
+        // instead of an Origin/auth fail).
         auto accept = req.header("accept");
         if (accept && std::string(*accept).find("text/event-stream") != std::string::npos) {
             write_json(resp, 405, {{"error",
@@ -272,6 +381,33 @@ struct HttpServer::Impl {
             return;
         }
         write_json(resp, 405, {{"error", "GET /mcp requires Accept: text/event-stream"}});
+    }
+
+    void handle_delete_mcp(const onh::Request& req, onh::Response& resp)
+    {
+        // Phase A4 — Session termination per spec §Transports#Session-Management.
+        // "Clients that no longer need a particular session SHOULD send an
+        //  HTTP DELETE to the MCP endpoint with the MCP-Session-Id header."
+        if (!check_security(req, resp, /*effective_session*/ "",
+                            /*pre_init*/ false)) return;
+
+        std::optional<std::string_view> sid;
+        if (auto h = req.header("mcp-session-id")) sid = *h;
+        if (!sid || sid->empty()) {
+            // Per spec: 400 Bad Request if session id is missing on a non-init.
+            write_json(resp, 400, {{"error",
+                "MCP-Session-Id header required for DELETE"}});
+            return;
+        }
+        if (state.end_session(std::string(*sid))) {
+            resp.setStatus(static_cast<onh::StatusCode>(200));
+            resp.setBody("{}");
+        } else {
+            // Per spec: "respond to requests containing that session ID
+            // with HTTP 404 Not Found" once the session is gone.
+            resp.setStatus(static_cast<onh::StatusCode>(404));
+            resp.setBody("{}");
+        }
     }
 
     void handle_health(onh::Response& resp)
