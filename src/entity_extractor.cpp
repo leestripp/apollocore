@@ -317,8 +317,8 @@ void EntityExtractor::initialize_backend() {
     // For now, we don't support other backends without additional setup
     if (!initialized_) {
         if (config_.llm.verbose) {
-            std::cout << "[EntityExtractor] No LLM backend initialized. ";
-            std::cout << "Set config.llm.backend to NONE for rule-based extraction.\n";
+            std::cerr << "[EntityExtractor] No LLM backend initialized. ";
+            std::cerr << "Set config.llm.backend to NONE for rule-based extraction.\n";
         }
     }
 }
@@ -778,14 +778,14 @@ ExtractionResult EntityExtractor::extract(const std::string& text, const std::st
     std::string prompt = create_extraction_prompt(clean_text);
     
     if (config_.llm.verbose) {
-        std::cout << "[EntityExtractor] Processing text of length " << clean_text.length() << "\n";
+        std::cerr << "[EntityExtractor] Processing text of length " << clean_text.length() << "\n";
     }
     
     // Generate with LLM
     std::string response = llm_backend_->generate(prompt);
     
     if (config_.llm.verbose) {
-        std::cout << "[EntityExtractor] Generated response of length " << response.length() << "\n";
+        std::cerr << "[EntityExtractor] Generated response of length " << response.length() << "\n";
     }
     
     // Parse response

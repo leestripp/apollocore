@@ -143,7 +143,7 @@ void ContextGenerator::initialize() {
     initialized_ = true;
     
     if (config_.verbose) {
-        std::cout << "[ContextualRetrieval] Initialized\n";
+        std::cerr << "[ContextualRetrieval] Initialized\n";
     }
 }
 
@@ -412,7 +412,7 @@ std::vector<Chunk> ContextGenerator::process_document(const Document& doc) {
     }
     
     if (config_.verbose) {
-        std::cout << "[ContextualRetrieval] Processed " << chunks.size() << " chunks\n";
+        std::cerr << "[ContextualRetrieval] Processed " << chunks.size() << " chunks\n";
     }
     
     return chunks;

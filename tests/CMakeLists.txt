@@ -204,6 +204,7 @@ function(add_mcp_test name)
         ${CMAKE_SOURCE_DIR}/src/mcp_server/server_state.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_sse_bus.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_security.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/cursor.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/dispatcher.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/tools.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/resources.cpp
@@ -226,6 +227,20 @@ add_mcp_test(mcp_tools)
 # ============================================================================
 # Web UI static-files smoke test (no network required)
 # ============================================================================
+# Unit test for opaque pagination cursor (encoder/decoder roundtrip).
+add_executable(test_cursor
+    test_cursor.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp_server/cursor.cpp
+)
+target_include_directories(test_cursor PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/mcp_server
+)
+target_compile_features(test_cursor PRIVATE cxx_std_23)
+target_link_libraries(test_cursor PRIVATE apollo_core)
+add_test(NAME test_cursor COMMAND test_cursor
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # Verifies the static files at src/mcp_server/static/ exist, are non-empty,
 # and contain the expected structure. End-to-end HTTP smoke testing is a
 # developer-run check (see docs/ui.md "Manual smoke test").

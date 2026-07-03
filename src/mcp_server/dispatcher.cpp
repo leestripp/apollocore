@@ -39,13 +39,13 @@ JsonRpcResponse Dispatcher::dispatch(const JsonRpcRequest& req)
         if (req.method == "ping")              return make_result(req.id.value(), handle_ping());
         if (req.method == "logging/setLevel")  return make_result(req.id.value(), handle_set_log_level(req));
         if (req.method == "completion/complete") return make_result(req.id.value(), handle_complete(req));
-        if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list());
+        if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list(req));
         if (req.method == "tools/call")        return make_result(req.id.value(), handle_tools_call(req));
-        if (req.method == "resources/list")    return make_result(req.id.value(), handle_resources_list());
+        if (req.method == "resources/list")    return make_result(req.id.value(), handle_resources_list(req));
         if (req.method == "resources/templates/list")
                                                return make_result(req.id.value(), handle_resources_templates_list());
         if (req.method == "resources/read")    return make_result(req.id.value(), handle_resources_read(req));
-        if (req.method == "prompts/list")      return make_result(req.id.value(), handle_prompts_list());
+        if (req.method == "prompts/list")      return make_result(req.id.value(), handle_prompts_list(req));
         if (req.method == "prompts/get")       return make_result(req.id.value(), handle_prompts_get(req));
 
         return make_error(req.id, errc::METHOD_NOT_FOUND,
@@ -192,9 +192,33 @@ void Dispatcher::handle_cancelled(const JsonRpcRequest& req)
 // tools
 // ---------------------------------------------------------------------------
 
-json Dispatcher::handle_tools_list()
+json Dispatcher::handle_tools_list(const JsonRpcRequest& req)
 {
-    return tools_.list();
+    // Cursor pagination per MCP spec §8.5.
+    // Accept an optional `cursor` parameter (opaque string we encode as
+    // base64(uint32 offset)). When omitted, start from the beginning.
+    constexpr size_t PAGE_SIZE = 50;
+    const std::string cursor = req.params.value("cursor", std::string{});
+    const uint32_t offset = pagination::decode_cursor(cursor).value_or(0);
+
+    json full = tools_.list();                  // {"tools": [...]}
+    const json& items = full["tools"];
+    const size_t total = items.size();
+
+    if (offset >= total) {
+        // Past the end → empty page.
+        return {{"tools", json::array()}};
+    }
+    const size_t end = std::min(offset + PAGE_SIZE, total);
+    json page = json::array();
+    for (size_t i = offset; i < end; ++i) page.push_back(items[i]);
+
+    json result = {{"tools", page}};
+    if (end < total) {
+        auto next = pagination::encode_cursor(static_cast<uint32_t>(end));
+        if (next) result["nextCursor"] = *next;
+    }
+    return result;
 }
 
 json Dispatcher::handle_tools_call(const JsonRpcRequest& req)
@@ -262,9 +286,30 @@ json Dispatcher::handle_tools_call(const JsonRpcRequest& req)
 // resources
 // ---------------------------------------------------------------------------
 
-json Dispatcher::handle_resources_list()
+json Dispatcher::handle_resources_list(const JsonRpcRequest& req)
 {
-    return resources_.list();
+    // Cursor pagination per MCP spec §8.5 — see handle_tools_list() above.
+    constexpr size_t PAGE_SIZE = 50;
+    const std::string cursor = req.params.value("cursor", std::string{});
+    const uint32_t offset = pagination::decode_cursor(cursor).value_or(0);
+
+    json full = resources_.list();             // {"resources": [...]}
+    const json& items = full["resources"];
+    const size_t total = items.size();
+
+    if (offset >= total) {
+        return {{"resources", json::array()}};
+    }
+    const size_t end = std::min(offset + PAGE_SIZE, total);
+    json page = json::array();
+    for (size_t i = offset; i < end; ++i) page.push_back(items[i]);
+
+    json result = {{"resources", page}};
+    if (end < total) {
+        auto next = pagination::encode_cursor(static_cast<uint32_t>(end));
+        if (next) result["nextCursor"] = *next;
+    }
+    return result;
 }
 
 json Dispatcher::handle_resources_templates_list()
@@ -287,9 +332,30 @@ json Dispatcher::handle_resources_read(const JsonRpcRequest& req)
 // prompts
 // ---------------------------------------------------------------------------
 
-json Dispatcher::handle_prompts_list()
+json Dispatcher::handle_prompts_list(const JsonRpcRequest& req)
 {
-    return prompts_.list();
+    // Cursor pagination per MCP spec §8.5 — see handle_tools_list() above.
+    constexpr size_t PAGE_SIZE = 50;
+    const std::string cursor = req.params.value("cursor", std::string{});
+    const uint32_t offset = pagination::decode_cursor(cursor).value_or(0);
+
+    json full = prompts_.list();               // {"prompts": [...]}
+    const json& items = full["prompts"];
+    const size_t total = items.size();
+
+    if (offset >= total) {
+        return {{"prompts", json::array()}};
+    }
+    const size_t end = std::min(offset + PAGE_SIZE, total);
+    json page = json::array();
+    for (size_t i = offset; i < end; ++i) page.push_back(items[i]);
+
+    json result = {{"prompts", page}};
+    if (end < total) {
+        auto next = pagination::encode_cursor(static_cast<uint32_t>(end));
+        if (next) result["nextCursor"] = *next;
+    }
+    return result;
 }
 
 json Dispatcher::handle_prompts_get(const JsonRpcRequest& req)

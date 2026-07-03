@@ -120,7 +120,7 @@ void CrossEncoderReranker::initialize_llm() {
     initialized_ = true;
     
     if (config_.verbose) {
-        std::cout << "[CrossEncoder] Initialized with model: " << config_.llm.model_path << "\n";
+        std::cerr << "[CrossEncoder] Initialized with model: " << config_.llm.model_path << "\n";
     }
 }
 
@@ -268,7 +268,7 @@ std::vector<RerankedResult> CrossEncoderReranker::rerank(
     std::vector<RerankedResult> candidates(results.begin(), results.begin() + to_rerank);
     
     if (config_.verbose) {
-        std::cout << "[CrossEncoder] Reranking " << candidates.size() << " candidates\n";
+        std::cerr << "[CrossEncoder] Reranking " << candidates.size() << " candidates\n";
     }
     
     // Score with cross-encoder (LLM)
@@ -318,7 +318,7 @@ std::vector<RerankedResult> CrossEncoderReranker::rerank(
     stats_.total_time_ms += duration;
     
     if (config_.verbose) {
-        std::cout << "[CrossEncoder] Reranking completed in " << duration << "ms\n";
+        std::cerr << "[CrossEncoder] Reranking completed in " << duration << "ms\n";
     }
     
     return final_results;

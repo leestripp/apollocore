@@ -10,6 +10,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "cursor.hpp"
 #include "dispatcher.hpp"
 #include "jsonrpc.hpp"
 #include "mcp_sse_bus.hpp"
@@ -73,12 +74,12 @@ private:
     json handle_ping();
     json handle_set_log_level(const JsonRpcRequest& req);
     json handle_complete(const JsonRpcRequest& req);
-    json handle_tools_list();
+    json handle_tools_list(const JsonRpcRequest& req);
     json handle_tools_call(const JsonRpcRequest& req);
-    json handle_resources_list();
+    json handle_resources_list(const JsonRpcRequest& req);
     json handle_resources_templates_list();
     json handle_resources_read(const JsonRpcRequest& req);
-    json handle_prompts_list();
+    json handle_prompts_list(const JsonRpcRequest& req);
     json handle_prompts_get(const JsonRpcRequest& req);
 
     ServerState& state_;

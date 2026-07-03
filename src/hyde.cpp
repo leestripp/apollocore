@@ -118,7 +118,7 @@ void HydeEnhancer::initialize() {
     initialized_ = true;
     
     if (config_.verbose) {
-        std::cout << "[HyDE] Initialized with model: " << config_.llm.model_path << "\n";
+        std::cerr << "[HyDE] Initialized with model: " << config_.llm.model_path << "\n";
     }
 }
 
@@ -262,7 +262,7 @@ std::vector<HypotheticalDocument> HydeEnhancer::generate_docs(
         docs.emplace_back(content, std::vector<float>(), quality);
         
         if (config_.verbose) {
-            std::cout << "[HyDE] Generated doc " << (i + 1) << "/" << count 
+            std::cerr << "[HyDE] Generated doc " << (i + 1) << "/" << count 
                       << " (quality: " << quality << ")\n";
         }
     }
@@ -350,7 +350,7 @@ HydeResult HydeEnhancer::enhance(const std::string& query) {
     
     if (!initialized_) {
         if (config_.verbose) {
-            std::cout << "[HyDE] Not initialized, returning original query\n";
+            std::cerr << "[HyDE] Not initialized, returning original query\n";
         }
         // Still return an empty result
         result.combined_embedding = std::vector<float>(config_.embedding.dimensions, 0.0f);
@@ -374,7 +374,7 @@ HydeResult HydeEnhancer::enhance(const std::string& query) {
     stats_.total_time_ms += duration;
     
     if (config_.verbose) {
-        std::cout << "[HyDE] Enhancement completed in " << duration << "ms\n";
+        std::cerr << "[HyDE] Enhancement completed in " << duration << "ms\n";
     }
     
     return result;

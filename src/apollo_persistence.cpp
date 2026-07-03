@@ -217,7 +217,7 @@ bool ApolloCore::load_llm_model(
         llm_model_path_ = path;
         
         if (entity_extractor_->is_initialized()) {
-            std::cout << "[ApolloCore] LLM model loaded for entity extraction: " 
+            std::cerr << "[ApolloCore] LLM model loaded for entity extraction: " 
                       << path << "\n";
             return true;
         } else {
@@ -266,7 +266,7 @@ bool ApolloCore::create(
     register_project("default", "Default project (auto-created)", false, "");
 
     is_open_ = true;
-    std::cout << "[ApolloCore] Created knowledge base: " << path << "\n";
+    std::cerr << "[ApolloCore] Created knowledge base: " << path << "\n";
     return true;
 }
 
@@ -296,7 +296,7 @@ bool ApolloCore::open(const std::string& path) {
     }
 
     auto loaded_chunks = kb_persistence_->load_all_chunks();
-    std::cout << "[ApolloCore] Loaded " << loaded_chunks.size() << " chunks\n";
+    std::cerr << "[ApolloCore] Loaded " << loaded_chunks.size() << " chunks\n";
     
     // Group chunks by node (document)
     std::unordered_map<std::string, std::string> node_content;
@@ -310,10 +310,10 @@ bool ApolloCore::open(const std::string& path) {
         documents_.push_back({node_id, content});
     }
     
-    std::cout << "[ApolloCore] Loaded " << documents_.size() << " documents\n";
+    std::cerr << "[ApolloCore] Loaded " << documents_.size() << " documents\n";
     
     is_open_ = true;
-    std::cout << "[ApolloCore] Opened knowledge base: " << path << "\n";
+    std::cerr << "[ApolloCore] Opened knowledge base: " << path << "\n";
     return true;
 }
 
@@ -426,7 +426,7 @@ size_t ApolloCore::add_document(
     // Add document to in-memory
     documents_.push_back({doc_id, text});
     
-    std::cout << "[ApolloCore] Added document '" << doc_id << "' with "
+    std::cerr << "[ApolloCore] Added document '" << doc_id << "' with "
               << count << " chunks\n";
 
     return count;
@@ -455,7 +455,7 @@ bool ApolloCore::delete_document(const std::string& document_id) {
         documents_.end()
     );
 
-    std::cout << "[ApolloCore] Deleted document '" << document_id << "'\n";
+    std::cerr << "[ApolloCore] Deleted document '" << document_id << "'\n";
     return true;
 }
 
@@ -1109,7 +1109,7 @@ bool ApolloCore::set_current_project(const std::string& project_name) {
     }
 
     current_project_ = project_name;
-    std::cout << "[ApolloCore] Current project set to: " << project_name << "\n";
+    std::cerr << "[ApolloCore] Current project set to: " << project_name << "\n";
     return true;
 }
 
@@ -1131,7 +1131,7 @@ bool ApolloCore::register_project(const std::string& name,
 
     bool ok = kb_persistence_->save_project(info);
     if (ok) {
-        std::cout << "[ApolloCore] Registered project: " << name
+        std::cerr << "[ApolloCore] Registered project: " << name
                   << (is_shared ? " (shared)" : "") << "\n";
     }
     return ok;
@@ -1149,7 +1149,7 @@ bool ApolloCore::add_shared_read_source(const std::string& project_name) {
         return true;  // already added
     }
     shared_read_sources_.push_back(project_name);
-    std::cout << "[ApolloCore] Added shared read source: " << project_name << "\n";
+    std::cerr << "[ApolloCore] Added shared read source: " << project_name << "\n";
     return true;
 }
 

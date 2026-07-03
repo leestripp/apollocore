@@ -103,7 +103,7 @@ bool KnowledgeBasePersistence::create(const std::string& path,
         {name, "768"}
     );
     
-    std::cout << "[KB Persistence] Created: " << path << " (" << name << ")\n";
+    std::cerr << "[KB Persistence] Created: " << path << " (" << name << ")\n";
     return true;
 }
 
@@ -128,7 +128,7 @@ bool KnowledgeBasePersistence::open(const std::string& path) {
         return false;
     }
     
-    std::cout << "[KB Persistence] Opened: " << path << "\n";
+    std::cerr << "[KB Persistence] Opened: " << path << "\n";
     return true;
 }
 
@@ -189,7 +189,7 @@ bool KnowledgeBasePersistence::destroy() {
     if (fs::exists(path_)) {
         try {
             fs::remove_all(path_);
-            std::cout << "[KB Persistence] Destroyed: " << path_ << "\n";
+            std::cerr << "[KB Persistence] Destroyed: " << path_ << "\n";
             path_.clear();
             return true;
         } catch (const std::exception& e) {

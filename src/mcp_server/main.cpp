@@ -4,6 +4,7 @@
 //
 // Usage:
 //   apollo_mcp_server [--host HOST] [--port PORT]
+//                     [--transport TRANSPORT] (http or stdio)
 //                     [--data-dir DIR]      (ApolloCore KB directory)
 //                     [--embed-model PATH]  (GGUF embedding model)
 //                     [--llm-model PATH]    (GGUF LLM model, optional)
@@ -27,8 +28,14 @@
 
 #include "OmniNet.h"   // <-- bring in the OmniNet namespace
 
+#include "dispatcher.hpp"
 #include "http_server.hpp"
+#include "mcp_sse_bus.hpp"
+#include "mcp_stdio.hpp"
+#include "prompts.hpp"
+#include "resources.hpp"
 #include "server_state.hpp"
+#include "tools.hpp"
 
 namespace fs = std::filesystem;
 
@@ -48,6 +55,9 @@ struct CliArgs {
     bool no_ui = false;
     bool admin = false;
     bool verbose = false;
+    // Phase C: which transport. Default = http. "stdio" reads
+    // newline-delimited JSON-RPC from stdin/stdout; logs to stderr.
+    std::string transport = "http";
 };
 
 CliArgs parse_args(int argc, char** argv)
@@ -82,12 +92,16 @@ CliArgs parse_args(int argc, char** argv)
         else if (k == "--ui-static-dir")  a.ui_static_dir = need("--ui-static-dir");
         else if (k == "--no-ui")          a.no_ui = true;
         else if (k == "--admin")          a.admin = true;
+        else if (k == "--transport")      a.transport = need("--transport");
         else if (k == "-v" || k == "--verbose") a.verbose = true;
         else if (k == "-h" || k == "--help") {
             std::cout <<
                 "apollo_mcp_server — ApolloCore MCP server\n"
                 "  --host HOST              (default 127.0.0.1; pass 0.0.0.0 for LAN)\n"
                 "  --port PORT              (default 8765)\n"
+                "  --transport TRANSPORT    'http' (default) or 'stdio'\n"
+                "                           stdio: newline-delimited JSON-RPC\n"
+                "                           on stdin/stdout; logs to stderr.\n"
                 "  --data-dir DIR           ApolloCore KB directory (default data)\n"
                 "  --embed-model PATH       GGUF embedding model\n"
                 "  --llm-model PATH         GGUF LLM model (entity extraction)\n"
@@ -101,6 +115,11 @@ CliArgs parse_args(int argc, char** argv)
             std::cerr << "Unknown argument: " << k << " (try --help)\n";
             std::exit(2);
         }
+    }
+    if (a.transport != "http" && a.transport != "stdio") {
+        std::cerr << "Invalid --transport '" << a.transport
+                  << "' (expected 'http' or 'stdio')\n";
+        std::exit(2);
     }
     return a;
 }
@@ -206,37 +225,40 @@ int main(int argc, char** argv)
     state.record_resolved_models(args.embed_model, args.llm_model);
 
     // Optional: load embedding model now if the file exists.
+    // Phase C fix: use std::cerr directly instead of OmniNet::Logger.
+    // OmniNet::Logger writes INFO/WARN to stdout via printf(), which
+    // would corrupt the stdio transport's JSON-RPC frame stream.
+    auto log_info = [](const std::string& m) {
+        std::cerr << "[apollo_mcp_server] " << m << "\n";
+    };
+    auto log_warn = [](const std::string& m) {
+        std::cerr << "[apollo_mcp_server] WARN: " << m << "\n";
+    };
     if (fs::exists(args.embed_model)) {
         if (state.core().load_embedding_model(args.embed_model)) {
-            OmniNet::Logger::instance().info(
-                "Loaded embedding model: " + args.embed_model);
+            log_info("Loaded embedding model: " + args.embed_model);
             state.report_embed_load(true, "");
         } else {
-            OmniNet::Logger::instance().warn(
-                "Failed to load embedding model: " + args.embed_model);
+            log_warn("Failed to load embedding model: " + args.embed_model);
             state.report_embed_load(false, "load_embedding_model returned false");
         }
     } else {
-        OmniNet::Logger::instance().warn(
-            "Embedding model not found at " + args.embed_model +
-            " — query_kb tool will fail until one is loaded.");
+        log_warn("Embedding model not found at " + args.embed_model +
+                  " — query_kb tool will fail until one is loaded.");
         state.report_embed_load(false, "file not found");
     }
     // LLM model is optional — only needed for entity extraction / reranking.
     if (fs::exists(args.llm_model)) {
         if (state.core().load_llm_model(args.llm_model)) {
-            OmniNet::Logger::instance().info(
-                "Loaded LLM model: " + args.llm_model);
+            log_info("Loaded LLM model: " + args.llm_model);
             state.report_llm_load(true, "");
         } else {
-            OmniNet::Logger::instance().warn(
-                "Failed to load LLM model: " + args.llm_model);
+            log_warn("Failed to load LLM model: " + args.llm_model);
             state.report_llm_load(false, "load_llm_model returned false");
         }
     } else {
-        OmniNet::Logger::instance().info(
-            "No LLM model at " + args.llm_model +
-            " — extract_entities/with_rerank tools will be unavailable.");
+        log_info("No LLM model at " + args.llm_model +
+                 " — extract_entities/with_rerank tools will be unavailable.");
         state.report_llm_load(false, "file not found");
     }
 
@@ -275,20 +297,54 @@ int main(int argc, char** argv)
             }
         }
         if (hcfg.ui_static_dir.empty()) {
-            OmniNet::Logger::instance().warn(std::string(
-                "Web UI directory not found; UI disabled. "
-                "Pass --ui-static-dir or run from the repo root."));
+            log_warn("Web UI directory not found; UI disabled. "
+                     "Pass --ui-static-dir or run from the repo root.");
         }
     }
 
-    OmniNet::Logger::instance().info(std::string(
-        "Starting ApolloCore MCP server on " + args.host + ":" +
-        std::to_string(args.port) +
-        " (MCP spec 2025-11-25, Streamable HTTP transport)" +
-        (hcfg.ui_static_dir.empty() ? ", UI disabled" : ", UI at /")));
+    // =====================================================================
+    // Phase C — transport selection.
+    //
+    // `http` (default): full Streamable HTTP server with SSE, web UI,
+    // admin dashboard, REST endpoints, security guards.
+    //
+    // `stdio`: line-delimited JSON-RPC on stdin/stdout (LSP framing).
+    // No HTTP, no SSE, no web UI. Logs go to stderr only.
+    // This is what Claude Desktop, neovim, and other editor integrations
+    // use when connecting via stdio MCP.
+    // =====================================================================
+    if (args.transport == "stdio") {
+        // Stdio has no HTTP server, no SSE bridge — but it does need the
+        // Dispatcher, which takes a McpSseBus reference. Construct a
+        // throwaway bus (no SSE writers will ever register with it).
+        apollo::mcp::McpSseBus sse_bus;
+        apollo::mcp::ToolRegistry     tools     = apollo::mcp::build_default_registry();
+        apollo::mcp::ResourceRegistry resources = apollo::mcp::build_default_resource_registry();
+        apollo::mcp::PromptRegistry   prompts   = apollo::mcp::build_default_prompt_registry();
+        apollo::mcp::Dispatcher dispatcher(state, sse_bus, tools, resources, prompts);
 
-    apollo::mcp::HttpServer server(state, hcfg);
-    server.run();  // blocks
+        // All output before this point went to stdout via OmniNet::Logger.
+        // For stdio mode, stderr is correct — we redirected nothing because
+        // we want the HTTP transport's OmniNet logs to go to the log file.
+        // For stdio, we write a startup notice directly to stderr.
+        std::cerr << "[apollo_mcp_server] Starting ApolloCore MCP server in stdio mode "
+                     "(MCP spec 2025-11-25, stdio transport; "
+                     "newline-delimited JSON-RPC on stdin/stdout)\n";
+
+        // SIGPIPE is already ignored in main() before this point, so a
+        // broken stdout (rare — usually when piped to `head -1`) won't kill us.
+        apollo::mcp::run_stdio_transport(dispatcher, state);
+    } else {
+        // HTTP transport.
+        std::cerr << "[apollo_mcp_server] Starting ApolloCore MCP server on "
+                   << args.host << ":" << args.port
+                   << " (MCP spec 2025-11-25, Streamable HTTP transport)"
+                   << (hcfg.ui_static_dir.empty() ? ", UI disabled" : ", UI at /")
+                   << "\n";
+
+        apollo::mcp::HttpServer server(state, hcfg);
+        server.run();  // blocks
+    }
 
     OmniNet::cleanup();
     return 0;
