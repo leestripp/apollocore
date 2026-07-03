@@ -1011,6 +1011,109 @@ the GGUF models from disk), which defeats the design. Confirmed by
 re-reading the spec §6 ("use stdio for local tools, Streamable HTTP
 for remote/multi-client tools").
 
+---
+
+## Final state — Phase A + B + D + E + F all done
+
+All MCP-conformance work is shipped on `main`. The server is
+production-ready except for the items in §Open issues below.
+
+### Phases A + B + D + F (security, framing, capabilities)
+- **A1** Origin DNS-rebind defense → 403 on evil origin
+- **A2** MCP-Protocol-Version validation → 400 on unknown
+- **A3** Bearer auth via APOLLO_AUTH_TOKEN env var (opt-in)
+- **A4** DELETE /mcp terminates session, 404 on second
+- **B1** GET /mcp Server-Sent Events (Phase B1 SSE bridge)
+- **B2** notifications/{tools,resources,prompts}/list_changed plumbing
+- **B3** Protocol-version negotiation in initialize
+- **D1** Strict MCP-Session-Id validation (unknown → 400)
+- **D2** logging/setLevel + completion/complete + notifications/cancelled
+- **D3** Per-request cancel-token table (Session::cancel_tokens)
+- **D4** notifications/progress on every tools/call
+- **D5** outputSchema on structured tools (apollo_get_stats,
+       apollo_list_projects, apollo_get_neighbors)
+- **F1** Drop non-spec `vendor` from serverInfo
+- **F2** Tighten tool annotations (explicit read_only/destructive/
+       idempotent/open_world + outputSchema)
+
+### Phase E (test hardening)
+- **E1** Adopted official `mcp` Python SDK as a client.
+  `tests/test_mcp_sdk.py` — 7 cases (handshake, list_tools,
+  call_tool, list_resources, list_prompts, read_resource, call_tool
+  with args). If this passes, Claude Desktop / Inspector / any
+  SDK-based agent can talk to ApolloCore.
+- **E2** Per-transport tests — N/A, we shipped HTTP-only.
+- **E3** Negative tests in `test_mcp_conformance.py` (10 cases):
+       malformed JSON, invalid id types, unknown method, unknown
+       tool, double-DELETE, missing/evil Origin, ping round-trip,
+       resources/list, prompts/list.
+- **E?extra** `tests/runall.sh` runs all 4 test scripts 3x in a row
+  to verify stability.
+
+### Phase F (cleanup)
+- **F1** Drop non-spec `vendor` from serverInfo ✅
+- **F2** Tool annotation tightening ✅
+- **F3** `docs/mcp_compliance.md` conformance matrix ✅
+
+### Test summary (final)
+```
+ctest -E test_ingest_codebase          → 18/18
+tests/test_mcp_conformance.py        → 24/24 (A1+A2+A4+D1+D2+B1+E3)
+tests/test_sse_streaming.py          → ': connected' + keep-alive
+tests/test_progress_notification.py  → start + finish progress frames
+tests/test_mcp_sdk.py (official SDK)  → 7/7
+tests/runall.sh (3x stability runs)   → all green, repeatable
+```
+
+---
+
+## Issues found and fixed during Phase E1 SDK adoption
+
+These were real bugs that conformance smoke tests didn't catch:
+
+1. **Race: SSE keepalive writes corrupt POST responses.**
+   When the SDK reuses a TCP connection for GET (SSE) + POST (JSON-RPC),
+   the SSE writer's 15s `: keepalive\r\n` bytes landed inside a POST
+   response body, producing `illegal status line: bytearray(b': keepalive')`
+   in httpx. Fix: send `Connection: close` on GET /mcp SSE so every SSE
+   call gets its own TCP. Documented in `mcp_sse.cpp`. **Proper fix
+   (per-connection write mutex) deferred to a future phase.**
+
+2. **structuredContent was a JSON array for apollo_list_projects.**
+   Per spec, structuredContent is always a JSON object. Fix: wrap as
+   `{projects: [...]}`. Updated outputSchema to match. Caught only by
+   pydantic validation in the official SDK.
+
+3. **nlohmann::json type error in ToolDef positional init.**
+   When adding `output_schema` to ToolDef, four tools had positional
+   init missing `open_world_hint` (or `idempotent_hint`), so the new
+   `json{...}` outputSchema was assigned to a `bool` field, crashing
+   at startup with "type must be boolean, but is object". Caught
+   immediately on restart; fixed by patching each register_tool
+   block to include the missing hint slots. **Build now has zero
+   warnings.**
+
+---
+
+## Open issues (deliberate / deferred)
+
+1. **SSE write mutex** (see Issue #1 above). The proper fix is a
+   per-connection mutex around `socket->sendAll()` that both the
+   SSE writer thread AND the POST handler's response writer
+   acquire. Today's `Connection: close` workaround is functional
+   but burns an extra TCP per SSE connection. Not blocking.
+
+2. **resumability (Last-Event-ID)** — we emit `id:` on every SSE event
+   but the SDK doesn't reconnect with it. Phase 6 work.
+
+3. **OAuth 2.1** — full PKCE flow. We ship APOLLO_AUTH_TOKEN as a
+   simpler alternative for v1. Phase 6.
+
+4. **Cancel tokens are wired but unused.** No current tool checks
+   its token. Tools complete in <1s so cancellation wouldn't help.
+   When `apollo_ingest_codebase` grows progress emission mid-stream,
+   it should poll the token.
+
 ### Refactor: dispatch_one() helper
 While exploring stdio, extracted the parse + dispatch + notification
 branch from http_server.cpp's handle_one() into a free function
