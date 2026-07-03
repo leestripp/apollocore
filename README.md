@@ -136,6 +136,26 @@ Full guide: [`docs/ui.md`](docs/ui.md). Browser-driven smoke test:
 
 ## Deployment
 
+> ### ⚠️ Security note — read before exposing this on a network
+>
+> ApolloCore binds to `127.0.0.1` by default and runs **without
+> authentication**. The MCP spec ([§6.2](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports))
+> recommends loopback-only binding for local servers, and says
+> HTTP transports "should implement OAuth 2.1 with scoped tokens".
+> We don't ship OAuth — instead, we ship loopback-by-default plus
+> an opt-in `APOLLO_AUTH_TOKEN` env var (Bearer header) for users
+> who choose `--host 0.0.0.0`.
+>
+> If you expose this on a LAN/internet:
+> 1. Set `APOLLO_AUTH_TOKEN` to a strong random secret (32+ chars).
+> 2. Pass `--host 0.0.0.0` to bind on the network interface.
+> 3. Front it with a TLS reverse proxy (Caddy/Nginx) for HTTPS.
+> 4. Restrict `Origin` headers if you want browser-grade protection.
+>
+> There is NO encryption, NO rate limiting, NO multi-tenant isolation
+> in the default loopback mode. The HTTP endpoint will serve any
+> local process that can reach 127.0.0.1:8765.
+
 ### Production: systemd on Ubuntu 26.04
 
 ```bash

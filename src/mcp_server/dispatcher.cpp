@@ -101,8 +101,11 @@ json Dispatcher::handle_initialize(const JsonRpcRequest& req)
         {"serverInfo", {
             {"name",    info_.name},
             {"title",   "ApolloCore MCP Server"},
-            {"version", info_.version},
-            {"vendor",  info_.vendor}
+            {"version", info_.version}
+            // NB: no "vendor" field. The MCP spec's ServerInfo shape is
+            // {name, version, ...} with optional fields like `title`,
+            // but NOT `vendor`. We previously added `vendor: "ApolloCore"`
+            // here but it's not in the spec — keep serverInfo spec-clean.
         }},
         {"instructions",
          "ApolloCore is a local-first RAG knowledge base. Use apollo_query_kb to "
