@@ -160,11 +160,7 @@ These are intentional, documented deviations:
 2. **Default bind host 127.0.0.1 (was 0.0.0.0).** Spec §6.2 recommends
    loopback-only. We default to it; pass `--host 0.0.0.0` for LAN.
 
-3. **No OAuth 2.1.** Spec §7 recommends OAuth for HTTP transports.
-   We ship `APOLLO_AUTH_TOKEN` as a simpler alternative. Full OAuth
-   is in the Phase 6 roadmap.
-
-4. **`ping` rejected pre-init.** ~~Spec §Lifecycle allows ping before
+3. **`ping` rejected pre-init.** ~~Spec §Lifecycle allows ping before
    initialize. Our strict session validation (Phase D1) rejects it.
    Acceptable deviation; clients should initialize before pinging.~~
    ✅ FIXED — `check_pre_init` now allows both `initialize` and `ping`

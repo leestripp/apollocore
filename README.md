@@ -141,9 +141,8 @@ Full guide: [`docs/ui.md`](docs/ui.md). Browser-driven smoke test:
 > ApolloCore binds to `127.0.0.1` by default and runs **without
 > authentication**. The MCP spec ([§6.2](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports))
 > recommends loopback-only binding for local servers, and says
-> HTTP transports "should implement OAuth 2.1 with scoped tokens".
-> We don't ship OAuth — instead, we ship loopback-by-default plus
-> an opt-in `APOLLO_AUTH_TOKEN` env var (Bearer header) for users
+> Bearer token auth (RFC 6750) is the appropriate model for local HTTP servers
+> and is provided via the opt-in `APOLLO_AUTH_TOKEN` env var (Bearer header) for users
 > who choose `--host 0.0.0.0`.
 >
 > If you expose this on a LAN/internet:

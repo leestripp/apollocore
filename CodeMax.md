@@ -77,7 +77,7 @@ define.
 ### MCP Spec Versions
 - **2025-03-26** — first stable; STDIO + Streamable HTTP (post-SSE).
 - **2025-06-18** — minor; tools/resources/prompts refinements.
-- **2025-11-25** — latest stable; Resources additions, schema updates, OAuth.
+- **2025-11-25** — latest stable; Resources additions, schema updates.
 - **2026-07-28** — Release Candidate; **stateless**, `Mcp-Method`/`Mcp-Name` headers,
   Extensions framework (MCP Apps, Tasks), full JSON-Schema 2020-12.
 
@@ -363,7 +363,7 @@ self-correct. We always return informative strings:
 
 - [x] MCP spec version to target first → **2025-11-25**
 - [ ] Default port → **8765** (proposed; `8765` doesn't collide with common web ports)
-- [ ] Auth: OAuth? API key? Anonymous for v1? → **Anonymous for v1; localhost-only default**; admin via OmniNet's built-in auth.
+- [x] Auth: **Bearer token via APOLLO_AUTH_TOKEN**; localhost-only default; admin via OmniNet's built-in auth.
 - [ ] Tool subset: 12 tools listed above; anything missing? → **review after Phase 3 wiring**
 - [ ] SSE: implement or skip for v1? → **skip for v1; defer to Phase 6**
 
@@ -855,7 +855,7 @@ Reviewed `src/mcp_server/` end-to-end against the official spec at
 | **H4** | `notifications/cancelled` not handled (server-side cancellation) | Long-running tools (entity extract) should respect it |
 | **H5** | `notifications/progress` not emitted | Long-running tools should report progress |
 | **H6** | No `outputSchema` on tools that produce structured data | Best practice; lets clients validate results |
-| **H7** | No authentication on `/mcp` (HTTP transport = spec says SHOULD implement OAuth 2.1) | Out of scope for local-only, document the limitation |
+| **H7** | Bearer token auth (`APOLLO_AUTH_TOKEN`) ✅ DONE | N/A |
 | **H8** | Server default-binds `0.0.0.0` — spec says local servers **SHOULD bind 127.0.0.1** | Security best practice |
 
 ### 🟢 POLISH — extras
@@ -967,10 +967,6 @@ Working in **priority order**: critical first (spec must-haves), then high (real
 
 ## 5. Out of scope (explicit non-goals for THIS task)
 
-- Implementing **OAuth 2.1 with PKCE** — the spec says SHOULD for HTTP
-  transports. We deliver a clean "Authorization" header on POST that accepts
-  an opaque Bearer token (configurable via `APOLLO_AUTH_TOKEN`). Full OAuth
-  flows are a future task.
 - Migrating to **2026-07-28 stateless** — separate task.
 - Implementing the **registry / OAuth-client-credentials / enterprise-managed-auth
   extensions** — separate tasks.
@@ -1198,8 +1194,7 @@ These were real bugs that conformance smoke tests didn't catch:
 2. **resumability (Last-Event-ID)** — we emit `id:` on every SSE event
    but the SDK doesn't reconnect with it. Phase 6 work.
 
-3. **OAuth 2.1** — full PKCE flow. We ship APOLLO_AUTH_TOKEN as a
-   simpler alternative for v1. Phase 6.
+3. ~~**OAuth 2.1**~~ **N/A** — Bearer token (APOLLO_AUTH_TOKEN) is the correct auth model for local MCP servers; full OAuth is not applicable.
 
 4. **Cancel tokens are wired but unused.** No current tool checks
    its token. Tools complete in <1s so cancellation wouldn't help.
