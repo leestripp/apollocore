@@ -51,3 +51,8 @@ _deps/
 Testing/Temporary/
 apollo_mcp_server.log
 .apollo_mcp_server.pid
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
