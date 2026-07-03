@@ -40,7 +40,6 @@ JsonRpcResponse Dispatcher::dispatch(const JsonRpcRequest& req)
         if (req.method == "logging/setLevel")  return make_result(req.id.value(), handle_set_log_level(req));
         if (req.method == "completion/complete") return make_result(req.id.value(), handle_complete(req));
         if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list());
-        if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list());
         if (req.method == "tools/call")        return make_result(req.id.value(), handle_tools_call(req));
         if (req.method == "resources/list")    return make_result(req.id.value(), handle_resources_list());
         if (req.method == "resources/templates/list")

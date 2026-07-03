@@ -490,9 +490,8 @@ def test_ping_round_trip(_sid_unused):
         f"ping result must be an empty object, got {body['result']!r}"
     print(f"  E3 ping round-trip   -> empty object result ✓")
 
-    # Spec §Lifecycle allows ping immediately after initialize. Our
-    # strict session validation rejects it before initialize, but the
-    # spec says it should work. We document the deviation.
+    # Per spec §Lifecycle: ping is allowed before and after initialize.
+    # It serves as a keep-alive and protocol-level probe.
     req = Request(f"{URL}/mcp",
                   data=json.dumps({"jsonrpc": "2.0", "id": 1,
                                    "method": "ping",
@@ -500,18 +499,11 @@ def test_ping_round_trip(_sid_unused):
                   method="POST",
                   headers={"Content-Type": "application/json",
                            "Accept": "application/json"})
-    try:
-        with urlopen(req, timeout=5) as resp:
-            # If the server accepted it pre-init, that's a bonus.
-            if resp.status == 200:
-                print(f"  E3 ping pre-init    -> also accepted (200) ✓")
-    except urllib.error.HTTPError as e:
-        if e.code in (400, 401):
-            print(f"  E3 ping pre-init    -> rejected before init ({e.code}) "
-                  f"(spec deviation: see comment) ✓")
-        else:
-            raise
-    # Note: we accept either result. Deviation is documented in /info.
+    with urlopen(req, timeout=5) as resp:
+        assert resp.status == 200, f"ping pre-init should return 200, got {resp.status}"
+        body_ping = json.loads(resp.read())
+        assert body_ping.get("result") == {}, f"ping result should be {{}}, got {body_ping}"
+        print(f"  E3 ping pre-init    -> 200, {{}} ✓")
 
 
 def test_resources_subscribe_is_accepted(_sid_unused):

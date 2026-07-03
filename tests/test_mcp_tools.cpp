@@ -16,6 +16,7 @@
 #include "server_state.hpp"
 #include "tools.hpp"
 #include "dispatcher.hpp"
+#include "mcp_sse_bus.hpp"
 
 #define APOLLO_ASSERT(cond, msg) do {                                   \
     if (!(cond)) {                                                     \
@@ -36,10 +37,11 @@ int main()
     fs::path kb_dir = fs::path(tmpl) / "kb";
 
     apollo::mcp::ServerState state;
+    apollo::mcp::McpSseBus sse_bus;     // unit tests don't push notifications
     apollo::mcp::ToolRegistry tools = apollo::mcp::build_default_registry();
     apollo::mcp::ResourceRegistry resources = apollo::mcp::build_default_resource_registry();
     apollo::mcp::PromptRegistry prompts = apollo::mcp::build_default_prompt_registry();
-    apollo::mcp::Dispatcher d(state, tools, resources, prompts);
+    apollo::mcp::Dispatcher d(state, sse_bus, tools, resources, prompts);
 
     auto call = [&](const json& req) {
         return d.dispatch(apollo::mcp::parse_request(req.dump())).to_json();

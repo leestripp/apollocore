@@ -202,6 +202,8 @@ function(add_mcp_test name)
         test_${name}.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/jsonrpc.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/server_state.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_sse_bus.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_security.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/dispatcher.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/tools.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/resources.cpp

@@ -14,6 +14,7 @@
 
 #include "jsonrpc.hpp"
 #include "dispatcher.hpp"
+#include "mcp_sse_bus.hpp"
 #include "prompts.hpp"
 #include "resources.hpp"
 #include "tools.hpp"
@@ -67,10 +68,11 @@ int main()
 
     auto kb_path = make_tmp_kb_path() + "/kb";
     apollo::mcp::ServerState state;
+    apollo::mcp::McpSseBus sse_bus;     // unit tests don't push notifications
     apollo::mcp::ToolRegistry tools = apollo::mcp::build_default_registry();
     apollo::mcp::ResourceRegistry resources = apollo::mcp::build_default_resource_registry();
     apollo::mcp::PromptRegistry prompts = apollo::mcp::build_default_prompt_registry();
-    apollo::mcp::Dispatcher d(state, tools, resources, prompts);
+    apollo::mcp::Dispatcher d(state, sse_bus, tools, resources, prompts);
 
     // ---- Test 1: initialize handshake ----
     std::cout << "[test] initialize handshake...\n";

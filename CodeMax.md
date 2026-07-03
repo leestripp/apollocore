@@ -1093,6 +1093,24 @@ These were real bugs that conformance smoke tests didn't catch:
    block to include the missing hint slots. **Build now has zero
    warnings.**
 
+4. **Duplicate `tools/list` dispatch check** in dispatcher.cpp. A copy-paste
+   error had two identical `if (req.method == "tools/list")` branches.
+   Harmless (second is unreachable) but confusing. Removed the duplicate.
+
+5. **Ping pre-init was rejected with 400.** Per MCP spec §Lifecycle: "ping
+   is allowed at any time for keep-alive." The HTTP layer's `pre_init`
+   guard only allowed `initialize`, not `ping`. Fixed: `check_pre_init`
+   now returns true for both `initialize` AND `ping` when the request
+   has a non-null id.
+
+6. **Unbounded session accumulation** (memory leak). Sessions stored in
+   `ServerState::sessions_` were only removed on explicit DELETE /mcp.
+   Long-running servers with many short-lived clients would accumulate
+   sessions indefinitely. Fixed: `ServerState` now starts a background
+   reaper thread on construction that evicts idle sessions (>30 min)
+   every 5 minutes. Shutdown is clean — a condition-variable signal
+   wakes the thread immediately so destructors never block.
+
 ---
 
 ## Open issues (deliberate / deferred)
@@ -1113,6 +1131,18 @@ These were real bugs that conformance smoke tests didn't catch:
    its token. Tools complete in <1s so cancellation wouldn't help.
    When `apollo_ingest_codebase` grows progress emission mid-stream,
    it should poll the token.
+
+5. **No pagination on list methods.** `tools/list`, `resources/list`,
+   and `prompts/list` return all items in one response. With 12 tools,
+   6 resources, and 4 prompts this is not a problem yet. Per spec §8.5
+   this is a SHOULD for large sets — deferred until the tool count
+   warrants it.
+
+6. **Deprecation warning in SDK tests.** The official `mcp` Python SDK
+   emits `DeprecationWarning: Use streamable_http_client instead` for
+   `ClientSession.from_streamablehttp`. This is a SDK issue, not ours.
+   When the SDK deprecates the old API, update test_mcp_sdk.py to use
+   `streamable_http_client` directly.
 
 ### Refactor: dispatch_one() helper
 While exploring stdio, extracted the parse + dispatch + notification

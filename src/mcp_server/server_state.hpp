@@ -14,10 +14,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include <apollocore/apollo_persistence.hpp>  // for ApolloCore
@@ -270,6 +272,9 @@ std::string get_or_create_session(const std::string& mcp_session_id,
     /// HTTP layer can reply 404 per spec §Session-Management).
     bool end_session(const std::string& session_id);
 
+#include <thread>
+#include <atomic>
+
 private:
     std::unique_ptr<apollocore_v2::ApolloCore> core_;
     std::unordered_map<std::string, Session> sessions_;   // keyed by session id
@@ -291,6 +296,11 @@ private:
     std::vector<std::string> extra_search_dirs_;
     std::vector<std::string> models_dirs_;            // scanned for *.gguf
     std::vector<ModelInfo>    models_cache_;          // last scan result
+    /// Background thread: reaps idle sessions every 5 min.
+    std::thread reaper_;
+    std::atomic<bool> reaper_stop_{false};
+    std::condition_variable_any reaper_cv_;
+    std::mutex reaper_mu_;
 
     /// Resolve a path that may be a bare filename. See .cpp for the
     /// full search order.

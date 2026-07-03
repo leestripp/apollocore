@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -17,6 +18,7 @@
 #include <set>
 #include <sstream>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace apollo::mcp {
@@ -55,9 +57,29 @@ std::string ServerState::make_uuid_v4()
 
 ServerState::ServerState()
     : core_(std::make_unique<apollocore_v2::ApolloCore>())
-{}
+{
+    // Start the idle-session reaper. It runs every 5 minutes and evicts
+    // sessions that have been idle for more than 30 minutes. This prevents
+    // unbounded memory growth from abandoned SSE connections.
+    reaper_ = std::thread([this]() {
+        constexpr auto IDLE_TTL = std::chrono::minutes(30);
+        std::unique_lock<std::mutex> lk(reaper_mu_);
+        while (!reaper_cv_.wait_for(lk, std::chrono::minutes(5), [&] {
+                return reaper_stop_.load(std::memory_order_relaxed);
+            })) {
+            // Timeout → reap idle sessions.
+            reap_idle_sessions(IDLE_TTL);
+        }
+        // shutdown requested
+    });
+}
 
-ServerState::~ServerState() = default;
+ServerState::~ServerState()
+{
+    reaper_stop_.store(true, std::memory_order_relaxed);
+    reaper_cv_.notify_all();
+    if (reaper_.joinable()) reaper_.join();
+}
 
 namespace {
 // `dirs_contains` declared early so set_models / record_resolved_models

@@ -331,16 +331,20 @@ struct HttpServer::Impl {
         // pre-init (initialize) call — pre_init is set just below.
 
         // `pre_init` is true only if the very first message in this body is
-        // an `initialize` request and we haven't seen one before in this
-        // session. We approximate it as: initialize + no notifications/initialized
-        // observed yet on this session. The simplest correct check is
-        // "the body is exactly an initialize method".
+        // an `initialize` or `ping` request and we haven't seen one before in
+        // this session. We approximate it as: (initialize || ping) + no
+        // notifications/initialized observed yet. The simplest correct check
+        // is "the body is exactly an initialize or ping method".
+        // Per spec §6.2: ping is allowed at any time for keep-alive.
         bool pre_init = false;
         auto check_pre_init = [&](const json& m) -> bool {
             if (!m.is_object()) return false;
-            if (m.value("method", std::string{}) != "initialize") return false;
-            // Notifications don't have id; initialize must have one.
-            return m.contains("id") && !m["id"].is_null();
+            const auto method = m.value("method", std::string{});
+            if (method == "initialize" || method == "ping") {
+                // Notifications don't have id; initialize and ping must have one.
+                return m.contains("id") && !m["id"].is_null();
+            }
+            return false;
         };
         if (parsed.is_array()) {
             if (!parsed.empty() && check_pre_init(parsed.front())) pre_init = true;
