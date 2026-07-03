@@ -35,7 +35,11 @@ namespace fs = std::filesystem;
 namespace {
 
 struct CliArgs {
-    std::string host = "0.0.0.0";
+    // MCP spec §6.2 (Streamable HTTP): "Bind to 127.0.0.1, NOT 0.0.0.0,
+    // for local servers." We default to loopback for safety. Use
+    // --host 0.0.0.0 to expose on the LAN (only if you trust the
+    // network — there's no auth beyond APOLLO_AUTH_TOKEN).
+    std::string host = "127.0.0.1";
     int port = 8765;
     std::string data_dir = "data";
     std::string embed_model = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
@@ -82,7 +86,7 @@ CliArgs parse_args(int argc, char** argv)
         else if (k == "-h" || k == "--help") {
             std::cout <<
                 "apollo_mcp_server — ApolloCore MCP server\n"
-                "  --host HOST              (default 0.0.0.0)\n"
+                "  --host HOST              (default 127.0.0.1; pass 0.0.0.0 for LAN)\n"
                 "  --port PORT              (default 8765)\n"
                 "  --data-dir DIR           ApolloCore KB directory (default data)\n"
                 "  --embed-model PATH       GGUF embedding model\n"

@@ -38,6 +38,10 @@ struct ToolDef {
     bool destructive_hint = false;
     bool idempotent_hint = false;
     bool open_world_hint = false;
+    /// Output JSON Schema (MCP 2025-06+). Optional but recommended for
+    /// tools that return structured data — lets clients validate the
+    /// shape and avoid stringly-typed parsing.
+    json output_schema = nullptr;
 
     json to_list_item() const;
 };

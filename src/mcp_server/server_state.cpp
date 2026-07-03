@@ -77,7 +77,21 @@ bool ServerState::open_kb(const std::string& path, const std::string& name)
     return core_->create(path, name);
 }
 
-std::string ServerState::get_or_create_session(const std::string& mcp_session_id)
+std::string ServerState::find_session(const std::string& mcp_session_id) const
+{
+    if (mcp_session_id.empty()) return {};
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(mcp_session_id);
+    if (it == sessions_.end()) return {};
+    // Touch last_used under the same lock so the reaper doesn't reap
+    // us mid-request.
+    const_cast<Session&>(it->second).last_used =
+        std::chrono::system_clock::now();
+    return it->first;
+}
+
+std::string ServerState::get_or_create_session(const std::string& mcp_session_id,
+                                              bool auto_create_on_unknown)
 {
     std::lock_guard<std::recursive_mutex> lk(mu_);
     auto now = std::chrono::system_clock::now();
@@ -88,9 +102,15 @@ std::string ServerState::get_or_create_session(const std::string& mcp_session_id
             it->second.last_used = now;
             return it->first;
         }
-        // Unknown id: create it. (MCP 2025-11-25 says server may reject, but
-        // generating on unknown id is friendly and matches the spec's
-        // "create-or-attach" recommendation.)
+        // Unknown non-empty id.
+        if (!auto_create_on_unknown) {
+            // Strict mode: tell the caller (via empty string) that the
+            // id is bogus so they can 400 the client. Per spec:
+            //   "If the server receives a request with an unknown
+            //    session ID, the server SHOULD respond with HTTP 400."
+            return {};
+        }
+        // Legacy/dev mode: keep the friendly auto-create behaviour.
     }
 
     Session s;

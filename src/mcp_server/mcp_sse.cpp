@@ -53,6 +53,26 @@ bool write_sse_event(OmniNet::Socket& sock, const std::string& event,
     return sock.isOpen();
 }
 
+// Throwing wrappers — the helper functions above don't catch the
+// SocketException that OmniNet's Socket::send() throws when the
+// client has gone away. Wrap each call in a try/catch so a single
+// dead client can't take down the whole server. Returns false on any
+// failure (broken pipe, connection reset, etc.) so the writer_loop
+// can exit cleanly.
+bool safe_write_sse_frame(OmniNet::Socket& sock, const std::string& data) {
+    try { return write_sse_frame(sock, data); }
+    catch (const std::exception&) { return false; }
+}
+bool safe_write_sse_comment(OmniNet::Socket& sock, const std::string& text) {
+    try { return write_sse_comment(sock, text); }
+    catch (const std::exception&) { return false; }
+}
+bool safe_write_sse_event(OmniNet::Socket& sock, const std::string& event,
+                          const std::string& data) {
+    try { return write_sse_event(sock, event, data); }
+    catch (const std::exception&) { return false; }
+}
+
 }  // namespace
 
 McpSseBridge::McpSseBridge(onh::Server& server, McpSseBus& bus)
@@ -168,9 +188,7 @@ void McpSseBridge::writer_loop(std::unique_ptr<OmniNet::Socket> socket,
     //    These are real notifications, so each gets an `event: message`
     //    frame.
     for (auto& n : queue->drain()) {
-        if (!write_sse_frame(*socket, n.dump())) {
-            goto done;
-        }
+        if (!safe_write_sse_frame(*socket, n.dump())) goto done;
     }
 
     // 2. Pump loop. Block on the queue with a 15s keep-alive. On
@@ -181,17 +199,17 @@ void McpSseBridge::writer_loop(std::unique_ptr<OmniNet::Socket> socket,
         if (queue->closed()) break;
         if (!item) {
             // Timeout → keep-alive.
-            if (!write_sse_comment(*socket, "keepalive")) goto done;
+            if (!safe_write_sse_comment(*socket, "keepalive")) goto done;
             continue;
         }
-        if (!write_sse_event(*socket, "message", item->dump())) goto done;
+        if (!safe_write_sse_event(*socket, "message", item->dump())) goto done;
     }
 
 done:
     // Send a final close event so well-behaved clients can render a
     // "stream closed" UI state. Then drop the socket.
     if (socket && socket->isOpen()) {
-        write_sse_event(*socket, "close", "{\"reason\":\"server_close\"}");
+        safe_write_sse_event(*socket, "close", "{\"reason\":\"server_close\"}");
         socket->close();
     }
     bus_.unsubscribe(session_id, queue);

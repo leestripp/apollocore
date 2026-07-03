@@ -46,6 +46,7 @@ json ToolDef::to_list_item() const
         {"inputSchema", input_schema},
     };
     if (!title.empty()) item["title"] = title;
+    if (!output_schema.is_null()) item["outputSchema"] = output_schema;
     if (!ann.empty())   item["annotations"] = ann;
     return item;
 }
@@ -668,7 +669,15 @@ static CallToolResult apollo_get_stats(const json& args, ServerState& state)
         {"entities",      s.entity_count},
         {"relationships", s.relationship_count},
     };
-    return CallToolResult::text(j.dump(2));
+    // Phase D: emit structuredContent so MCP clients can validate the
+    // shape without parsing the text dump. The matching outputSchema
+    // is registered with the tool below.
+    CallToolResult r;
+    ContentBlock cb;
+    cb.text = j.dump(2);
+    r.content.push_back(cb);
+    r.structured_content = j;
+    return r;
 }
 
 static CallToolResult apollo_set_project(const json& args, ServerState& state)
@@ -683,8 +692,14 @@ static CallToolResult apollo_set_project(const json& args, ServerState& state)
 
 static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& state)
 {
-    auto j = state.core().list_projects();
-    return CallToolResult::text(j.dump(2));
+    // Phase D: emit structuredContent (array of project objects) so
+    // clients can iterate without parsing the text dump.
+    CallToolResult r;
+    ContentBlock cb;
+    cb.text = state.core().list_projects().dump(2);
+    r.content.push_back(cb);
+    r.structured_content = state.core().list_projects();
+    return r;
 }
 
 static CallToolResult apollo_set_config(const json& args, ServerState& state)
@@ -962,6 +977,7 @@ ToolRegistry build_default_registry()
          schema_search_symbols(),
          "Search code symbols",
          /*read_only_hint*/ true,
+         /*destructive_hint*/ false,
          /*idempotent_hint*/ true},
         apollo_search_symbols);
 
@@ -972,6 +988,7 @@ ToolRegistry build_default_registry()
          schema_get_neighbors(),
          "Get graph neighbors",
          /*read_only_hint*/ true,
+         /*destructive_hint*/ false,
          /*idempotent_hint*/ true},
         apollo_get_neighbors);
 
@@ -981,6 +998,7 @@ ToolRegistry build_default_registry()
          "add_document calls fill it. Fails if a KB already exists at path.",
          schema_create_kb(),
          "Create knowledge base",
+         /*read_only_hint*/ false,
          /*destructive_hint*/ true},
         apollo_create_kb);
 
@@ -990,6 +1008,7 @@ ToolRegistry build_default_registry()
          "open one in this process.",
          schema_open_kb(),
          "Open knowledge base",
+         /*read_only_hint*/ false,
          /*destructive_hint*/ true},
         apollo_open_kb);
 
@@ -1007,7 +1026,20 @@ ToolRegistry build_default_registry()
          schema_get_stats(),
          "Get KB statistics",
          /*read_only_hint*/ true,
-         /*idempotent_hint*/ true},
+         /*destructive_hint*/ false,
+         /*idempotent_hint*/ true,
+         /*open_world_hint*/ false,
+         json{
+             {"type", "object"},
+             {"properties", {
+                 {"documents",     {{"type", "integer"}, {"minimum", 0}}},
+                 {"chunks",        {{"type", "integer"}, {"minimum", 0}}},
+                 {"entities",      {{"type", "integer"}, {"minimum", 0}}},
+                 {"relationships", {{"type", "integer"}, {"minimum", 0}}}
+             }},
+             {"required", {"documents", "chunks", "entities", "relationships"}},
+             {"additionalProperties", false}
+         }},
         apollo_get_stats);
 
     r.register_tool(
@@ -1016,6 +1048,7 @@ ToolRegistry build_default_registry()
          "to this project.",
          schema_set_project(),
          "Set current project",
+         /*read_only_hint*/ false,
          /*destructive_hint*/ true},
         apollo_set_project);
 
@@ -1025,7 +1058,25 @@ ToolRegistry build_default_registry()
          json{{"type","object"},{"properties", json::object()}},
          "List projects",
          /*read_only_hint*/ true,
-         /*idempotent_hint*/ true},
+         /*destructive_hint*/ false,
+         /*idempotent_hint*/ true,
+         /*open_world_hint*/ false,
+         json{
+             {"type", "array"},
+             {"items", {
+                 {"type", "object"},
+                 {"properties", {
+                     {"name",        {{"type", "string"}}},
+                     {"description", {{"type", "string"}}},
+                     {"is_shared",   {{"type", "boolean"}}},
+                     {"owner",       {{"type", "string"}}},
+                     {"created_at",  {{"type", "integer"}, {"description", "Unix epoch seconds"}}},
+                     {"is_current",  {{"type", "boolean"}}}
+                 }},
+                 {"required", {"name", "is_shared", "is_current"}},
+                 {"additionalProperties", true}
+             }}
+         }},
         apollo_list_projects);
 
     r.register_tool(
@@ -1035,6 +1086,7 @@ ToolRegistry build_default_registry()
          "current path. host/port/data_dir cannot be changed at runtime.",
          schema_set_config(),
          "Update model configuration",
+         /*read_only_hint*/ false,
          /*destructive_hint*/ true,
          /*idempotent_hint*/ true},
         apollo_set_config);

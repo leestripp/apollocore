@@ -50,9 +50,27 @@ public:
     /// Mirrors `KB_MCP_OPEN_KB` tool semantics.
     bool open_kb(const std::string& path, const std::string& name);
 
-    /// Get-or-create a session. MCP spec allows omitting session id; we
-    /// generate one on first call when `mcp_session_id` is empty.
-    std::string get_or_create_session(const std::string& mcp_session_id);
+    /// Look up an existing session by id. Returns the id if found,
+/// empty string if unknown. Does NOT create anything. This is the
+/// path the HTTP layer should use for everything except `initialize`
+/// (where auto-create is the spec-allowed behavior).
+std::string find_session(const std::string& mcp_session_id) const;
+
+/// Get-or-create a session. If `mcp_session_id` is empty, a fresh
+/// UUID is minted. If it's non-empty and known, that session is
+/// returned. The behaviour on a *non-empty but unknown* id is
+/// controlled by `auto_create_on_unknown` (default true in this
+/// signature for backwards compatibility):
+///   * true  → create a fresh session with that id (legacy / dev mode)
+///   * false → return empty string (caller MUST respond 400 Bad Request)
+///
+/// Per MCP 2025-11-25 §Transports#Session-Management: "If the server
+/// receives a request with an unknown session ID, the server SHOULD
+/// respond with HTTP 400." We default to strict (auto_create=false)
+/// in production and let dev users opt back into the auto-create
+/// behaviour via APOLLO_AUTO_CREATE_SESSION=1.
+std::string get_or_create_session(const std::string& mcp_session_id,
+                                 bool auto_create_on_unknown = false);
 
     /// Drop sessions idle longer than `idle_ttl`.
     void reap_idle_sessions(std::chrono::seconds idle_ttl);

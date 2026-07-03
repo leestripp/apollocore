@@ -313,11 +313,22 @@ struct HttpServer::Impl {
         }
 
         // Session id (MCP 2025-11-25, optional but we honor it).
+        //
+        // Per spec §Transports#Session-Management:
+        //   * `initialize` MAY be sent without a session id; the server
+        //     creates one and returns it in the response.
+        //   * Subsequent requests MUST include the assigned id; the
+        //     server SHOULD respond with HTTP 400 if the id is unknown.
+        //
+        // We honour both: `pre_init` (set below if this is an
+        // `initialize` call) auto-creates a session; everything else
+        // uses find_session() and 400s on unknown.
         std::string session_id;
         if (auto h = req.header("mcp-session-id")) {
             session_id = std::string(*h);
         }
-        std::string effective_session = state.get_or_create_session(session_id);
+        // Defer session resolution until we know whether this is a
+        // pre-init (initialize) call — pre_init is set just below.
 
         // `pre_init` is true only if the very first message in this body is
         // an `initialize` request and we haven't seen one before in this
@@ -335,6 +346,33 @@ struct HttpServer::Impl {
             if (!parsed.empty() && check_pre_init(parsed.front())) pre_init = true;
         } else {
             pre_init = check_pre_init(parsed);
+        }
+
+        // Session resolution now that we know whether this is an
+        // `initialize` call. pre_init → auto-create (spec-allowed for
+        // initialize); else → strict lookup, 400 on unknown id.
+        std::string effective_session;
+        if (pre_init) {
+            effective_session = state.get_or_create_session(session_id,
+                /*auto_create_on_unknown=*/true);
+        } else {
+            effective_session = state.find_session(session_id);
+            if (session_id.empty()) {
+                // Post-init request with no session id — client error.
+                auto body = make_error(std::nullopt, errc::INVALID_REQUEST,
+                    "MCP-Session-Id header required after initialize").to_json();
+                write_json(resp, 400, body);
+                return;
+            }
+            if (effective_session.empty()) {
+                // Unknown session id. Spec: "the server SHOULD respond
+                // with HTTP 400". Re-init the same session via
+                // /mcp DELETE-then-POST /mcp, or reconnect from scratch.
+                auto body = make_error(std::nullopt, errc::INVALID_REQUEST,
+                    "Unknown MCP-Session-Id").to_json();
+                write_json(resp, 400, body);
+                return;
+            }
         }
 
         if (!check_security(req, resp, effective_session, pre_init)) return;

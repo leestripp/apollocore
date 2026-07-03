@@ -21,6 +21,10 @@ Runs against an already-running apollo_mcp_server on $APOLLO_PORT (default
         * first DELETE → 200
         * second DELETE → 404 (spec §Session-Management)
 
+  D1 — Strict session-id validation (Phase D).
+        * unknown session id → 400
+        * missing session id on post-init request → 400
+
   B1 — GET /mcp SSE endpoint (Phase B1).
         * no SSE Accept        → 405
         * SSE + no session     → 400
@@ -79,6 +83,37 @@ def delete_mcp(sid):
             return resp.status
     except urllib.error.HTTPError as e:
         return e.code
+
+
+# ---------------------------------------------------------------------------
+# D1 — Strict session-id validation
+# ---------------------------------------------------------------------------
+def test_unknown_session_rejected():
+    """An MCP-Session-Id that was never issued (or was DELETE'd) → 400."""
+    bogus = "00000000-0000-4000-8000-000000000000"
+    status, body, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 99, "method": "tools/list", "params": {}},
+        headers={"Mcp-Session-Id": bogus,
+                 "MCP-Protocol-Version": "2025-11-25"},
+        expect_status=400,
+    )
+    msg = body["error"]["message"]
+    assert "Session-Id" in msg or "session" in msg.lower(), \
+        f"error should mention session, got: {msg}"
+    print(f"  D1 unknown session  -> HTTP {status} ({msg[:50]}...) ✓")
+
+
+def test_missing_session_after_init_rejected():
+    """Post-init request with no Mcp-Session-Id header → 400."""
+    status, body, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 99, "method": "tools/list", "params": {}},
+        headers={"MCP-Protocol-Version": "2025-11-25"},
+        expect_status=400,
+    )
+    msg = body["error"]["message"]
+    assert "Session-Id" in msg or "session" in msg.lower(), \
+        f"error should mention session, got: {msg}"
+    print(f"  D1 missing session  -> HTTP {status} ({msg[:50]}...) ✓")
 
 
 # ---------------------------------------------------------------------------
@@ -185,10 +220,11 @@ def test_origin_accepts_localhost():
 # ---------------------------------------------------------------------------
 # A2 — MCP-Protocol-Version header
 # ---------------------------------------------------------------------------
-def test_protocol_version_rejects_unknown():
+def test_protocol_version_rejects_unknown(sid):
     status, body, _ = post_mcp(
         {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
-        headers={"MCP-Protocol-Version": "1999-01-01"},
+        headers={"MCP-Protocol-Version": "1999-01-01",
+                 "Mcp-Session-Id": sid},
         expect_status=400,
     )
     assert body and "error" in body
@@ -198,10 +234,11 @@ def test_protocol_version_rejects_unknown():
     print(f"  A2 unknown ver   -> HTTP {status} ({msg[:60]}...) ✓")
 
 
-def test_protocol_version_accepts_known():
+def test_protocol_version_accepts_known(sid):
     status, body, _ = post_mcp(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {}},
-        headers={"MCP-Protocol-Version": "2025-11-25"},
+        headers={"MCP-Protocol-Version": "2025-11-25",
+                 "Mcp-Session-Id": sid},
         expect_status=200,
     )
     assert body and "result" in body
@@ -225,9 +262,11 @@ def main():
     must_alive()
     test_origin_rejects_evil()
     sid = test_origin_accepts_localhost()
-    test_protocol_version_rejects_unknown()
-    test_protocol_version_accepts_known()
+    test_protocol_version_rejects_unknown(sid)
+    test_protocol_version_accepts_known(sid)
     test_delete_session(sid)
+    test_unknown_session_rejected()
+    test_missing_session_after_init_rejected()
     test_get_mcp_no_sse_accept()
     test_get_mcp_no_session()
     test_get_mcp_sse(sid)
