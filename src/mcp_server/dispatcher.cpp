@@ -164,17 +164,29 @@ json Dispatcher::handle_complete(const JsonRpcRequest& /*req*/)
 // -------------------------------------------------------------------
 // notifications/cancelled (Phase D3)
 // Per spec §Cancellation: client notifies server to cancel an
-// in-flight request. We don't have a token map for active requests
-// today, so this is a no-op acknowledgement. Future: store a map of
-// in-flight tokens and check periodically from long-running tools.
+// in-flight request. The server SHOULD mark the request's cancel
+// flag so long-running tools can interrupt. Tools that don't check
+// the flag will still run to completion — the client should treat
+// cancellation as best-effort.
+//
+// We accept either a `requestId` (number or string) per spec or a
+// `{ requestId, reason? }` wrapped object — handle both shapes.
 // -------------------------------------------------------------------
 void Dispatcher::handle_cancelled(const JsonRpcRequest& req)
 {
-    // Phase D2: recording the cancellation in the state would let
-    // long tools poll it. For now we accept the notification and do
-    // nothing — all our current tools complete well within a second
-    // so cancellation wouldn't help much anyway.
-    (void)req;
+    // Pull requestId from params. Per spec, it can be a string or
+    // integer matching the original `id`. Convert to our canonical
+    // string form so it matches what register_cancel_token stored.
+    std::string rid;
+    if (req.params.is_object() && req.params.contains("requestId")) {
+        const auto& j = req.params["requestId"];
+        if (j.is_string())      rid = j.get<std::string>();
+        else if (j.is_number_integer())
+            rid = std::to_string(j.get<int64_t>());
+    }
+    if (!rid.empty()) {
+        state_.cancel_request(req.session_id, rid);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +229,31 @@ json Dispatcher::handle_tools_call(const JsonRpcRequest& req)
     }
     notify_progress(req.session_id, token, 0.0, std::nullopt);
 
-    auto result = tools_.call(name, args, state_, req.session_id);
+    // Phase D3 — register a cancel token keyed by the canonical
+    // request id. Long tools can poll the atomic and bail. We clear
+    // it in all paths below (success + throw).
+    std::string rid;
+    if (req.id.has_value()) {
+        const auto& v = req.id->value;
+        if (std::holds_alternative<std::string>(v)) {
+            rid = std::get<std::string>(v);
+        } else if (std::holds_alternative<int64_t>(v)) {
+            rid = std::to_string(std::get<int64_t>(v));
+        }
+    }
+    auto cancel_token = state_.register_cancel_token(req.session_id, rid);
+    // (cancel_token is currently unused — Phase D3 plumbing only.
+    //  Future tools accept it via state_.cancel_token_for(sid, rid).)
+
+    CallToolResult result;
+    try {
+        result = tools_.call(name, args, state_, req.session_id);
+    } catch (...) {
+        if (!rid.empty()) state_.clear_cancel_token(req.session_id, rid);
+        notify_progress(req.session_id, token, 1.0, 1.0);
+        throw;
+    }
+    if (!rid.empty()) state_.clear_cancel_token(req.session_id, rid);
 
     notify_progress(req.session_id, token, 1.0, 1.0);
     return result.to_json();

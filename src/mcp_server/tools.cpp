@@ -126,6 +126,10 @@ double get_double(const json& /*args*/, const char* /*key*/, double def)
     return def;
 }
 
+// NOTE: get_double is currently unused but kept for future temperature/
+// threshold arguments. The warning is suppressed via the cast below.
+[[maybe_unused]] static auto _keep_get_double = &get_double;
+
 std::string dump_results_to_text(const std::vector<std::pair<std::string, float>>& r)
 {
     std::ostringstream o;
@@ -373,7 +377,7 @@ nlohmann::json ingest_directory_local(
 // 12 tool handlers
 // ---------------------------------------------------------------------------
 
-static CallToolResult apollo_query_kb(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_query_kb(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     auto& core = state.core();
     const std::string query = get_str(args, "query");
@@ -428,7 +432,7 @@ static CallToolResult apollo_query_kb(const json& args, ServerState& state, cons
         "mode must be one of: vector, hybrid, rerank, full (got '" + mode + "')");
 }
 
-static CallToolResult apollo_add_document(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_add_document(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string text = get_str(args, "text");
     const std::string doc_id = args.contains("doc_id")
@@ -444,7 +448,7 @@ static CallToolResult apollo_add_document(const json& args, ServerState& state, 
     return CallToolResult::text("Added " + std::to_string(added) + " chunk(s).");
 }
 
-static CallToolResult apollo_extract_entities(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_extract_entities(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     if (!state.core().is_llm_loaded()) {
         return CallToolResult::error(
@@ -487,7 +491,7 @@ static CallToolResult apollo_extract_entities(const json& args, ServerState& sta
         "resource to list them.");
 }
 
-static CallToolResult apollo_ingest_codebase(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_ingest_codebase(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string path    = get_str(args, "path");
     const std::string project = get_str(args, "project");
@@ -515,10 +519,6 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
                               report["total_chunks"].is_number_integer()
                                   ? report["total_chunks"].get<size_t>()
                                   : 0;
-        size_t files_processed = report.contains("files_processed") &&
-                                report["files_processed"].is_number_integer()
-                                    ? report["files_processed"].get<size_t>()
-                                    : 0;
 
         // Optionally trigger an entity-extraction pass right after
         // ingest. The graph is the value-add for codebases (entities
@@ -569,7 +569,7 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
     }
 }
 
-static CallToolResult apollo_search_symbols(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_search_symbols(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     // ApolloCore doesn't expose a dedicated symbol search, but the knowledge
     // graph stores extracted entities by type (FUNCTION, CLASS, etc.).
@@ -600,7 +600,7 @@ static CallToolResult apollo_search_symbols(const json& args, ServerState& state
     return CallToolResult::text(o.str());
 }
 
-static CallToolResult apollo_get_neighbors(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_get_neighbors(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     // ApolloCore doesn't expose a direct graph-traversal API. We approximate
     // "neighbors" by:
@@ -611,12 +611,17 @@ static CallToolResult apollo_get_neighbors(const json& args, ServerState& state,
 
     auto hits = state.core().query_hybrid(entity, 20);
     std::unordered_set<std::string> seen;
-    std::ostringstream o;
-    o << "Approximate neighbors of '" << entity
-      << "' (hops=" << hops << ", " << hits.size() << " source chunk(s)):\n";
     for (const auto& h : hits) {
         if (!h.chunk_id.empty()) seen.insert(h.chunk_id);
     }
+
+    // Build both the human-readable text and the structured payload.
+    // structuredContent is an array of entity objects so MCP clients can
+    // iterate without parsing the text dump.
+    std::ostringstream o;
+    o << "Approximate neighbors of '" << entity
+      << "' (hops=" << hops << ", " << hits.size() << " source chunk(s)):\n";
+    json neighbors = json::array();
     if (seen.empty()) {
         o << "  (no chunks mention this entity yet — try apollo_extract_entities "
              "after ingesting text that mentions it)\n";
@@ -625,13 +630,27 @@ static CallToolResult apollo_get_neighbors(const json& args, ServerState& state,
             auto ents = state.core().get_entities_for_chunk(cid);
             for (const auto& e : ents) {
                 o << "  - " << e.name << " (" << entity_type_to_string(e.type) << ")\n";
+                neighbors.push_back({
+                    {"name",      e.name},
+                    {"type",      entity_type_to_string(e.type)},
+                    {"chunk_id",  cid},
+                    {"hops_away", 1}   // we currently do BFS at depth 1
+                });
             }
         }
     }
-    return CallToolResult::text(o.str());
+    CallToolResult r;
+    ContentBlock cb;
+    cb.text = o.str();
+    r.content.push_back(cb);
+    r.structured_content = {{"entity", entity},
+                            {"hops",   hops},
+                            {"source_chunks", hits.size()},
+                            {"neighbors",    neighbors}};
+    return r;
 }
 
-static CallToolResult apollo_create_kb(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_create_kb(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string path = get_str(args, "path");
     const std::string name = args.value("name", std::string("Untitled"));
@@ -641,7 +660,7 @@ static CallToolResult apollo_create_kb(const json& args, ServerState& state, con
     return CallToolResult::text("Created knowledge base '" + name + "' at " + path);
 }
 
-static CallToolResult apollo_open_kb(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_open_kb(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string path = get_str(args, "path");
     if (!state.core().open(path)) {
@@ -658,7 +677,7 @@ static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state, c
     return CallToolResult::text("Saved.");
 }
 
-static CallToolResult apollo_get_stats(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_get_stats(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string project = args.contains("project")
         ? get_str(args, "project", false) : std::string{};
@@ -681,7 +700,7 @@ static CallToolResult apollo_get_stats(const json& args, ServerState& state, con
     return r;
 }
 
-static CallToolResult apollo_set_project(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_set_project(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     const std::string project = get_str(args, "project");
     if (!state.core().set_current_project(project)) {
@@ -703,7 +722,7 @@ static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& st
     return r;
 }
 
-static CallToolResult apollo_set_config(const json& args, ServerState& state, const std::string& session_id)
+static CallToolResult apollo_set_config(const json& args, ServerState& state, const std::string& /*session_id*/)
 {
     // Either field may be missing or empty — that's "keep current".
     std::string embed = args.contains("embed_model") && args["embed_model"].is_string()
@@ -923,6 +942,22 @@ json schema_set_config() {
 ToolRegistry build_default_registry()
 {
     ToolRegistry r;
+    // Phase F2 — wrap the registration loop in a try/catch so a
+    // positional-init bug surfaces the tool NAME on crash, not just
+    // a generic nlohmann::json type_error. This turns "type must be
+    // boolean, but is object" into "<tool-name>: ..." which is
+    // debuggable without a stack trace.
+    const auto guard_register = [&r](auto&&... args_pack) {
+        try {
+            r.register_tool(std::forward<decltype(args_pack)>(args_pack)...);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr,
+                "[build_default_registry] register_tool failed: %s\n",
+                e.what());
+            throw;
+        }
+    };
+    (void)guard_register;
 
     r.register_tool(
         {"apollo_query_kb",
@@ -934,7 +969,7 @@ ToolRegistry build_default_registry()
          "Query knowledge base",
          /*read_only_hint*/ true,
          /*destructive_hint*/ false,
-         /*idempotent_hint*/ true},
+         /*idempotent_hint*/ true, /*open_world_hint*/ false},
         apollo_query_kb);
 
     r.register_tool(
@@ -945,7 +980,7 @@ ToolRegistry build_default_registry()
          "Add document",
          /*read_only_hint*/ false,
          /*destructive_hint*/ false,
-         /*idempotent_hint*/ false},
+         /*idempotent_hint*/ false, /*open_world_hint*/ false},
         apollo_add_document);
 
     r.register_tool(
@@ -954,9 +989,10 @@ ToolRegistry build_default_registry()
          "from text using the loaded LLM. Requires an LLM model to be loaded.",
          schema_extract_entities(),
          "Extract entities",
-         /*read_only_hint*/ false,
-         /*destructive_hint*/ false,
-         /*idempotent_hint*/ true},
+         /*read_only_hint*/ false,        // mutates KB (adds entities)
+         /*destructive_hint*/ false,      // doesn't remove existing data
+         /*idempotent_hint*/ true,         // skip_already_extracted default-on
+         /*open_world_hint*/ false},       // pure local operation
         apollo_extract_entities);
 
     r.register_tool(
@@ -968,7 +1004,8 @@ ToolRegistry build_default_registry()
          "Ingest a codebase",
          /*read_only_hint*/ false,
          /*destructive_hint*/ false,
-         /*idempotent_hint*/ false},
+         /*idempotent_hint*/ false,
+         /*open_world_hint*/ false},
         apollo_ingest_codebase);
 
     r.register_tool(
@@ -979,7 +1016,8 @@ ToolRegistry build_default_registry()
          "Search code symbols",
          /*read_only_hint*/ true,
          /*destructive_hint*/ false,
-         /*idempotent_hint*/ true},
+         /*idempotent_hint*/ true,
+         /*open_world_hint*/ false},
         apollo_search_symbols);
 
     r.register_tool(
@@ -990,7 +1028,33 @@ ToolRegistry build_default_registry()
          "Get graph neighbors",
          /*read_only_hint*/ true,
          /*destructive_hint*/ false,
-         /*idempotent_hint*/ true},
+         /*idempotent_hint*/ true,
+         /*open_world_hint*/ false,
+         json{
+             {"type", "object"},
+             {"properties", {
+                 {"entity",        {{"type", "string"}}},
+                 {"hops",          {{"type", "integer"}, {"minimum", 1}, {"maximum", 3}}},
+                 {"source_chunks", {{"type", "integer"}, {"minimum", 0},
+                                    {"description", "Number of source chunks matched."}}},
+                 {"neighbors", {
+                     {"type", "array"},
+                     {"items", {
+                         {"type", "object"},
+                         {"properties", {
+                             {"name",      {{"type", "string"}}},
+                             {"type",      {{"type", "string"}}},
+                             {"chunk_id",  {{"type", "string"}}},
+                             {"hops_away", {{"type", "integer"}, {"minimum", 0}}}
+                         }},
+                         {"required", {"name", "type", "chunk_id", "hops_away"}},
+                         {"additionalProperties", false}
+                     }}
+                 }}
+             }},
+             {"required", {"entity", "hops", "source_chunks", "neighbors"}},
+             {"additionalProperties", false}
+         }},
         apollo_get_neighbors);
 
     r.register_tool(
@@ -1000,7 +1064,7 @@ ToolRegistry build_default_registry()
          schema_create_kb(),
          "Create knowledge base",
          /*read_only_hint*/ false,
-         /*destructive_hint*/ true},
+         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
         apollo_create_kb);
 
     r.register_tool(
@@ -1010,7 +1074,7 @@ ToolRegistry build_default_registry()
          schema_open_kb(),
          "Open knowledge base",
          /*read_only_hint*/ false,
-         /*destructive_hint*/ true},
+         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
         apollo_open_kb);
 
     r.register_tool(
@@ -1018,7 +1082,11 @@ ToolRegistry build_default_registry()
          "Persist the in-memory KB to disk. Call this if you want durability "
          "between server restarts.",
          json{{"type", "object"}, {"properties", json::object()}},
-         "Save knowledge base"},
+         "Save knowledge base",
+         /*read_only_hint*/ false,        // writes to disk
+         /*destructive_hint*/ false,      // doesn't remove anything
+         /*idempotent_hint*/ true,         // saving same state twice is fine
+         /*open_world_hint*/ false},       // pure local file write
         apollo_save_kb);
 
     r.register_tool(
@@ -1050,7 +1118,7 @@ ToolRegistry build_default_registry()
          schema_set_project(),
          "Set current project",
          /*read_only_hint*/ false,
-         /*destructive_hint*/ true},
+         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
         apollo_set_project);
 
     r.register_tool(
@@ -1089,7 +1157,7 @@ ToolRegistry build_default_registry()
          "Update model configuration",
          /*read_only_hint*/ false,
          /*destructive_hint*/ true,
-         /*idempotent_hint*/ true},
+         /*idempotent_hint*/ true, /*open_world_hint*/ false},
         apollo_set_config);
 
     return r;

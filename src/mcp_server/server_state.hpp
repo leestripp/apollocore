@@ -31,6 +31,12 @@ struct Session {
     std::string project;                         // current project (or "")
     std::string negotiated_version;              // Phase B3 — set by `initialize`
     std::string log_level = "info";              // Phase D2 — set by `logging/setLevel`
+    /// Phase D3 — cancellation token table. The dispatcher registers an
+    /// entry per in-flight `tools/call` (keyed by request id string);
+    /// `notifications/cancelled` flips the atomic to true; the tool
+    /// handler checks it periodically. Removed when the tool returns.
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+        cancel_tokens;
     std::chrono::system_clock::time_point created;
     std::chrono::system_clock::time_point last_used;
 };
@@ -100,6 +106,31 @@ std::string get_or_create_session(const std::string& mcp_session_id,
     /// Look up the session's log level (default "info"). Empty string
     /// if the session is unknown (caller should use the default).
     std::string session_log_level(const std::string& session_id) const;
+
+    // ----- Phase D3 cancellation plumbing -----
+
+    /// Register a cancel token for `request_id` under `session_id`.
+    /// Returns a token the caller can read from the tool handler.
+    /// If the request_id already has a token, the existing one is
+    /// returned (the second tool call with the same id is unusual but
+    /// we don't want to silently leak the first). If the session is
+    /// unknown, returns nullptr.
+    std::shared_ptr<std::atomic<bool>> register_cancel_token(
+        const std::string& session_id,
+        const std::string& request_id);
+
+    /// Mark a registered cancel token as cancelled. Used by
+    /// `notifications/cancelled`. Silently no-op if either id is
+    /// unknown — the spec says cancellation is a best-effort hint.
+    void cancel_request(const std::string& session_id,
+                        const std::string& request_id);
+
+    /// Remove a registered token. Called by the dispatcher after the
+    /// tool handler returns (whether successfully, with error, or
+    /// cancelled). Token destruction is the signal to the writer
+    /// that the slot is freed.
+    void clear_cancel_token(const std::string& session_id,
+                            const std::string& request_id);
 
     /// Search statistics for diagnostics.
     struct Stats {

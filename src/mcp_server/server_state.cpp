@@ -172,6 +172,51 @@ std::string ServerState::session_log_level(const std::string& session_id) const 
     return "info";
 }
 
+// -------------------------------------------------------------------
+// Phase D3 — cancellation token table
+// -------------------------------------------------------------------
+//
+// Each in-flight `tools/call` registers an atomic<bool> token in the
+// session. `notifications/cancelled` flips the matching one to true.
+// Tool handlers that care about cancellation should pass the token
+// into the long-running loop and bail when it flips.
+//
+// Today no tool checks the token — every current tool completes in
+// well under a second. The plumbing is here so when we add a slow
+// path (e.g. multi-GB codebase ingest with progress), cancellation
+// "just works" without touching ServerState's surface.
+
+std::shared_ptr<std::atomic<bool>> ServerState::register_cancel_token(
+    const std::string& session_id,
+    const std::string& request_id)
+{
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) return nullptr;
+    auto& slot = it->second.cancel_tokens[request_id];
+    if (!slot) slot = std::make_shared<std::atomic<bool>>(false);
+    return slot;
+}
+
+void ServerState::cancel_request(const std::string& session_id,
+                                 const std::string& request_id) {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) return;
+    auto cit = it->second.cancel_tokens.find(request_id);
+    if (cit == it->second.cancel_tokens.end()) return;
+    // The map stores shared_ptr<atomic<bool>>; flip the value.
+    if (cit->second) cit->second->store(true);
+}
+
+void ServerState::clear_cancel_token(const std::string& session_id,
+                                     const std::string& request_id) {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) return;
+    it->second.cancel_tokens.erase(request_id);
+}
+
 ServerState::Stats ServerState::snapshot() const
 {
     Stats s{};
