@@ -58,7 +58,10 @@ private:
     // Method handlers
     json handle_initialize(const JsonRpcRequest& req);
     void handle_initialized(const JsonRpcRequest& req);
+    void handle_cancelled(const JsonRpcRequest& req);
     json handle_ping();
+    json handle_set_log_level(const JsonRpcRequest& req);
+    json handle_complete(const JsonRpcRequest& req);
     json handle_tools_list();
     json handle_tools_call(const JsonRpcRequest& req);
     json handle_resources_list();

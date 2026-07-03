@@ -156,6 +156,22 @@ std::string ServerState::negotiated_version(const std::string& session_id) const
     return std::string(security::PINNED_VERSION);
 }
 
+void ServerState::set_session_log_level(const std::string& session_id,
+                                       const std::string& level) {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it != sessions_.end()) {
+        it->second.log_level = level;
+    }
+}
+
+std::string ServerState::session_log_level(const std::string& session_id) const {
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    auto it = sessions_.find(session_id);
+    if (it != sessions_.end()) return it->second.log_level;
+    return "info";
+}
+
 ServerState::Stats ServerState::snapshot() const
 {
     Stats s{};

@@ -35,7 +35,11 @@ JsonRpcResponse Dispatcher::dispatch(const JsonRpcRequest& req)
         // empty response which the caller should NOT send over the wire.
         if (req.method == "initialize")        return make_result(req.id.value(), handle_initialize(req));
         if (req.method == "notifications/initialized") { handle_initialized(req); return {}; }
+        if (req.method == "notifications/cancelled") { handle_cancelled(req); return {}; }
         if (req.method == "ping")              return make_result(req.id.value(), handle_ping());
+        if (req.method == "logging/setLevel")  return make_result(req.id.value(), handle_set_log_level(req));
+        if (req.method == "completion/complete") return make_result(req.id.value(), handle_complete(req));
+        if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list());
         if (req.method == "tools/list")        return make_result(req.id.value(), handle_tools_list());
         if (req.method == "tools/call")        return make_result(req.id.value(), handle_tools_call(req));
         if (req.method == "resources/list")    return make_result(req.id.value(), handle_resources_list());
@@ -117,6 +121,57 @@ void Dispatcher::handle_initialized(const JsonRpcRequest& /*req*/)
 json Dispatcher::handle_ping()
 {
     return json::object();  // empty object is the spec'd response
+}
+
+// -------------------------------------------------------------------
+// logging/setLevel (Phase D2)
+// Per spec §Logging: client MAY set the server's log level.
+// We store it per-session on ServerState and return {} on success.
+// Unknown levels → Invalid Params (per spec §Errors).
+// -------------------------------------------------------------------
+json Dispatcher::handle_set_log_level(const JsonRpcRequest& req)
+{
+    const std::string level = req.params.contains("level") &&
+                              req.params["level"].is_string()
+                              ? req.params["level"].get<std::string>()
+                              : std::string{};
+    if (level != "debug" && level != "info" && level != "warning" &&
+        level != "error") {
+        throw std::invalid_argument("Invalid level: '" + level +
+            "' (must be one of debug|info|warning|error)");
+    }
+    state_.set_session_log_level(req.session_id, level);
+    return json::object();
+}
+
+// -------------------------------------------------------------------
+// completion/complete (Phase D2)
+// Per spec §Completion: provides argument suggestions for prompts
+// or resources. We don't currently have completion data; return an
+// empty completions array. Clients must handle this gracefully —
+// most SDKs treat empty as "no suggestions available right now".
+// -------------------------------------------------------------------
+json Dispatcher::handle_complete(const JsonRpcRequest& /*req*/)
+{
+    // Schema: { ref: {...}, argument: {name, value}, context? }
+    // Return: { completion: { values: [{value, ...meta}], ...meta? } }
+    return json{{"completion", {{"values", json::array()}}}};
+}
+
+// -------------------------------------------------------------------
+// notifications/cancelled (Phase D3)
+// Per spec §Cancellation: client notifies server to cancel an
+// in-flight request. We don't have a token map for active requests
+// today, so this is a no-op acknowledgement. Future: store a map of
+// in-flight tokens and check periodically from long-running tools.
+// -------------------------------------------------------------------
+void Dispatcher::handle_cancelled(const JsonRpcRequest& req)
+{
+    // Phase D2: recording the cancellation in the state would let
+    // long tools poll it. For now we accept the notification and do
+    // nothing — all our current tools complete well within a second
+    // so cancellation wouldn't help much anyway.
+    (void)req;
 }
 
 // ---------------------------------------------------------------------------

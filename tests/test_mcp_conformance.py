@@ -21,6 +21,9 @@ Runs against an already-running apollo_mcp_server on $APOLLO_PORT (default
         * first DELETE → 200
         * second DELETE → 404 (spec §Session-Management)
 
+  D2 — Phase D2 handlers (logging/setLevel, completion/complete,
+        notifications/cancelled) accept correct params and reject bad ones.
+
   D1 — Strict session-id validation (Phase D).
         * unknown session id → 400
         * missing session id on post-init request → 400
@@ -83,6 +86,86 @@ def delete_mcp(sid):
             return resp.status
     except urllib.error.HTTPError as e:
         return e.code
+
+
+# ---------------------------------------------------------------------------
+# D2 — Phase D2 handlers (logging/setLevel + completion/complete +
+# notifications/cancelled)
+# ---------------------------------------------------------------------------
+def test_logging_set_level(sid):
+    status, body, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 10, "method": "logging/setLevel",
+         "params": {"level": "warning"}},
+        headers={"Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25"},
+        expect_status=200,
+    )
+    assert body.get("result") == {}, \
+        f"logging/setLevel expected {{}}, got {body.get('result')!r}"
+    print(f"  D2 logging/setLevel -> 200 {{}} ✓")
+
+
+def test_logging_set_level_rejects_bad_level(sid):
+    """An invalid level must be rejected. Our server wraps the
+    std::invalid_argument throw in a JSON-RPC Invalid Params error
+    (code -32602) returned with HTTP 200 (per JSON-RPC: protocol
+    errors come back on the 200 response envelope)."""
+    status, body, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 11, "method": "logging/setLevel",
+         "params": {"level": "verbose"}},  # not a valid MCP level
+        headers={"Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25"},
+        expect_status=200,  # JSON-RPC errors come back on 200
+    )
+    assert "error" in body, f"expected error, got {body}"
+    assert body["error"]["code"] == -32602, \
+        f"expected -32602 (Invalid Params), got code {body['error']['code']}"
+    msg = body["error"]["message"]
+    assert "level" in msg.lower() or "verbose" in msg, \
+        f"error should mention the level, got: {msg}"
+    print(f"  D2 bad log level    -> code -32602 ({msg[:50]}...) ✓")
+
+
+def test_completion_complete(sid):
+    """completion/complete is a stub today — returns empty completion."""
+    status, body, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 12, "method": "completion/complete",
+         "params": {"ref": {"type": "ref/prompt", "name": "summarize"},
+                    "argument": {"name": "text", "value": ""}}},
+        headers={"Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25"},
+        expect_status=200,
+    )
+    res = body.get("result", {})
+    assert "completion" in res, f"expected completion field, got {res}"
+    assert res["completion"].get("values") == [], \
+        f"expected empty values, got {res['completion']}"
+    print(f"  D2 completion      -> 200, empty values [] ✓")
+
+
+def test_cancelled_notification_ignored(sid):
+    """notifications/cancelled is a no-op acknowledgement. We accept
+    and return no reply (same as notifications/initialized)."""
+    from urllib.request import Request, urlopen
+    import json as _json
+    req = Request(
+        f"{URL}/mcp",
+        data=_json.dumps({"jsonrpc": "2.0",
+                          "method": "notifications/cancelled",
+                          "params": {"requestId": 999}}).encode(),
+        headers={"Content-Type": "application/json", "Accept": "application/json",
+                 "Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25",
+                 "Origin": "http://localhost:3000"})
+    # urlopen + a short read; we expect nothing back.
+    try:
+        urlopen(req, timeout=2).read()
+        # OK either way — the server may or may not return a body.
+    except Exception:
+        pass
+    # A subsequent request still works (server didn't hang).
+    status, _, _ = post_mcp(
+        {"jsonrpc": "2.0", "id": 13, "method": "ping", "params": {}},
+        headers={"Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25"},
+        expect_status=200,
+    )
+    print(f"  D2 cancelled        -> no-op, server still healthy ✓")
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +347,10 @@ def main():
     sid = test_origin_accepts_localhost()
     test_protocol_version_rejects_unknown(sid)
     test_protocol_version_accepts_known(sid)
+    test_logging_set_level(sid)
+    test_logging_set_level_rejects_bad_level(sid)
+    test_completion_complete(sid)
+    test_cancelled_notification_ignored(sid)
     test_delete_session(sid)
     test_unknown_session_rejected()
     test_missing_session_after_init_rejected()

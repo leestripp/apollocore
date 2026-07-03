@@ -30,6 +30,7 @@ struct Session {
     std::string id;
     std::string project;                         // current project (or "")
     std::string negotiated_version;              // Phase B3 — set by `initialize`
+    std::string log_level = "info";              // Phase D2 — set by `logging/setLevel`
     std::chrono::system_clock::time_point created;
     std::chrono::system_clock::time_point last_used;
 };
@@ -86,6 +87,19 @@ std::string get_or_create_session(const std::string& mcp_session_id,
     /// pinned default if unknown. Returns empty string only if the
     /// server's default is unset (shouldn't happen).
     std::string negotiated_version(const std::string& session_id) const;
+
+    /// Phase D2 — record the client's preferred log level for a session
+    /// (via `logging/setLevel`). Stored per-session so concurrent
+    /// clients can have different verbosity. Currently advisory —
+    /// our log output goes to stderr with the OmniNet logger level,
+    /// not per-session. Wire `state_.session_log_level(sid)` into a
+    /// real per-session sink in a future phase.
+    void set_session_log_level(const std::string& session_id,
+                               const std::string& level);
+
+    /// Look up the session's log level (default "info"). Empty string
+    /// if the session is unknown (caller should use the default).
+    std::string session_log_level(const std::string& session_id) const;
 
     /// Search statistics for diagnostics.
     struct Stats {
