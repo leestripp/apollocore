@@ -254,7 +254,16 @@ def test_get_mcp_sse(sid):
                 f"Content-Type={ct!r}"
             assert r.headers.get("Cache-Control") == "no-cache", \
                 f"Cache-Control={r.headers.get('Cache-Control')!r}"
-            assert r.headers.get("Connection") == "keep-alive", \
+            # The MCP SDK and many real-world clients reuse the TCP
+            # socket for follow-up POSTs. Mixing SSE keep-alive writes
+            # on the same socket with POST response bodies racy-
+            # corrupts the JSON-RPC reply (": keepalive\r\n" landed
+            # inside a POST body during E1 SDK testing). We force
+            # Connection: close on the SSE stream so every SSE call is
+            # on its own TCP. Document the choice here; future work:
+            # implement a per-connection write mutex so we can keep
+            # keep-alive without corrupting POSTs.
+            assert r.headers.get("Connection") == "close", \
                 f"Connection={r.headers.get('Connection')!r}"
             assert r.headers.get("X-Accel-Buffering") == "no", \
                 f"X-Accel-Buffering={r.headers.get('X-Accel-Buffering')!r}"

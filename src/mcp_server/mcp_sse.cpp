@@ -147,7 +147,16 @@ void McpSseBridge::on_upgrade(const onh::Request& req, onh::Response& resp) {
     resp.setStatus(StatusCode::OK);
     resp.setContentType("text/event-stream");
     resp.setHeader(std::string_view("Cache-Control"), std::string_view("no-cache"));
-    resp.setHeader(std::string_view("Connection"), std::string_view("keep-alive"));
+    // Per spec §Transports#Streamable-HTTP, the GET /mcp SSE stream is
+    // a *separate* logical channel from POSTs. We force
+    // Connection: close so subsequent POSTs come on a fresh TCP
+    // socket. Without this, the SDK's HTTP keep-alive reuses our
+    // socket and the SDK's POST handler races the SSE writer's
+    // keepalive writes — we'd send ": keepalive\r\n\r\n" in the
+    // middle of the POST response body, corrupting the JSON-RPC
+    // reply. With Connection: close, every SSE call is on its own
+    // TCP and writes are serialized by the kernel.
+    resp.setHeader(std::string_view("Connection"), std::string_view("close"));
     resp.setHeader(std::string_view("X-Accel-Buffering"), std::string_view("no"));  // disable nginx buffering
     // Initial SSE comment. Body must be non-empty (OmniNet's
     // Router::handle will downgrade 200+empty to 404 if it ever sees

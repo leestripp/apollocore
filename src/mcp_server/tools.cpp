@@ -712,13 +712,15 @@ static CallToolResult apollo_set_project(const json& args, ServerState& state, c
 
 static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
-    // Phase D: emit structuredContent (array of project objects) so
-    // clients can iterate without parsing the text dump.
+    // Phase D — emit structuredContent wrapped in an object so MCP
+    // clients can iterate without parsing the text dump. The
+    // matching outputSchema documents the array under "projects".
+    json projects = state.core().list_projects();
     CallToolResult r;
     ContentBlock cb;
-    cb.text = state.core().list_projects().dump(2);
+    cb.text = projects.dump(2);
     r.content.push_back(cb);
-    r.structured_content = state.core().list_projects();
+    r.structured_content = {{"projects", projects}};
     return r;
 }
 
@@ -1131,20 +1133,27 @@ ToolRegistry build_default_registry()
          /*idempotent_hint*/ true,
          /*open_world_hint*/ false,
          json{
-             {"type", "array"},
-             {"items", {
-                 {"type", "object"},
-                 {"properties", {
-                     {"name",        {{"type", "string"}}},
-                     {"description", {{"type", "string"}}},
-                     {"is_shared",   {{"type", "boolean"}}},
-                     {"owner",       {{"type", "string"}}},
-                     {"created_at",  {{"type", "integer"}, {"description", "Unix epoch seconds"}}},
-                     {"is_current",  {{"type", "boolean"}}}
-                 }},
-                 {"required", {"name", "is_shared", "is_current"}},
-                 {"additionalProperties", true}
-             }}
+             {"type", "object"},
+             {"properties", {
+                 {"projects", {
+                     {"type", "array"},
+                     {"items", {
+                         {"type", "object"},
+                         {"properties", {
+                             {"name",        {{"type", "string"}}},
+                             {"description", {{"type", "string"}}},
+                             {"is_shared",   {{"type", "boolean"}}},
+                             {"owner",       {{"type", "string"}}},
+                             {"created_at",  {{"type", "integer"}, {"description", "Unix epoch seconds"}}},
+                             {"is_current",  {{"type", "boolean"}}}
+                         }},
+                         {"required", {"name", "is_shared", "is_current"}},
+                         {"additionalProperties", true}
+                     }}
+                 }}
+             }},
+             {"required", {"projects"}},
+             {"additionalProperties", false}
          }},
         apollo_list_projects);
 
