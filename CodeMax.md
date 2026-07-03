@@ -998,12 +998,7 @@ PRs:
 - `python3 tests/test_mcp_conformance.py` → 5/5 pass
 
 ### Next session
-- **Phase D** (missing handlers: `logging/setLevel`, `completion/complete`,
-  `notifications/cancelled`, `notifications/progress`, default bind host,
-  README no-auth note)
 - **Phase E** (full MCP conformance test suite per modelcontextprotocol/conformance)
-- **Phase F** (cleanup: remove `vendor` from serverInfo, tighten tool
-  annotations)
 
 ### Transport decision: HTTP-only
 We will NOT implement the stdio transport. The MCP spec defines two
