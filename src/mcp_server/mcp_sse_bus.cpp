@@ -140,4 +140,12 @@ std::vector<std::string> McpSseBus::session_ids() const {
     return out;
 }
 
+std::shared_ptr<NotificationQueue>
+McpSseBus::queue_for(const std::string& session_id) const {
+    std::lock_guard<std::mutex> lk(registry_mtx_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) return nullptr;
+    return it->second->queue;
+}
+
 }  // namespace apollo::mcp

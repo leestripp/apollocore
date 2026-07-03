@@ -80,12 +80,13 @@ json ToolRegistry::list() const
 
 CallToolResult ToolRegistry::call(const std::string& name,
                                   const json& args,
-                                  ServerState& state) const
+                                  ServerState& state,
+                                  const std::string& session_id) const
 {
     for (const auto& t : tools_) {
         if (t.def.name == name) {
             try {
-                return t.handler(args, state);
+                return t.handler(args, state, session_id);
             } catch (const std::exception& e) {
                 return CallToolResult::error(
                     std::string("Tool '") + name + "' failed: " + e.what());
@@ -372,7 +373,7 @@ nlohmann::json ingest_directory_local(
 // 12 tool handlers
 // ---------------------------------------------------------------------------
 
-static CallToolResult apollo_query_kb(const json& args, ServerState& state)
+static CallToolResult apollo_query_kb(const json& args, ServerState& state, const std::string& session_id)
 {
     auto& core = state.core();
     const std::string query = get_str(args, "query");
@@ -427,7 +428,7 @@ static CallToolResult apollo_query_kb(const json& args, ServerState& state)
         "mode must be one of: vector, hybrid, rerank, full (got '" + mode + "')");
 }
 
-static CallToolResult apollo_add_document(const json& args, ServerState& state)
+static CallToolResult apollo_add_document(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string text = get_str(args, "text");
     const std::string doc_id = args.contains("doc_id")
@@ -443,7 +444,7 @@ static CallToolResult apollo_add_document(const json& args, ServerState& state)
     return CallToolResult::text("Added " + std::to_string(added) + " chunk(s).");
 }
 
-static CallToolResult apollo_extract_entities(const json& args, ServerState& state)
+static CallToolResult apollo_extract_entities(const json& args, ServerState& state, const std::string& session_id)
 {
     if (!state.core().is_llm_loaded()) {
         return CallToolResult::error(
@@ -486,7 +487,7 @@ static CallToolResult apollo_extract_entities(const json& args, ServerState& sta
         "resource to list them.");
 }
 
-static CallToolResult apollo_ingest_codebase(const json& args, ServerState& state)
+static CallToolResult apollo_ingest_codebase(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string path    = get_str(args, "path");
     const std::string project = get_str(args, "project");
@@ -568,7 +569,7 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
     }
 }
 
-static CallToolResult apollo_search_symbols(const json& args, ServerState& state)
+static CallToolResult apollo_search_symbols(const json& args, ServerState& state, const std::string& session_id)
 {
     // ApolloCore doesn't expose a dedicated symbol search, but the knowledge
     // graph stores extracted entities by type (FUNCTION, CLASS, etc.).
@@ -599,7 +600,7 @@ static CallToolResult apollo_search_symbols(const json& args, ServerState& state
     return CallToolResult::text(o.str());
 }
 
-static CallToolResult apollo_get_neighbors(const json& args, ServerState& state)
+static CallToolResult apollo_get_neighbors(const json& args, ServerState& state, const std::string& session_id)
 {
     // ApolloCore doesn't expose a direct graph-traversal API. We approximate
     // "neighbors" by:
@@ -630,7 +631,7 @@ static CallToolResult apollo_get_neighbors(const json& args, ServerState& state)
     return CallToolResult::text(o.str());
 }
 
-static CallToolResult apollo_create_kb(const json& args, ServerState& state)
+static CallToolResult apollo_create_kb(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string path = get_str(args, "path");
     const std::string name = args.value("name", std::string("Untitled"));
@@ -640,7 +641,7 @@ static CallToolResult apollo_create_kb(const json& args, ServerState& state)
     return CallToolResult::text("Created knowledge base '" + name + "' at " + path);
 }
 
-static CallToolResult apollo_open_kb(const json& args, ServerState& state)
+static CallToolResult apollo_open_kb(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string path = get_str(args, "path");
     if (!state.core().open(path)) {
@@ -649,7 +650,7 @@ static CallToolResult apollo_open_kb(const json& args, ServerState& state)
     return CallToolResult::text("Opened knowledge base at " + path);
 }
 
-static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state)
+static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
     if (!state.core().save()) {
         return CallToolResult::error("save() returned false (no KB open?)");
@@ -657,7 +658,7 @@ static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state)
     return CallToolResult::text("Saved.");
 }
 
-static CallToolResult apollo_get_stats(const json& args, ServerState& state)
+static CallToolResult apollo_get_stats(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string project = args.contains("project")
         ? get_str(args, "project", false) : std::string{};
@@ -680,7 +681,7 @@ static CallToolResult apollo_get_stats(const json& args, ServerState& state)
     return r;
 }
 
-static CallToolResult apollo_set_project(const json& args, ServerState& state)
+static CallToolResult apollo_set_project(const json& args, ServerState& state, const std::string& session_id)
 {
     const std::string project = get_str(args, "project");
     if (!state.core().set_current_project(project)) {
@@ -690,7 +691,7 @@ static CallToolResult apollo_set_project(const json& args, ServerState& state)
     return CallToolResult::text("Switched to project: " + project);
 }
 
-static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& state)
+static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
     // Phase D: emit structuredContent (array of project objects) so
     // clients can iterate without parsing the text dump.
@@ -702,7 +703,7 @@ static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& st
     return r;
 }
 
-static CallToolResult apollo_set_config(const json& args, ServerState& state)
+static CallToolResult apollo_set_config(const json& args, ServerState& state, const std::string& session_id)
 {
     // Either field may be missing or empty — that's "keep current".
     std::string embed = args.contains("embed_model") && args["embed_model"].is_string()

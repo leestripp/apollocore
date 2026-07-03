@@ -45,6 +45,17 @@ public:
     void notify_list_changed(const std::string& kind,
                              const std::string& session_id = "");
 
+    /// Phase D4 — push a `notifications/progress` JSON-RPC notification
+    /// to a session's SSE channel. `progress_token` is an opaque
+    /// client-supplied id from the original request's `_meta.progressToken`
+    /// (we don't track that today — pass anything and the client matches
+    /// by value). `progress` and `total` are doubles; `total` may be nullopt
+    /// for indeterminate progress.
+    void notify_progress(const std::string& session_id,
+                         const std::string& progress_token,
+                         double progress,
+                         std::optional<double> total);
+
     /// Server-side metadata used in `initialize` and `/health`.
     struct Info {
         std::string name = "apollo_mcp_server";

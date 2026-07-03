@@ -99,6 +99,11 @@ public:
     // Dispatcher::notify_list_changed(kind, "") to broadcast to everyone.
     std::vector<std::string> session_ids() const;
 
+    // Resolve the session id of the active request, so server-side
+    // tools can find their queue. Returns nullptr if the session
+    // has no SSE subscribers right now.
+    std::shared_ptr<NotificationQueue> queue_for(const std::string& session_id) const;
+
 private:
     struct Session {
         std::shared_ptr<NotificationQueue> queue;  // shared by all subscribers

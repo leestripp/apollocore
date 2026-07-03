@@ -190,7 +190,33 @@ json Dispatcher::handle_tools_call(const JsonRpcRequest& req)
         throw std::invalid_argument("tools/call requires params.name");
     }
     json args = req.params.value("arguments", json::object());
-    auto result = tools_.call(name, args, state_);
+
+    // Phase D4 — emit `notifications/progress` start/finish so SSE clients
+    // can show a spinner while long tools run. progressToken comes from
+    // the request's `_meta.progressToken` if the client provided one;
+    // otherwise we use the request id as a sensible default so progress
+    // frames can be correlated on the client side.
+    std::string token = "tool-call";
+    if (req.params.contains("_meta") &&
+        req.params["_meta"].is_object() &&
+        req.params["_meta"].contains("progressToken") &&
+        req.params["_meta"]["progressToken"].is_string()) {
+        token = req.params["_meta"]["progressToken"].get<std::string>();
+    } else if (req.id.has_value()) {
+        // JsonRpcId is a std::variant<monostate, int64_t, string>;
+        // pull the inner value if it's a string or int.
+        const auto& v = req.id->value;
+        if (std::holds_alternative<std::string>(v)) {
+            token = "call-" + std::get<std::string>(v);
+        } else if (std::holds_alternative<int64_t>(v)) {
+            token = "call-" + std::to_string(std::get<int64_t>(v));
+        }
+    }
+    notify_progress(req.session_id, token, 0.0, std::nullopt);
+
+    auto result = tools_.call(name, args, state_, req.session_id);
+
+    notify_progress(req.session_id, token, 1.0, 1.0);
     return result.to_json();
 }
 
@@ -279,6 +305,39 @@ void Dispatcher::notify_list_changed(const std::string& kind,
     } else {
         sse_bus_.push(session_id, notification);
     }
+}
+
+// ---------------------------------------------------------------------------
+// notifications/progress (Phase D4)
+// ---------------------------------------------------------------------------
+
+void Dispatcher::notify_progress(const std::string& session_id,
+                                  const std::string& progress_token,
+                                  double progress,
+                                  std::optional<double> total) {
+    if (session_id.empty()) return;  // nowhere to send — silently drop
+    // Spec §Notifications/Progress:
+    //   {
+    //     "jsonrpc": "2.0",
+    //     "method":  "notifications/progress",
+    //     "params":  {
+    //       "progressToken": "abc",
+    //       "progress":      50,
+    //       "total":         100        // optional
+    //     }
+    //   }
+    json notification = {
+        {"jsonrpc", "2.0"},
+        {"method",  "notifications/progress"},
+        {"params", {
+            {"progressToken", progress_token},
+            {"progress",      progress},
+        }},
+    };
+    if (total.has_value()) {
+        notification["params"]["total"] = *total;
+    }
+    sse_bus_.push(session_id, notification);
 }
 
 }  // namespace apollo::mcp

@@ -78,7 +78,14 @@ struct CallToolResult {
     }
 };
 
-using ToolHandler = std::function<CallToolResult(const json& args, ServerState& state)>;
+// ToolHandler receives args + state. The dispatcher wraps the call
+// and also threads the `session_id` through so tools can emit
+// notifications (Phase D4: `notifications/progress`) on the SSE
+// channel for that session. The wrapper passes "" if the session
+// is unknown, in which case notify_* becomes a no-op.
+using ToolHandler = std::function<CallToolResult(const json& args,
+                                                ServerState& state,
+                                                const std::string& session_id)>;
 
 /// Registry of all MCP tools. Built once at startup, queried by the
 /// dispatcher on `tools/list` and `tools/call`.
@@ -93,7 +100,8 @@ public:
     /// returns CallToolResult with `is_error=true` if the tool itself fails.
     CallToolResult call(const std::string& name,
                        const json& args,
-                       ServerState& state) const;
+                       ServerState& state,
+                       const std::string& session_id = "") const;
 
     size_t size() const { return tools_.size(); }
 
