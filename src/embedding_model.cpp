@@ -129,10 +129,11 @@ bool EmbeddingModel::load(const std::string& path, bool use_gpu) {
     // Enable embeddings extraction
     llama_set_embeddings(pimpl->ctx, true);
     
-    printf("Loaded embedding model: %s\n", path.c_str());
-    printf("  Dimensions: %zu\n", dimensions_);
-    printf("  GPU enabled: %s\n", use_gpu ? "yes" : "no");
-    printf("  Has encoder: %s\n", pimpl->has_encoder ? "yes" : "no");
+    // Phase C: stderr-only for stdio transport compatibility.
+    fprintf(stderr, "[apollo_mcp_server] Loaded embedding model: %s\n", path.c_str());
+    fprintf(stderr, "  Dimensions: %zu\n", dimensions_);
+    fprintf(stderr, "  GPU enabled: %s\n", use_gpu ? "yes" : "no");
+    fprintf(stderr, "  Has encoder: %s\n", pimpl->has_encoder ? "yes" : "no");
     
     return true;
 }

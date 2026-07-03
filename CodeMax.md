@@ -143,38 +143,62 @@ define.
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      AI Agent (Claude, Cursor, ...)                 │
-│                   speaks MCP JSON-RPC over HTTP                      │
+│         speaks MCP JSON-RPC over HTTP  OR  over stdio (stdin/stdout) │
 └──────────────────────────────┬──────────────────────────────────────┘
-                               │  POST /mcp   (Streamable HTTP transport)
-                               ▼
+                               │
+        ┌──────────────────────┴──────────────────────┐
+        │ HTTP: POST /mcp  OR  stdio: stdin/stdout    │
+        ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │           apollo_mcp_server  ←  THE ONLY DELIVERABLE                │
+│                                                                     │
+│  CLI: apollo_mcp_server [--transport http|stdio] [http options]     │
+│                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                 OmniNet HTTP+WS server                        │  │
-│  │  Route table:                                                 │  │
-│  │    POST /mcp        → JSON-RPC dispatcher                     │  │
-│  │    GET  /mcp        → SSE stream (optional, 2025-11-25)       │  │
-│  │    GET  /health     → JSON {status:"ok",version,tools}        │  │
-│  │    GET  /info       → Server card-style info                   │  │
-│  │    /*               → admin dashboard (OmniNet built-in)      │  │
+│  │  if --transport stdio:                                       │  │
+│  │    mcp_stdio.cpp: run_stdio_transport()                     │  │
+│  │      - std::getline(std::cin) → line-by-line JSON-RPC        │  │
+│  │      - dispatch_one() → nlohmann::json response              │  │
+│  │      - nullopt → notification (no response written)          │  │
+│  │      - std::cout.flush() after every response line          │  │
+│  │      - all logs → stderr (never stdout)                     │  │
+│  └────────────────────────────┬─────────────────────────────────┘  │
+│  ┌────────────────────────────┴─────────────────────────────────┐  │
+│  │  if --transport http (default):                              │  │
+│  │    OmniNet HTTP server + SSE bridge                          │  │
+│  │    Route table:                                              │  │
+│  │      POST /mcp  → JSON-RPC dispatcher (mcp_dispatch.cpp)     │  │
+│  │      GET  /mcp  → SSE stream (list_changed, progress)       │  │
+│  │      GET  /health → JSON health                             │  │
+│  │      GET  /info   → server info                             │  │
+│  │      GET  /       → web UI static files                     │  │
+│  │      /*           → OmniNet admin dashboard                  │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  McpDispatcher (src/mcp_server/dispatcher.cpp)                 │  │
-│  │    routes JSON-RPC methods → Tool/Resource/Prompt handlers    │  │
+│  │  mcp_dispatch.{hpp,cpp}: dispatch_one()                    │  │
+│  │    Shared JSON-RPC parse/dispatch core. Both transports call │  │
+│  │    this so they can't drift apart.                          │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  ServerState (src/mcp_server/server_state.cpp)                │  │
-│  │    one ApolloCore instance, session_id → project_id map       │  │
+│  │  cursor.{hpp,cpp}: encode/decode cursor for pagination      │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  Tools      (src/mcp_server/tools.cpp)        — 12 tools      │  │
-│  │  Resources  (src/mcp_server/resources.cpp)    —  5 resources  │  │
-│  │  Prompts     (src/mcp_server/prompts.cpp)      —  4 prompts    │  │
+│  │  Dispatcher (dispatcher.cpp)                                 │  │
+│  │    routes JSON-RPC methods → handlers                       │  │
+│  │    tools/list, resources/list, prompts/list → cursor paged   │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  ServerState (server_state.cpp)                            │  │
+│  │    one ApolloCore instance, session → project_id map        │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Tools      (tools.cpp)       — 13 tools (cursor paginated)│  │
+│  │  Resources  (resources.cpp)    —  6 resources               │  │
+│  │  Prompts   (prompts.cpp)      —  4 prompts                  │  │
 │  └──────────────────────┬───────────────────────────────────────┘  │
 └─────────────────────────┼───────────────────────────────────────────┘
                           │  internal link (CMake target)
                           ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│           apollo_core  (INTERNAL static library target)            │
-│            apollo_persistence.hpp / ApolloCore class               │
-│            RAG, hybrid search, KG, entity extraction                │
+│           apollo_core  (INTERNAL static library target)              │
+│  apollo_persistence.hpp / ApolloCore class                           │
+│  RAG, hybrid search, KG, entity extraction                          │
+│  All logging goes to stderr (never stdout) for stdio compat.       │
 └─────────────────────────────────────────────────────────────────────┘
                           │  SQLite + FBIN + llama.cpp
                           ▼
@@ -315,7 +339,7 @@ self-correct. We always return informative strings:
   `cmake --build` to Claude Desktop config, with copy-paste curl commands
   and example responses for every major endpoint.
 
-### **Phase 6 (future) — 2026-07-28 migration prep** 🔲 FUTURE
+### **Phase C (future) — 2026-07-28 migration prep** 🔲 FUTURE
 - Drop `initialize` handshake → add `_meta` per-request
 - Drop `Mcp-Session-Id` → use explicit `session_id` argument in tools
 - Add `Mcp-Method` and `Mcp-Name` HTTP headers
@@ -884,7 +908,7 @@ Working in **priority order**: critical first (spec must-haves), then high (real
      session. On `MCP-Protocol-Version` mismatch, return 400 with the
      version we'd accept.
 
-### Phase C — stdio transport
+### Phase C — stdio transport ✅ DONE (see §Phase C below)
 
 8. **C1 — Add `StdioTransport` class**
    - Same wire format as HTTP body transport; reads JSON-RPC messages line-
@@ -905,7 +929,7 @@ Working in **priority order**: critical first (spec must-haves), then high (real
     cancel-flag map; long-running tool handlers check it periodically
 14. **D4 — `notifications/progress`** emitter: long tools (entity extraction,
     codebase ingest) emit `progress/now/total` updates via the new SSE channel
-15. **D5 — Add `outputSchema` to the structured tools**:
+15. **D5 — Add `outputSchema` to the structured tools** ✅ DONE:
     `apollo_get_stats`, `apollo_list_projects`, `apollo_get_neighbors`
 16. **D6 — Default bind host** to `127.0.0.1`; `--host 0.0.0.0` opt-in for LAN
 17. **D7 — Doc the no-auth limitation** in `README.md` and `/info`
@@ -1000,20 +1024,67 @@ PRs:
 ### Next session
 - **Phase E** (full MCP conformance test suite per modelcontextprotocol/conformance)
 
-### Transport decision: HTTP-only
-We will NOT implement the stdio transport. The MCP spec defines two
-equally-valid transports (stdio and Streamable HTTP) and lets servers
-pick what fits their architecture. ApolloCore is a long-running
-daemon that loads 80 MB embedding + 491 MB LLM models once at startup
-and serves multiple AI agents from one process with shared state.
-stdio would require a fresh process per agent (each one re-loading
-the GGUF models from disk), which defeats the design. Confirmed by
-re-reading the spec §6 ("use stdio for local tools, Streamable HTTP
-for remote/multi-client tools").
+## Phase C — stdio transport ✅ DONE
+
+**Reconsidered and shipped in commit `61998fa`.**
+
+The original "HTTP-only" decision was correct for the *default*, but the
+*option* was still needed: Claude Desktop and other desktop IDE
+integrations use stdio exclusively — they don't have a network to connect
+to an HTTP daemon. ApolloCore must support stdio so it can be used from
+those environments.
+
+Implementation:
+- `--transport stdio` CLI flag (default: `http`). `args.transport` field in
+  `CliArgs`, validated in `parse_args()`.
+- `mcp_stdio.{hpp,cpp}`: `run_stdio_transport(dispatcher, state)` loop —
+  `std::getline(std::cin, line)`, optional `\r` strip, skip empty/comment
+  lines, `nlohmann::json::parse` with parse-error response, `dispatch_one()`
+  for dispatch, `nullopt` for notifications (no response), `std::cout <<
+  resp->dump() << '\n'` + `std::cout.flush()` per response.
+- `mcp_dispatch.{hpp,cpp}`: extracted `dispatch_one()` — shared between HTTP
+  `handle_one()` (now a thin delegate) and stdio's line loop.
+- `main.cpp`: branches on `args.transport == "stdio"` — constructs its own
+  `McpSseBus` + `Dispatcher` (no SSE bridge for stdio) and calls
+  `run_stdio_transport()`. HTTP path unchanged.
+- `src/apollo_persistence.cpp`, `contextual_retrieval.cpp`,
+  `cross_encoder.cpp`, `entity_extractor.cpp`, `hyde.cpp`,
+  `kb_persistence.cpp`, `embedding_model.cpp`, `main.cpp`:
+  all `std::cout` / `printf` replaced with `std::cerr` or `fprintf(stderr, …)`.
+  Without this, library model-load messages would appear on stdout and corrupt
+  the JSON-RPC frame stream in stdio mode.
+- `tests/test_stdio_conformance.py`: `subprocess.communicate()` approach —
+  sends all 4 messages, reads all stdout at once, verifies exactly 3 JSON
+  lines (init, tools/list, ping; notification has no id → no response) and
+  no JSON on stderr.
+
+Verification:
+- `ctest -E test_ingest_codebase` → 19/19 pass (new test_cursor + test_ui_static)
+- `python3 tests/test_stdio_conformance.py` → 4/4 PASS (init, notif, tools/list, ping)
+- `python3 tests/test_mcp_conformance.py` → 27/27 PASS (HTTP still works)
+- `python3 tests/test_sse_streaming.py` → ': connected' + keep-alive PASS
+- `python3 tests/test_pagination.py` → ALL OK (cursor encode/decode, offset 5)
+- `python3 tests/test_auth.py` → ALL OK (no/wrong/right token)
+
+### Phase E5 — cursor pagination ✅ DONE
+
+`tools/list`, `resources/list`, `prompts/list` now support cursor-based
+pagination per MCP spec §8.5:
+- `cursor.{hpp,cpp}`: `encode_cursor(offset: uint32_t) → optional<string>` and
+  `decode_cursor(string) → optional<uint32_t>`. Cursors are base64-encoded
+  uint32 offsets — opaque to the client but self-contained (no server-side
+  cursor state needed).
+- `dispatcher.{hpp,cpp}`: `handle_tools_list(req)`,
+  `handle_resources_list(req)`, `handle_prompts_list(req)` accept an optional
+  `cursor` param, page size 50. Returns `{tools: [...], nextCursor?}` where
+  `nextCursor` is absent at end of list.
+
+New tests: `tests/test_cursor.cpp` (C++ round-trip), `tests/test_pagination.py`
+(Python smoke), `tests/test_auth.py` (Bearer-token HTTP auth).
 
 ---
 
-## Final state — Phase A + B + D + E + F all done
+## Phase D/E/F — all done ✅
 
 All MCP-conformance work is shipped on `main`. The server is
 production-ready except for the items in §Open issues below.
@@ -1055,17 +1126,20 @@ production-ready except for the items in §Open issues below.
 - **F2** Tool annotation tightening ✅
 - **F3** `docs/mcp_compliance.md` conformance matrix ✅
 
-### Test summary (final)
+---
+
+## Current test summary
 ```
-ctest -E test_ingest_codebase          → 18/18
-tests/test_mcp_conformance.py        → 24/24 (A1+A2+A4+D1+D2+B1+E3)
-tests/test_sse_streaming.py          → ': connected' + keep-alive
-tests/test_progress_notification.py  → start + finish progress frames
-tests/test_mcp_sdk.py (official SDK)  → 7/7
-tests/runall.sh (3x stability runs)   → all green, repeatable
+ctest -E test_ingest_codebase          → 19/19 pass
+tests/test_stdio_conformance.py         →  4/4 (init, notif, tools/list, ping)
+tests/test_mcp_conformance.py           → 27/27 (HTTP conformance)
+tests/test_sse_streaming.py             →  ': connected' + keep-alive
+tests/test_pagination.py                →  ALL OK (cursor encode/decode + offset 5)
+tests/test_auth.py                      →  ALL OK (Bearer-token)
+tests/runall.sh (stability runs)         →  all green
 ```
 
----
+```
 
 ## Issues found and fixed during Phase E1 SDK adoption
 
@@ -1132,8 +1206,8 @@ These were real bugs that conformance smoke tests didn't catch:
    When `apollo_ingest_codebase` grows progress emission mid-stream,
    it should poll the token.
 
-5. **No pagination on list methods.** `tools/list`, `resources/list`,
-   and `prompts/list` return all items in one response. With 12 tools,
+5. **Pagination on list methods** ✅ DONE. Cursors are base64-encoded
+   offsets; page size 50 per list method. With 12 tools,
    6 resources, and 4 prompts this is not a problem yet. Per spec §8.5
    this is a SHOULD for large sets — deferred until the tool count
    warrants it.
