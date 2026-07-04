@@ -87,11 +87,15 @@ async function refresh() {
     if (status) status.innerHTML = '<span class="spinner"></span> refreshing…';
 
     try {
-        const [health, info, stats] = await Promise.all([
+        const [health, info, rawStats] = await Promise.all([
             httpJson('/health').catch(() => null),
             httpJson('/info').catch(() => null),
-            readResource('apollo://stats').catch(() => null),
+            callTool('apollo_get_stats', {}).catch(() => null),
         ]);
+        // apollo_get_stats returns {content:[...], structured_content: {documents,...}}
+        const stats = rawStats && rawStats.structured_content
+            ? rawStats.structured_content
+            : null;
 
         renderServer(info, health);
         renderSurface(info, health);
