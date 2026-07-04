@@ -51,7 +51,7 @@ int main() {
         { "js/health.js",       100,  { "renderHealth", "/health" } },
         { "js/search.js",      100,  { "renderSearch", "apollo_query_kb" } },
         { "js/graph.js",       200,  { "renderGraph", "frStep", "Fruchterman" } },
-        { "js/settings.js",    100,  { "renderSettings", "apollo_set_project" } },
+        { "js/settings.js",    100,  { "renderSettings", "deletion units" } },
         { "js/about.js",       100,  { "renderAbout", "mcpServers" } },
     };
 

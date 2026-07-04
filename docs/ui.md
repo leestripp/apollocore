@@ -40,7 +40,7 @@ development).
 Auto-refreshes every 5 seconds. Shows:
 
 - Server card: name, version, protocol (2025-11-25), transport, endpoint.
-- Surface counts: 12 tools, 5 resources, 4 prompts (live numbers).
+- Surface counts: 9 tools, 5 resources, 4 prompts (live numbers).
 - Active project + KB stats (documents, chunks, entities, relationships).
 - Probe panel: round-trip latency of a single `tools/call apollo_get_stats`.
 
@@ -52,7 +52,7 @@ result card shows the chunk id, source document title, content excerpt,
 and per-signal score badges (vector, BM25, graph) plus the fused RRF
 score. Click "Show full" to expand a card. Click the chunk id to copy it.
 
-Tip: open a KB in **Settings** first, and load an embedding model.
+Tip: load an embedding model first, then ingest some documents before searching.
 
 ### Graph
 
@@ -70,8 +70,7 @@ relationships as lines.
 
 Read-mostly view of the server config:
 
-- Projects list (from `apollo://projects`); each has an "Open" button
-  that calls `apollo_set_project`.
+- Projects list (from `apollo://projects`); read-only view of project tags and their stats.
 - Live server config (host, port, capabilities, model paths).
 - Build info (MCP protocol, vendor, server version).
 

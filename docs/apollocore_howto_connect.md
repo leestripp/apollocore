@@ -1,7 +1,7 @@
 # ApolloCore MCP Server — How To Connect
 
 A guide for AI-agent developers. Shows how to connect, initialize a session, and call the
-13 tools / read the 6 resources / render the 4 prompts that ApolloCore exposes.
+9 tools / read the 5 resources / render the 4 prompts that ApolloCore exposes.
 
 ---
 
@@ -17,7 +17,7 @@ The server speaks two transports. Pick one.
 
 # Probe:
 curl http://127.0.0.1:8765/health
-# → {"status":"ok","tools":13,"prompts":4,"resources":6, ...}
+# → {"status":"ok","tools":9,"prompts":4,"resources":6, ...}
 ```
 
 Default bind is `127.0.0.1:8765` (loopback only — safe default per MCP spec §6.2).
@@ -79,7 +79,7 @@ Response body includes:
     "protocolVersion":"2025-11-25",
     "serverInfo":{"name":"apollo_mcp_server","title":"ApolloCore MCP Server","version":"1.0.0"},
     "capabilities":{"logging":{},"prompts":{},"resources":{"subscribe":false},"tools":{}},
-    "instructions":"ApolloCore is a local-first RAG knowledge base. Use apollo_query_kb to search, apollo_add_document to ingest text, apollo_ingest_codebase for code directories, and apollo_search_symbols for code symbol lookup. Set the active project with apollo_set_project before reading."
+    "instructions":"ApolloCore is a local-first RAG knowledge base. There is exactly ONE knowledge base, fixed at startup — no tool can change it. Use apollo_query_kb to search across every project, apollo_add_document / apollo_ingest_codebase to ingest text or code (pass project per call to tag the source), apollo_search_symbols for code symbol lookup, and apollo_get_neighbors for the knowledge graph. Projects are tags for provenance and bulk deletion — not isolation units; every chunk is part of the same shared pool."
   }
 }
 ```
@@ -105,7 +105,7 @@ curl ... -d '{"jsonrpc":"2.0","id":3,"method":"resources/list"}'
 curl ... -d '{"jsonrpc":"2.0","id":4,"method":"prompts/list"}'
 ```
 
-Server returns 13 tools, 6 resources, 4 prompts at the time of writing — see §5 below.
+Server returns 9 tools, 5 resources, 4 prompts at the time of writing — see §5 below.
 The list grows over time, so always re-query rather than hard-coding tool names.
 
 `tools/list`, `resources/list`, `prompts/list` all honor the **cursor** parameter:
@@ -129,12 +129,8 @@ Page size is 50; the next cursor is in `result.nextCursor`. End-of-list = no
 | `apollo_ingest_codebase` | Walk a source directory; tree-sitter for code (FUNCTION/CLASS/namespaces), chunked embeddings for everything else. **Long-running** — supports cancellation via `notifications/cancelled`. | no |
 | `apollo_search_symbols` | Find code symbols by name. Faster + more precise than `query_kb` for symbols. | yes |
 | `apollo_get_neighbors` | Entity-graph traversal. `hops=1..3`. | yes |
-| `apollo_create_kb` | Create a new KB at a given path. Errors if a KB exists. | no, destructive |
-| `apollo_open_kb` | Replace the currently-open KB with one from disk. | no, destructive |
-| `apollo_save_kb` | Persist in-memory KB to disk. | no |
-| `apollo_get_stats` | Count documents / chunks / entities / relationships (filterable by project). | yes |
-| `apollo_set_project` | Switch the active project — scopes all subsequent reads/writes. | no, destructive |
-| `apollo_list_projects` | List all projects in the current KB. Result is `{"projects":[{"name","description","is_shared","owner","created_at","is_current"}]}`. | yes |
+| `apollo_get_stats` | Count documents / chunks / entities / relationships. Always global — counts span every project in the single global KB. Also returns a projects[] array with per-project breakdown. | yes |
+| `apollo_list_projects` | List all projects in the single global KB. Result is `{"projects":[{"name","chunks","documents","entities","relationships"}]}`. | yes |
 | `apollo_set_config` | Hot-reload embed/LLM model paths; persists to `<data-dir>/config.json`. | no, destructive |
 
 Every tool has an `outputSchema` for validated `structuredContent`. **Always check
@@ -219,7 +215,7 @@ curl -X POST http://127.0.0.1:8765/mcp \
   -d '{
         "jsonrpc":"2.0","id":7,"method":"prompts/get",
         "params":{"name":"answer_with_citations",
-                  "arguments":{"question":"what does apollo_save_kb do?"}}
+                  "arguments":{"question":"how does hybrid search work in apollo_query_kb"}}
       }'
 ```
 

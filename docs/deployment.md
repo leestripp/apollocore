@@ -93,10 +93,9 @@ Full tour in [`docs/ui.md`](ui.md).
 
 Tools exposed as MCP tools (also clickable in the UI):
 
-- `apollo_create_kb` / `apollo_open_kb` / `apollo_save_kb`
-- `apollo_set_project` / `apollo_list_projects`
-- `apollo_add_document` / `apollo_query_kb`
+- `apollo_list_projects` / `apollo_add_document` / `apollo_query_kb`
 - `apollo_ingest_codebase` / `apollo_extract_entities`
+- `apollo_search_symbols` / `apollo_get_neighbors` / `apollo_get_stats`
 
 ### Logs
 

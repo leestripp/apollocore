@@ -81,7 +81,7 @@ List tools:
 curl -s -X POST http://127.0.0.1:8765/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
-# → 12
+# → 9
 ```
 
 List resources:
@@ -101,36 +101,13 @@ curl -s -X POST http://127.0.0.1:8765/mcp \
 # → "summarize_kb" "answer_with_citations" "code_review_summary" "entity_research"
 ```
 
----
-
-## 4. Create a knowledge base
+## 4. Add a document
 
 ```bash
 curl -s -X POST http://127.0.0.1:8765/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   -d '{
     "jsonrpc":"2.0","id":5,"method":"tools/call",
-    "params":{"name":"apollo_create_kb",
-              "arguments":{"path":"data/quickstart/kb","name":"quickstart"}}
-  }'
-```
-
-```json
-{"id":5,"jsonrpc":"2.0",
- "result":{"content":[{"type":"text",
-   "text":"Created knowledge base 'quickstart' at data/quickstart/kb"}]}}
-```
-
----
-
-## 5. Add a document
-
-```bash
-curl -s -X POST http://127.0.0.1:8765/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":6,"method":"tools/call",
-    "params":{"name":"apollo_add_document",
               "arguments":{
                 "text":"ApolloCore is a C++23 RAG library. It supports vector search, BM25 keyword search, knowledge graphs, and LLM-powered query enhancement. The project is built on llama.cpp.",
                 "doc_id":"intro","chunk_size":512
@@ -139,14 +116,24 @@ curl -s -X POST http://127.0.0.1:8765/mcp \
 ```
 
 ```json
-{"id":6,"jsonrpc":"2.0",
+{"id":5,"jsonrpc":"2.0",
+ "result":{"content":[{"type":"text","text":"Added 1 chunk(s)."}]}}
  "result":{"content":[{"type":"text","text":"Added 1 chunk(s)."}]}}
 ```
 
 ---
 
-## 6. Query the KB
+## 5. Query the KB
+    "jsonrpc":"2.0","id":6,"method":"tools/call",
+    "params":{"name":"apollo_query_kb",
+              "arguments":{"query":"What is ApolloCore?","mode":"hybrid","top_k":3}}
+  }'
+```
 
+```json
+{"id":6,"jsonrpc":"2.0",
+ "result":{"content":[{"type":"text",
+   "text":"Hybrid search returned 3 result(s):\n  [1] (score 0.5, chunk ...)\n      ApolloCore is a C++23 RAG library. ..."}]}}
 ```bash
 curl -s -X POST http://127.0.0.1:8765/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
@@ -167,32 +154,32 @@ curl -s -X POST http://127.0.0.1:8765/mcp \
 
 ---
 
-## 7. Read a resource
+## 6. Read a resource
 
 ```bash
 curl -s -X POST http://127.0.0.1:8765/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   -d '{
-    "jsonrpc":"2.0","id":8,"method":"resources/read",
+    "jsonrpc":"2.0","id":7,"method":"resources/read",
     "params":{"uri":"apollo://stats"}
   }'
 ```
 
 ```json
-{"id":8,"jsonrpc":"2.0",
+{"id":7,"jsonrpc":"2.0",
  "result":{"contents":[{"mimeType":"application/json","uri":"apollo://stats",
    "text":"{\n  \"chunks\": 1,\n  \"documents\": 1,\n  \"entities\": 0,\n  \"relationships\": 0\n}"}]}}
 ```
 
 ---
 
-## 8. Get a prompt
+## 7. Get a prompt
 
 ```bash
 curl -s -X POST http://127.0.0.1:8765/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   -d '{
-    "jsonrpc":"2.0","id":9,"method":"prompts/get",
+    "jsonrpc":"2.0","id":8,"method":"prompts/get",
     "params":{"name":"answer_with_citations","arguments":{"question":"What is ApolloCore?"}}
   }'
 ```
@@ -202,7 +189,7 @@ LLM as the conversation's user turn.
 
 ---
 
-## 9. Configure your agent
+## 8. Configure your agent
 
 For Claude Desktop, edit `~/.config/Claude/claude_desktop_config.json`:
 
@@ -217,7 +204,7 @@ For Claude Desktop, edit `~/.config/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop. In any new conversation, the 12 `apollo_*` tools
+Restart Claude Desktop. In any new conversation, the 9 `apollo_*` tools
 will appear automatically. The agent can now answer questions, ingest
 documents, and walk codebases by calling them.
 
@@ -229,7 +216,7 @@ For Cline / Continue / Windsurf: similar — consult their docs for
 
 ---
 
-## 10. Health check
+## 9. Health check
 
 For docker/k8s liveness probes (not an MCP method — pure HTTP):
 
@@ -243,7 +230,7 @@ curl -s http://127.0.0.1:8765/health | jq
   "name":"apollo_mcp_server",
   "version":"1.0.0",
   "protocol":"2025-11-25",
-  "tools":12, "resources":5, "prompts":4,
+  "tools":9, "resources":5, "prompts":4,
   "sessions":0, "documents":0, "chunks":0, "entities":0
 }
 ```

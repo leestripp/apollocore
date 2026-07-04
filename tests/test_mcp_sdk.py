@@ -72,15 +72,14 @@ async def test_sdk_list_tools():
             await session.initialize()
             result = await session.list_tools()
             names = {t.name for t in result.tools}
-            # We ship 13 tools per Phase 3
-            assert len(names) == 13, \
-                f"expected 13 tools, got {len(names)}: {names}"
+            # We ship 9 tools (4 KB-lifecycle tools removed per prompt.txt).
+            assert len(names) == 9, \
+                f"expected 9 tools, got {len(names)}: {names}"
             expected = {
                 "apollo_query_kb", "apollo_add_document",
                 "apollo_extract_entities", "apollo_ingest_codebase",
                 "apollo_search_symbols", "apollo_get_neighbors",
-                "apollo_create_kb", "apollo_open_kb", "apollo_save_kb",
-                "apollo_get_stats", "apollo_set_project",
+                "apollo_get_stats",
                 "apollo_list_projects", "apollo_set_config",
             }
             assert names == expected, \

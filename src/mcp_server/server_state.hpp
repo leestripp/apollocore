@@ -59,6 +59,19 @@ public:
     /// Mirrors `KB_MCP_OPEN_KB` tool semantics.
     bool open_kb(const std::string& path, const std::string& name);
 
+    /// Open the knowledge base if a previous run left `apollo.db` under
+    /// `path`; otherwise create a fresh one. This is the *only* way the KB
+    /// is brought online — there is no longer an MCP tool to move or
+    /// recreate it. The agent can never change which KB the server is
+    /// bound to after this returns.
+    ///
+    /// Logs a single line to stderr describing which path it took
+    /// ("opened existing" or "created new") so operators can audit.
+    ///
+    /// Returns true iff the KB is open after the call.
+    bool try_open_or_create_kb(const std::string& path,
+                               const std::string& display_name = "default");
+
     /// Look up an existing session by id. Returns the id if found,
 /// empty string if unknown. Does NOT create anything. This is the
 /// path the HTTP layer should use for everything except `initialize`

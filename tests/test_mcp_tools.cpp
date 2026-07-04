@@ -64,22 +64,10 @@ int main()
         }}
     });
 
-    // ---- T1: apollo_create_kb ----
+    // ---- T1: apollo_add_document (KB auto-opened at startup) ----
     {
         json r = call(json{
             {"jsonrpc","2.0"},{"id",11},{"method","tools/call"},
-            {"params",{
-                {"name","apollo_create_kb"},
-                {"arguments",{{"path", kb_dir.string()},{"name","sample"}}}
-            }}
-        });
-        APOLLO_ASSERT(!is_err(r), "create_kb: should succeed");
-    }
-
-    // ---- T2: apollo_add_document ----
-    {
-        json r = call(json{
-            {"jsonrpc","2.0"},{"id",12},{"method","tools/call"},
             {"params",{
                 {"name","apollo_add_document"},
                 {"arguments",{
@@ -94,7 +82,7 @@ int main()
                       "add_document: should mention chunks");
     }
 
-    // ---- T3: apollo_query_kb with no embedding model — accept either outcome ----
+    // ---- T2: apollo_query_kb with no embedding model — accept either outcome ----
     {
         json r = call(json{
             {"jsonrpc","2.0"},{"id",13},{"method","tools/call"},
@@ -106,7 +94,7 @@ int main()
         APOLLO_ASSERT(r.contains("result"), "query_kb: no result");
     }
 
-    // ---- T4: apollo_get_stats returns JSON object as text ----
+    // ---- T3: apollo_get_stats returns JSON object as text ----
     {
         json r = call(json{
             {"jsonrpc","2.0"},{"id",14},{"method","tools/call"},
@@ -122,7 +110,7 @@ int main()
                       "stats: missing 'documents'");
     }
 
-    // ---- T5: resources/read apollo://stats works ----
+    // ---- T4: resources/read apollo://stats works ----
     {
         json r = call(json{
             {"jsonrpc","2.0"},{"id",15},{"method","resources/read"},
@@ -132,7 +120,7 @@ int main()
         APOLLO_ASSERT(!r["result"]["contents"].empty(), "stats resource: empty");
     }
 
-    // ---- T6: prompts/get summarize_kb returns messages ----
+    // ---- T5: prompts/get summarize_kb returns messages ----
     {
         json r = call(json{
             {"jsonrpc","2.0"},{"id",16},{"method","prompts/get"},

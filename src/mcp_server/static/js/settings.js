@@ -10,7 +10,7 @@
 //     persisted to config.json so the next start picks it up.
 //   • Diagnostics — verbose logging + default search mode. Both
 //     hot-reloadable; no restart needed.
-//   • Projects — switch the active project.
+//   • Projects — view project tags (read-only).
 //
 // What's NOT here:
 //   • Read-only diagnostics (host, port, sessions, build info) live on
@@ -75,8 +75,8 @@ export async function renderSettings(panel) {
                 Projects here are <strong>tags for provenance and bulk deletion</strong>
                 &mdash; they do not isolate data, they just remember where
                 ingested data came from and let you wipe one project at a
-                time when you no longer need it. The "Open" button below
-                sets the tag that new ingestions will stamp by default.
+                time when you no longer need it. Projects are created
+                automatically when you ingest data with a new project name.
             </p>
             <div id="settings-projects"></div>
         </div>
@@ -349,56 +349,47 @@ export async function renderSettings(panel) {
         }
     }
 
-    // ── Projects ──────────────────────────────────────────────────
+    // ── Projects (read-only list) ──────────────────────────────────────
     function renderProjects(raw) {
         const host = document.getElementById('settings-projects');
         let list = [];
-        let active = null;
         if (Array.isArray(raw)) {
             list = raw;
         } else if (raw && typeof raw === 'object') {
             list = raw.projects ?? raw.items ?? [];
-            active = raw.active ?? raw.current ?? null;
         }
 
         if (list.length === 0) {
             host.innerHTML = `
                 <div class="empty">
                     <h3>No projects yet</h3>
-                    <p>Create one with the <code>apollo_create_kb</code> tool or via the CLI.</p>
+                    <p>Projects are created automatically when you ingest data with a
+                    new project name (use the <code>project</code> arg on
+                    <code>apollo_add_document</code> or
+                    <code>apollo_ingest_codebase</code>).</p>
                 </div>`;
             return;
         }
 
-        host.innerHTML = list.map(p => {
-            const name = p.name ?? p.id ?? '(unnamed)';
-            const isActive = (active && active === name) || p.is_active;
-            return `
-                <div class="row" style="padding: 8px 0; border-bottom: 1px solid var(--border);">
-                    <span class="badge ${isActive ? 'badge-ok' : ''}">${isActive ? 'active' : 'idle'}</span>
-                    <strong>${escapeHtml(name)}</strong>
-                    <span class="muted">${escapeHtml(p.description ?? '')}</span>
-                    <span class="spacer"></span>
-                    <button data-set-project="${escapeHtml(name)}">${isActive ? 'Open (active)' : 'Open'}</button>
-                </div>
-            `;
-        }).join('');
-
-        host.querySelectorAll('[data-set-project]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const name = btn.dataset.setProject;
-                btn.disabled = true;
-                try {
-                    await callTool('apollo_set_project', { project_name: name });
-                    toast(`Switched to ${name}`);
-                    await load();
-                } catch (e) {
-                    toast(`Switch failed: ${e.message}`, 'err');
-                } finally {
-                    btn.disabled = false;
-                }
-            });
-        });
+        host.innerHTML = `<table class="kv" style="width:100%;">
+            <thead><tr>
+                <th>Project</th>
+                <th>Documents</th>
+                <th>Chunks</th>
+                <th>Entities</th>
+                <th>Relations</th>
+            </tr></thead>
+            <tbody>
+            ${list.map(p => `
+                <tr>
+                    <td><strong>${escapeHtml(p.name ?? p.id ?? '(unnamed)')}</strong></td>
+                    <td>${p.documents ?? 0}</td>
+                    <td>${p.chunks ?? 0}</td>
+                    <td>${p.entities ?? 0}</td>
+                    <td>${p.relationships ?? 0}</td>
+                </tr>`).join('')}
+            </tbody>
+        </table>`;
     }
 }
 

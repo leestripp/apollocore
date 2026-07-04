@@ -99,10 +99,8 @@ int main()
         APOLLO_ASSERT(r.contains("result"), "tools/list: no result");
         const auto& arr = r["result"]["tools"];
         APOLLO_ASSERT(arr.is_array(),         "tools/list: not an array");
-        // Count was 12 (test predates apollo_set_config); now 13. Assert
-        // a sane lower bound so the test stays meaningful without breaking
-        // each time a new tool is added.
-        APOLLO_ASSERT(arr.size() >= 12,       "tools/list: fewer than 12 tools");
+        // With 4 KB-lifecycle tools removed: 9 tools remain.
+        APOLLO_ASSERT(arr.size() >= 9,        "tools/list: fewer than 9 tools");
         // Check that all tools have a non-empty description.
         for (const auto& t : arr) {
             APOLLO_ASSERT(t.contains("name"),        "tool: no name");
@@ -144,34 +142,33 @@ int main()
     }
 
     // ---- Test 6: unknown method returns JSON-RPC error ----
-    std::cout << "[test] unknown method → -32601...\n";
+    std::cout << "[test] unknown method --> -32601...\n";
     {
         json r = call(d, R"({"jsonrpc":"2.0","id":6,"method":"nope/not_real"})");
         APOLLO_ASSERT(r.contains("error"),    "unknown: no error");
         APOLLO_ASSERT(r["error"]["code"] == -32601, "unknown: wrong code");
     }
 
-    // ---- Test 7: tools/call apollo_create_kb then apollo_get_stats ----
-    std::cout << "[test] end-to-end: create KB + stats...\n";
+    // ---- Test 7: tools/call apollo_add_document then apollo_get_stats ----
+    std::cout << "[test] end-to-end: add doc + global stats...\n";
     {
-        // Create KB.
-        std::string create_req = std::string(R"({
-            "jsonrpc":"2.0","id":7,"method":"tools/call",
-            "params":{"name":"apollo_create_kb",
-                      "arguments":{"path":")") + kb_path + R"(","name":"t"}}
-        })";
-        json r1 = call(d, create_req);
-        APOLLO_ASSERT(!is_error_result(r1), "create_kb: error result");
-        APOLLO_ASSERT(r1["result"]["content"][0]["text"].get<std::string>().find("Created") != std::string::npos,
-                      "create_kb: no 'Created' in result");
+        // Add a document (KB is auto-opened at startup by the test harness).
+        json r1 = call(d,
+            R"({"jsonrpc":"2.0","id":7,"method":"tools/call",)"
+            R"("params":{"name":"apollo_add_document",)"
+            R"("arguments":{"text":"dispatcher test doc one","project":"dispatcher-test"}}})");
+        APOLLO_ASSERT(!is_error_result(r1), "add_document: error result");
+        APOLLO_ASSERT(r1["result"]["content"][0]["text"].get<std::string>().find("chunk") != std::string::npos,
+                      "add_document: no 'chunk' in result");
 
-        // Stats.
-        json r2 = call(d, R"({"jsonrpc":"2.0","id":8,"method":"tools/call",
-            "params":{"name":"apollo_get_stats","arguments":{}}})");
+        // Global stats (no project filter).
+        json r2 = call(d,
+            R"({"jsonrpc":"2.0","id":8,"method":"tools/call",)"
+            R"("params":{"name":"apollo_get_stats","arguments":{}}})");
         APOLLO_ASSERT(!is_error_result(r2), "get_stats: error");
     }
 
-    // ---- Test 8: tools/call with unknown tool name → result isError=true ----
+    // ---- Test 8: tools/call with unknown tool name --> result isError=true ----
     std::cout << "[test] unknown tool returns isError=true result...\n";
     {
         json r = call(d, R"({"jsonrpc":"2.0","id":9,"method":"tools/call",
@@ -180,8 +177,8 @@ int main()
                       "unknown tool: should be isError=true");
     }
 
-    // ---- Test 9: tools/call with missing required arg → isError=true ----
-    std::cout << "[test] missing required arg → isError=true...\n";
+    // ---- Test 9: tools/call with missing required arg --> isError=true ----
+    std::cout << "[test] missing required arg --> isError=true...\n";
     {
         json r = call(d, R"({"jsonrpc":"2.0","id":10,"method":"tools/call",
             "params":{"name":"apollo_query_kb","arguments":{}}})");
@@ -189,10 +186,10 @@ int main()
                       "missing arg: should be isError=true");
     }
 
-    // ---- Test 10: notification → empty response (no id, no result, no error) ----
-    std::cout << "[test] notification → no response payload...\n";
+    // ---- Test 10: notification --> empty response (no id, no result, no error) ----
+    std::cout << "[test] notification --> no response payload...\n";
     {
-        // notifications/initialized — we configured the dispatcher to NOT
+        // notifications/initialized -- we configured the dispatcher to NOT
         // send a response for notifications.
         auto parsed = apollo::mcp::parse_request(
             R"({"jsonrpc":"2.0","method":"notifications/initialized"})");

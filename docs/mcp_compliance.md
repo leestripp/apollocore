@@ -63,11 +63,7 @@ Legend: ✅ done · 🟡 partial / documented deviation · ❌ not yet · 🚫 N
 | `apollo_ingest_codebase`    | ✅          | ❌ text      | non-readOnly                                 |
 | `apollo_search_symbols`     | ✅          | ❌ text      | readOnly, idempotent                         |
 | `apollo_get_neighbors`      | ✅          | ✅ structured | readOnly, idempotent                         |
-| `apollo_create_kb`          | ✅          | ❌ text      | destructive                                  |
-| `apollo_open_kb`            | ✅          | ❌ text      | destructive                                  |
-| `apollo_save_kb`            | ✅          | ❌ text      | non-readOnly, idempotent                     |
 | `apollo_get_stats`          | ✅          | ✅ structured | readOnly, idempotent                         |
-| `apollo_set_project`        | ✅          | ❌ text      | destructive                                  |
 | `apollo_list_projects`      | ✅          | ✅ structured | readOnly, idempotent                         |
 | `apollo_set_config`         | ✅          | ❌ text      | destructive, idempotent                      |
 

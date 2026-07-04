@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <random>
 #include <set>
 #include <sstream>
@@ -97,6 +98,35 @@ bool contains_dir(const std::vector<fs::path>& v, const fs::path& p) {
 bool ServerState::open_kb(const std::string& path, const std::string& name)
 {
     return core_->create(path, name);
+}
+
+bool ServerState::try_open_or_create_kb(const std::string& path,
+                                       const std::string& display_name)
+{
+    namespace fs = std::filesystem;
+
+    // We use the SQLite file as the "does a KB already live here?" marker.
+    // If it's there we open the existing KB; otherwise we create a new one
+    // with the default project registered. Either way, the result is the
+    // same one-KB-at-this-path state.
+    const fs::path db_file = fs::path(path) / "apollo.db";
+    const bool has_existing = fs::exists(db_file);
+
+    bool ok = false;
+    if (has_existing) {
+        ok = core_->open(path);
+        if (ok) {
+            std::cerr << "[apollo_mcp_server] KB opened (existing): "
+                      << path << "\n";
+        }
+    } else {
+        ok = core_->create(path, display_name);
+        if (ok) {
+            std::cerr << "[apollo_mcp_server] KB created (new): "
+                      << path << "\n";
+        }
+    }
+    return ok;
 }
 
 std::string ServerState::find_session(const std::string& mcp_session_id) const

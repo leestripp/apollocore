@@ -3,7 +3,7 @@
 A C++23 MCP (Model Context Protocol) server that exposes a local
 retrieval-augmented knowledge base to AI agents. Any MCP-aware client —
 Claude Desktop, Cursor, Cline, Windsurf, Continue.dev — points at it and
-gets 12 ready-made tools, 5 resources, and 4 pre-built prompts for searching,
+gets 9 ready-made tools, 5 resources, and 4 pre-built prompts for searching,
 ingesting, and walking documents and codebases.
 
 ```text
@@ -80,7 +80,7 @@ The server is now listening on `http://0.0.0.0:8765`. Probe it:
 
 ```bash
 curl -s http://127.0.0.1:8765/health | jq
-# → { "status": "ok", "tools": 12, "resources": 5, "prompts": 4, ... }
+# → { "status": "ok", "tools": 9, "resources": 5, "prompts": 4, ... }
 ```
 
 ### One-liner auto-start (recommended for agents, CI, distrobox)
@@ -211,7 +211,9 @@ Any MCP client with the Streamable HTTP transport works.
 }
 ```
 
-Restart Claude Desktop. The 12 `apollo_*` tools appear in every conversation.
+Restart Claude Desktop. In any new conversation, the 9 `apollo_*` tools
+will appear automatically. The agent can now answer questions, ingest
+documents, and walk codebases by calling them.
 
 **Cursor / Cline / Windsurf / Continue.dev** — add an MCP server entry with
 URL `http://127.0.0.1:8765/mcp`. Exact location varies by client; consult
@@ -233,12 +235,9 @@ annotations so the model knows what's safe.
 | `apollo_ingest_codebase` | Walk a directory; tree-sitter pulls FUNCTION/CLASS/etc. for code, embeddings for everything else. |
 | `apollo_search_symbols` | Find code symbols by name. |
 | `apollo_get_neighbors` | Approximate neighborhood lookup in the knowledge graph. |
-| `apollo_create_kb` | Create an empty KB at a path. |
-| `apollo_open_kb` | Open an existing KB. |
-| `apollo_save_kb` | Persist the KB to disk. |
 | `apollo_get_stats` | Document / chunk / entity counts. |
-| `apollo_set_project` | Switch active project (multi-tenant). |
 | `apollo_list_projects` | List projects in the current KB. |
+| `apollo_set_config` | Set embed/LLM model paths. |
 
 ## Resources
 
@@ -308,8 +307,8 @@ works for the embed slot; any instruct-tuned GGUF works for the LLM slot.
 | `--admin` | off | Mount OmniNet admin dashboard at `/omninet` |
 | `-v` / `--verbose` | off | Debug logging |
 
-The knowledge base itself lives at `<data-dir>/<name>`. Create one with
-`apollo_create_kb` or `apollo_open_kb`.
+The knowledge base itself lives at `<data-dir>/`. The server creates it
+automatically on first start if it does not already exist.
 
 ---
 
@@ -416,7 +415,7 @@ See `docs/mcp-quickstart.md` for a ten-step walkthrough from `cmake
 │  ├──────────────────────────────────────────────────────────────┤  │
 │  │  Dispatcher       — routes methods to registries              │  │
 │  │  ServerState      — owns one ApolloCore, manages sessions     │  │
-│  │  ToolRegistry     — 12 tools                                 │  │
+│  │  ToolRegistry     — 9 tools                                 │  │
 │  │  ResourceRegistry —  5 resources                             │  │
 │  │  PromptRegistry   —  4 prompts                               │  │
 │  └──────────────────────┬───────────────────────────────────────┘  │

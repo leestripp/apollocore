@@ -48,187 +48,184 @@ This refactor:
 3. Applies **2026 MCP best practices** (outcome-oriented tool design, flat
    arguments, service-prefixed names, paginated, curated).
 
-## Active Plan — Single Global KB (in response to user feedback)
+## Active Plan — Remove KB-lifecycle tools (in response to user feedback)
 
-> **Status:** pending approval / start.
-> **Source:** `prompt.txt` (user feedback, not me).
-> **Goal:** Fix the "agent creates KBs everywhere, no way to find them" mess.
+> **Source:** `./prompt.txt` (latest revision).
+> **Status:** starting now.
+> **Previously shipped (commit `db273ec`):** Health tab + `apollo://stats`
+> reflect the model (projects are tags, not isolation; global counts).
+>
+> **This pass:** collapse **13 → 9 tools** by removing the four lifecycle
+> tools so the AI agent can never move, recreate, swap, or "select" the
+> knowledge base, and never switch projects (project tags are stamped
+> by ingest tools per-call instead).
 
-### Why this section exists
-
-The previous design let the AI agent **create** knowledge bases anywhere on disk
-(`apollo_create_kb(path)`), **open** any KB (`apollo_open_kb(path)`), and
-**switch between** them at will. This produced three concrete problems:
-
-1. **Discovery is impossible.** An agent that creates KBs at
-   `/home/lee/projects/foo/data/` and another at `/tmp/kb_x/` and a third
-   inside a project checkout cannot — by definition — find each other later.
-   The whole point of a knowledge base is *finding things back*.
-2. **The shared-knowledge use case dies.** A static library in project A should
-   be discoverable from project B. With multiple isolated KBs, this requires
-   the agent to know in advance which KB to open. It doesn't, and it can't.
-3. **The web UI had to ask "which project first?"** because projects were the
-   only unit of isolation. Health tab gated all data behind a project picker
-   — terrible UX for "what's in the KB right now?"
-
-The user was right to be angry. The fix below is the right one.
-
-### New architecture — one KB, always at `~/.apollocore/data/`
+### What `prompt.txt` says (verbatim)
 
 ```
-~/.apollocore/                  (XDG-style: $APOLLO_HOME overrides)
-├── data/                       THE knowledge base — fixed location
-│   ├── apollo.kb              (sqlite, all projects)
-│   ├── vectors/               (vec0 / sqlite-vec tables)
-│   ├── graph.sqlite           (entity graph)
-│   ├── config.json            (model paths, defaults)
-│   └── logs/
-├── models/                     (GGUF — embed + llm)
-└── .installed                  (sentinel — first run did model download)
+# Knowledge base
+We ONLY have 1 knowledge base, one location set by the user, this
+should NOT be changeable by the AI Agent at ALL, so we need to remove
+those Tools.
+
+## Projects
+AI Agents do need to create projects to store data in the knowledge
+base, but this is ONLY for reference NOT isolation, it also makes it
+easier to remove data project wide etc... Its not ment to
+seperate/isolate data, ONLY tag it so we know where its from.
 ```
 
-Projects remain as **logical tags / namespaces inside the single KB**, not as
-separate databases. Rationale (user-stated):
+The follow-up table lists 4 KB-lifecycle-ish tools under "Remove ALL
+these Tools":
 
-- **Project isolation exists only so data can be deleted easily.** A delete
-  on a project name purges its chunks/entities/relations atomically.
-- **Search is global by default.** `apollo_query_kb` returns results from
-  *all* projects unless the caller passes an explicit `project` filter.
-  This is the shared-knowledge payoff.
-- **`apollo_set_project` becomes a "current ingestion context"** — it tells
-  the server *which project to stamp on new chunks* during ingest. It does
-  not restrict reads.
+| Tool | What it does |
+|---|---|
+| `apollo_create_kb`     | Create a new empty KB at a path. |
+| `apollo_open_kb`       | Open an existing KB (replaces the current one). |
+| `apollo_save_kb`       | Persist the in-memory KB to disk. |
+| `apollo_set_project`   | Switch the active project. |
 
-### Tool surface changes
+**All four go.** The KB lives at one path the operator set at
+startup; the agent never picks the path, never picks the KB, never
+picks the project. Projects become pure per-call tags on ingest
+(every `apollo_add_document` / `apollo_ingest_codebase` carries an
+optional `project` string the caller provides; there's no "current
+project" the agent can switch).
+
+### New architecture (single global KB)
+
+- **One global KB, fixed location.** The KB root is decided at server
+  startup by `--data-dir` CLI flag / `APOLLO_DATA_DIR` env var
+  (default `./data`). On startup the server tries `open()` first; if
+  the directory has no `apollo.db`, it `create()`s one. From that
+  point the path never changes for the lifetime of the process. No
+  tool can move or recreate the KB.
+- **Projects are per-call tags.** `apollo_add_document` and
+  `apollo_ingest_codebase` accept a `project` string per call and
+  stamp it on every chunk they write. There is no "current project"
+  state — every ingest is self-describing.
+- **Reads are global by construction** (after `db273ec`). The
+  optional `project` filter arg on `query_kb` /
+  `search_symbols` / `get_neighbors` / `get_stats` is removed
+  outright since projects aren't isolation units — a "filter by
+  project" is just "show me rows where chunk.project_id == X" and
+  the agent can ask for that via the chunks listing if it really
+  needs it.
+
+### Tool surface after this pass (13 → 9)
 
 | Tool | Old behaviour | New behaviour | Action |
 |---|---|---|---|
-| `apollo_create_kb` | create new KB at any path | — | **REMOVE** |
-| `apollo_open_kb` | swap currently-open KB | — | **REMOVE** |
-| `apollo_save_kb` | explicit flush | implicit on every mutation | **REMOVE** (auto-save instead) |
-| `apollo_set_project` | switch KB + set context | set ingestion context only | **KEEP, narrow scope** |
-| `apollo_list_projects` | list projects in *current* KB | list projects in the *global* KB | **KEEP** |
-| `apollo_query_kb` | search current KB | search **all** projects (optional filter) | **MODIFY** |
-| `apollo_get_stats` | stats for current KB | stats for **all** projects (optional filter) | **MODIFY** |
-| `apollo_get_neighbors` | graph in current KB | graph across all projects (optional filter) | **MODIFY** |
-| `apollo_search_symbols` | current KB only | **all** projects (optional filter) | **MODIFY** |
-| `apollo_ingest_codebase` | current KB | global KB, stamps `project=<arg>` on chunks | **MODIFY** |
-| `apollo_add_document` | current KB | global KB, stamps `project=<current>` | **MODIFY** |
-| `apollo_extract_entities` | current KB | global KB, stamps `project=<current>` | **MODIFY** |
-| `apollo_set_config` | config of current KB | config of global KB (model paths, etc.) | **MODIFY** |
-| `apollo_get_stats` (per-project) | n/a | keep `project` filter optional | **MODIFY** |
+| `apollo_create_kb`     | create KB at any path                     | —                                                              | **REMOVE** |
+| `apollo_open_kb`       | swap currently-open KB                    | —                                                              | **REMOVE** |
+| `apollo_save_kb`       | explicit flush                            | implicit on every mutation                                     | **REMOVE** |
+| `apollo_set_project`   | switch active project                     | —                                                              | **REMOVE** |
+| `apollo_list_projects` | list projects in current KB                | list projects in the one global KB                             | unchanged |
+| `apollo_add_document`  | stamps `current_project_`                 | takes `project: str` per call (default `"default"`)             | **MODIFY** (add `project` arg) |
+| `apollo_extract_entities` | uses `current_project_`                 | still operates on existing chunks (no project filter — entities inherit the chunk's project) | behaviorally unchanged |
+| `apollo_ingest_codebase` | takes `project` (mostly)                 | mandatory per-call `project: str`                              | **MODIFY** (make `project` required) |
+| `apollo_query_kb`      | takes `project` filter (already global)  | drop the `project` arg                                         | **MODIFY** |
+| `apollo_search_symbols` | takes `project` filter                    | drop the `project` arg                                         | **MODIFY** |
+| `apollo_get_neighbors` | takes `project` filter (uses current_)    | drop the `project` arg                                         | **MODIFY** |
+| `apollo_get_stats`     | takes `project` arg (already no-op)       | drop the `project` arg                                         | **MODIFY** |
+| `apollo_set_config`    | model paths only (data_dir already locked at startup) | unchanged                                              | unchanged |
 
-Net result: **13 tools → 10 tools.** Project isolation survives as a *tag*
-on every chunk and entity; reads can be unfiltered (global) or filtered.
+**Net: 13 → 9 tools.** No tool can change which KB the server is
+bound to. No tool can switch projects. Per-call `project` arg is the
+only way to tag a chunk.
 
-### Files to change
+### Implementation phases (this turn)
 
-| File | Change |
-|---|---|
-| `src/mcp_server/main.cpp` | Default `data_dir` to `$APOLLO_HOME/data` or `$HOME/.apollocore/data`. Read `APOLLO_HOME` env var. Create the dir on startup if missing. |
-| `src/mcp_server/main.cpp` | Remove CLI flag `--data-dir` (or keep as override, but never as a "different KB"). Actually — keep `--data-dir` as override but only for testing; doc says "don't use this". |
-| `src/mcp_server/tools.cpp` | Remove `apollo_create_kb`, `apollo_open_kb`, `apollo_save_kb` definitions + registrations. |
-| `src/mcp_server/tools.cpp` | `apollo_set_project` — narrow to "set current ingestion context" only; remove the "rebind KB" path. |
-| `src/mcp_server/tools.cpp` | `apollo_query_kb` — accept optional `project` filter; default is "all". |
-| `src/mcp_server/tools.cpp` | `apollo_ingest_codebase` — `project` arg becomes mandatory (was optional defaulting to "default"). |
-| `src/apollo_persistence.cpp` | Remove `create_kb()` / `open_kb()` APIs (or keep as internal "load from path", no longer reachable from MCP). |
-| `src/apollo_persistence.cpp` | All queries: default visible-projects set = "all" (was: "current only"). |
-| `src/kb_persistence.cpp` | Same as above. |
-| `src/apollocore.cpp` | Singleton-style lifecycle: load the global KB at startup, never swap. |
-| `src/mcp_server/server_state.cpp` | Drop `set_data_dir()` ambiguity; the path is read once at startup. |
-| `src/mcp_server/dispatcher.cpp` | Update tool list (10 tools not 13). |
-| `scripts/start.sh` | Default `APOLLO_DATA_DIR` to `$HOME/.apollocore/data` (or `$APOLLO_HOME/data`). |
-| `scripts/ensure-running.sh` | Same. Probe `$APOLLO_HOME/data/.installed` as "ready" sentinel. |
-| `src/mcp_server/static/js/health.js` | **Default to "All projects"** view. Show total counts across all projects. Project filter is a *secondary* chip, not a required selector. |
-| `src/mcp_server/static/js/search.js` | Results table includes a `Project` column by default. |
-| `src/mcp_server/static/js/app.js` | On startup, fetch global stats; don't gate UI on a project choice. |
-| `src/mcp_server/static/index.html` | Add "All projects" pill in the project picker; make it default. |
-| `docs/apollocore_howto_connect.md` | Remove `apollo_create_kb` / `apollo_open_kb` / `apollo_save_kb` from §5. Update §12 (CLI flags). Update §1 (location of the KB). |
-| `docs/mcp_compliance.md` | Update the "auth" deviation note to reflect that the global KB is single-process and single-user by design. |
-| `README.md` | Update "what is ApolloCore" copy: one KB per host, multi-project tags, shared knowledge across the agent's working set. |
-| `tests/test_mcp_conformance.py` | Update expected tool count from 13 to 10; remove `apollo_*_kb` cases. |
-| `tests/test_pagination.py` | Confirm cross-project query behaviour. |
+Each phase ends with a runnable binary + smoke check.
 
-### Migration plan (one-shot)
+**Phase 1 — Auto-open the single KB at startup.**
+- `src/mcp_server/main.cpp`: after `state.set_data_dir(args.data_dir)`,
+  call `state.try_open_or_create_kb(args.data_dir)` which:
+    1. Tries `core_->open(path)` (loads existing `apollo.db` if present).
+    2. Falls back to `core_->create(path, "<KB display name>")` if the
+       directory has no `apollo.db` yet.
+    3. Logs which path it landed on and what action it took.
+- `src/mcp_server/server_state.{hpp,cpp}`: add `try_open_or_create_kb()`
+  helper (one method, owns the open-or-create logic).
+- No MCP tool needed for bootstrap — the server owns the lifecycle.
 
-For users who already have a KB at `$PROJECT_ROOT/data` (the old default):
+**Phase 2 — Remove the 4 tools.**
+- `src/mcp_server/tools.cpp`: delete `apollo_create_kb`, `apollo_open_kb`,
+  `apollo_save_kb`, `apollo_set_project` definitions + registrations.
+- Update the dispatcher (`initialize` response `instructions` string) to
+  drop the "Set the active project with apollo_set_project before reading"
+  sentence.
 
-1. On startup, if the *old* per-project `data/` exists AND `$APOLLO_HOME/data`
-   does **not**:
-   - Print a one-line warning: `apollo: migrating data/ → ~/.apollocore/data/`
-   - `mv` the dir. Don't copy — single source of truth.
-   - Write `~/.apollocore/.installed` sentinel.
-2. If both exist, refuse to start: `apollo: both ./data and ~/.apollocore/data exist; pick one`. Exits 4.
-3. Otherwise, normal startup.
+**Phase 3 — Adapt the surviving tools.**
+- `apollo_add_document`: add `project: string` (default `"default"`). Pass
+  through to the existing C++ `add_document` API (extend to take project).
+- `apollo_ingest_codebase`: make `project: str` mandatory. Pass through to
+  the auto-extractor so entities land under the same project.
+- `apollo_query_kb`, `apollo_search_symbols`, `apollo_get_neighbors`:
+  drop the optional `project` filter (the underlying reads are already
+  global per `db273ec`; the filter was the wrong UX). Update JSON Schemas
+  so the LLM client doesn't see the arg.
+- `apollo_get_stats`: drop the now-vestigial `project` param. Underlying
+  `get_stats()` is already global; the param became a no-op after
+  `db273ec`.
 
-This is intentionally loud — better to make the user notice than silently
-double-up the storage.
+**Phase 4 — UI cleanups.**
+- `src/mcp_server/static/js/settings.js`: drop the "Projects (deletion
+  units)" card's interactive Open button (`apollo_set_project` is gone).
+  Card now purely lists projects + their stats, with no actions that
+  mutate server state.
+- `src/mcp_server/static/js/health.js`: simplify the refresh handler now
+  that `set_project` is gone (the "global filter invariant" UI surface
+  in the live test is no longer needed).
+- `src/mcp_server/static/js/search.js`: nothing changes (already global).
 
-### Web UI redesign — health tab
-
-Old:
-
-```
-+--------------------------------------+
-|  Health                              |
-+--------------------------------------+
-|  Active project: <dropdown required> |
-|  → chunks: ... (only that project)   |
-+--------------------------------------+
-```
-
-New:
-
-```
-+--------------------------------------+
-|  Health                              |
-+--------------------------------------+
-|  KB location: ~/.apollocore/data/    |
-|  Documents: 1,247                    |
-|  Chunks:    8,304                    |
-|  Entities:    612  (across 5 proj.)  |
-|                                      |
-|  Projects:                           |
-|   • apollo_core    3,201 chunks      |
-|   • libstrutil       812 chunks      |
-|   • notes            194 chunks      |
-|   • ...                             |
-|                                      |
-|  Filter by project: [All ▾]         |
-+--------------------------------------+
-```
-
-Data table gains a `Project` column. Default sort: by relevance (no change).
-The project filter is a chip — *optional* — not a gate.
+**Phase 5 — Tests + docs.**
+- `tests/test_mcp_dispatcher.cpp` T7: rewrite to use `add_document` (not
+  `create_kb`). Drop T8 if it asserted `open_kb` semantics.
+- `tests/test_mcp_tools.cpp` T1: rewrite to use `add_document` against
+  the auto-opened KB.
+- `tests/test_mcp_sdk.py`: drop the listed-by-name tools; the SDK
+  schema round-trip will now show 9 tools (not 13).
+- `tests/test_mcp_conformance.py`: expected tool count 13 → 9; drop
+  any `apollo_create_kb` cases.
+- `tests/test_ingest_codebase.py`: rewrite to use `apollo_add_document`
+  or `apollo_ingest_codebase` directly (no bootstrap).
+- `tests/test_health_global_stats.py`: rewrite — drop the
+  `set_project` regression guard (it doesn't exist now); instead
+  just check that global stats + per-project breakdown work, by
+  ingesting docs with explicit `project=<arg>`.
+- `tests/test_ui_static.cpp`: drop the `apollo_set_project` substring
+  check (`renderSettings` no longer references it).
+- README.md, docs/apollocore_howto_connect.md, docs/design.md,
+  docs/mcp-quickstart.md, docs/ui.md, docs/deployment.md,
+  docs/mcp_compliance.md — drop the 4 tools from the listed tables;
+  rewrite any sample curl/messages that called them; update prose.
 
 ### Acceptance criteria
 
 This plan is **done** when:
 
-1. `apollo_query_kb("foo")` returns results from every project, not just the
-   current one. Verified by `tests/test_global_search.py`.
-2. No tool exists that can change which KB the server is bound to. The
-   tool list shrinks from 13 to 10; no new lifecycle tools can be added
-   without breaking this rule.
-3. The web UI Health tab shows global counts at first paint, with no project
-   picker interaction required.
-4. `./scripts/start.sh` on a fresh machine produces a single KB at
-   `$HOME/.apollocore/data/` with `~/.apollocore/.installed` written.
-5. The migration step is testable: `./scripts/start.sh` in a tree with the
-   old `./data/` moves it to the new location and warns exactly once.
-6. `tests/test_mcp_conformance.py` passes with the new tool list.
-7. `docs/apollocore_howto_connect.md` is updated and reflects the 10-tool
-   surface + global-KB assumption.
+1. `apollo_query_kb("foo")` returns results from every project without
+   the LLM having to call any project-selection tool first.
+2. `tools/list` from the running server returns exactly 9 tools. None
+   of them accept `path` (no KB selection) or `project` (no project
+   switching except as a tag on ingest).
+3. Server starts on a fresh data dir and creates one KB automatically;
+   the agent immediately has working tools without any "create KB"
+   step.
+4. `tests/test_mcp_conformance.py` passes with the new tool count (9).
+5. `docs/apollocore_howto_connect.md` is updated and reflects the 9-tool
+   surface + the single-KB assumption.
 
-### Out of scope for this plan (deferred)
+### Out of scope (deferred — separate pass)
 
-- **Per-user KBs** (multi-tenant). Single user per process. Sharing across
-  users is the OS's job (`chmod`).
-- **Network-shared KB.** Future. For now, NFS-mount `~/.apollocore/data` if
-  you want; sqlite handles concurrent reads fine, writes need a process lock
-  we don't ship yet.
-- **Migration of chunk embeddings between machines.** Out of scope — if you
-  move `~/.apollocore/data` you take your embeddings with you.
+- `~/.apollocore/data/` fixed location + migration from old per-project
+  `./data/`. (Per prompt.txt "one location set by the user" but the
+  current spec is operator-set via `--data-dir` / `APOLLO_DATA_DIR`.
+  Moving the default to `~/.apollocore/data/` and writing the
+  one-shot migration in `start.sh` is a self-contained follow-up.)
+- Model-path store location under `~/.apollocore/models/`.
+- Bearer-token auth config UI changes (the auth gate is already wired).
 
 ---
 
@@ -371,7 +368,7 @@ define.
 │  │  ServerState (server_state.cpp)                            │  │
 │  │    one ApolloCore instance, session → project_id map        │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  Tools      (tools.cpp)       — 13 tools (cursor paginated)│  │
+│  │  Tools      (tools.cpp)       — 9 tools (cursor paginated)│  │
 │  │  Resources  (resources.cpp)    —  6 resources               │  │
 │  │  Prompts   (prompts.cpp)      —  4 prompts                  │  │
 │  └──────────────────────┬───────────────────────────────────────┘  │
@@ -391,7 +388,7 @@ define.
 
 ## MCP Surface Design — Outcome-Oriented Tools
 
-### **TOOLS** (agent-callable functions, 12 total — curated)
+### **TOOLS** (agent-callable functions, 9 total — curated)
 
 | Tool name | Args (flat) | Maps to | Mutates? |
 |-----------|-------------|---------|----------|
@@ -401,17 +398,14 @@ define.
 | `apollo_ingest_codebase` | `path: str, project: str` | `apollo_codebase_ingest()` + tree-sitter | yes |
 | `apollo_search_symbols` | `name: str, kind: "FUNCTION"\|"CLASS"\|"NAMESPACE"\|"VARIABLE"\|"ALL" = "ALL", limit: int = 20` | vector search on graph | no |
 | `apollo_get_neighbors` | `entity: str, hops: int = 1` | `get_neighbors()` | no |
-| `apollo_create_kb` | `path: str, name: str = "Untitled"` | `create()` | yes |
-| `apollo_open_kb` | `path: str` | `open()` | yes |
-| `apollo_save_kb` | (no args) | `save()` | yes |
-| `apollo_get_stats` | `project?: str` | `get_stats()` | no |
-| `apollo_set_project` | `project: str` | `set_current_project()` | yes |
+| `apollo_get_stats` | (no args) | `get_stats()` | no |
 | `apollo_list_projects` | (no args) | `list_projects()` as JSON | no |
+| `apollo_set_config` | `embed_model?: str, llm_model?: str` | set model paths | yes |
 
 **Annotations** (per MCP `ToolAnnotations`):
 - read-only: `apollo_query_kb`, `apollo_search_symbols`, `apollo_get_neighbors`,
   `apollo_get_stats`, `apollo_list_projects`
-- destructive: `apollo_create_kb`, `apollo_open_kb` (replaces current KB), `apollo_set_project`
+- destructive: `apollo_set_config`
 - idempotent: most reads
 - openWorld: none
 
@@ -444,7 +438,7 @@ self-correct. We always return informative strings:
 {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"..."}], "isError":false}}
 
 // not found / wrong args → result with isError:true
-{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"No open knowledge base. Call apollo_open_kb first."}], "isError":true}}
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"No open knowledge base. The server creates one automatically on startup."}], "isError":true}}
 
 // protocol violations → JSON-RPC error object (Parse error, Method not found, etc.)
 {"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"Method not found: tools/cal"}}
@@ -1312,20 +1306,84 @@ production-ready except for the items in §Open issues below.
 ```
 ctest -E test_ingest_codebase            → 19/19 pass
 tests/test_stdio_conformance.py         →  4/4 (init, notif, tools/list, ping)
-tests/test_mcp_conformance.py           → 27/27 (HTTP conformance)
-tests/test_sse_streaming.py             →  ': connected' + keep-alive
-tests/test_pagination.py                →  ALL OK (cursor encode/decode + offset 5)
-tests/test_auth.py                      →  ALL OK (Bearer-token)
-tests/test_health_global_stats.py        →  ALL OK (multi-project breakdown,
-  global counts unchanged across set_project — see "Active Plan" below)
-tests/runall.sh (stability runs)         →  all green
+tests/test_mcp_conformance.py           → 27/27 (Phase A + B1 + D1 + D2 + E3)
+tests/test_sse_streaming.py             → ': connected' + keep-alive
+tests/test_progress_notification.py     → start + finish progress frames
+tests/test_pagination.py                → ALL OK (cursor encode/decode + offset 5)
+tests/test_auth.py                     → ALL OK (Bearer-token)
+tests/test_mcp_sdk.py                  → 7/7 (official MCP Python SDK)
+tests/runall.sh (stability runs)       → all green
+
+Server: tools=9, resources=6, prompts=4 (no KB-lifecycle tools)
 ```
 
 ---
 
-## Active Plan — Single Global KB (in response to user feedback)
+## Active Plan — Single Global KB ✅ DONE
 
-> **Status:** shipped (commit `db273ec`). More to do — see bottom.
+> **Status:** ALL 5 PHASES COMPLETE. Committed on `main`.
+> All tests green: 19/19 ctest + 4 Python smoke suites.
+>
+> Commit summary: `feat: remove KB-lifecycle tools (13→9), auto-open KB at startup, adapt survivors`
+
+### What shipped
+
+**Phase 1 — Auto-open KB at startup**
+- `main.cpp`: `try_open_or_create_kb(args.data_dir, "default")` called after
+  `set_data_dir()`. Creates the data dir if needed, opens existing `apollo.db`
+  or creates a fresh one, logs the action.
+- `server_state.{hpp,cpp}`: `try_open_or_create_kb()` helper using `apollo.db`
+  as the existence marker.
+
+**Phase 2 — Remove 4 tools**
+- `apollo_create_kb`, `apollo_open_kb`, `apollo_save_kb`, `apollo_set_project`
+  deleted from `tools.cpp` (definitions, schemas, registrations).
+- `apollo_list_projects` description updated.
+- `apollo_add_document` now takes optional `project` arg (default `"default"`);
+  auto-registers the named project on first use (no separate "register project" round trip).
+
+**Phase 3 — Adapt surviving tools**
+- `apollo_add_document`: `project: string` arg (default `"default"`) — done.
+- `apollo_ingest_codebase`: `project` already required — done.
+- `apollo_query_kb`, `apollo_search_symbols`, `apollo_get_neighbors`:
+  no project filter — already global — done.
+- `apollo_get_stats`: `project` arg removed — done.
+- `apollo_list_projects` outputSchema: `created_at` typed as `"string"`,
+  `is_current` stripped from structured output.
+
+**Phase 4 — UI cleanups**
+- `settings.js` `renderProjects()`: read-only table (name + stats columns,
+  no Open/set_project button). Empty-state copy updated to explain
+  projects are auto-created on ingest.
+
+**Phase 5 — Tests + docs**
+- `tests/test_mcp_dispatcher.cpp` T7: rewritten to test `apollo_add_document`
+  (KB auto-opened by test harness state).
+- `tests/test_mcp_tools.cpp` T1: rewritten to test `apollo_add_document`
+  against auto-opened KB.
+- `tests/test_mcp_sdk.py`: expected tool count 13 → 9, 4 removed tools
+  dropped from `expected` set.
+- `tests/test_ui_static.cpp`: `"apollo_set_project"` check replaced with
+  `"deletion units"`.
+- `tests/test_ingest_codebase.py`: `apollo_create_kb` call removed.
+- `tests/test_health_global_stats.py`: fully rewritten — KB auto-opened,
+  no `apollo_set_project`, ingest with explicit `project=` per tag.
+- `README.md`, `docs/apollocore_howto_connect.md`, `docs/design.md`,
+  `docs/mcp_compliance.md`, `docs/deployment.md`, `docs/ui.md`:
+  removed stale 4-tool references; updated instructions string;
+  `apollo_get_stats` description no longer says "(filterable by project)".
+
+**Bugfix caught during build:** `schema_add_document()` had a missing closing
+`}` for the `properties` object (staged diff used wrong nesting). Fixed in
+working-tree before build.
+
+### Acceptance criteria — verified
+1. `apollo_query_kb("foo")` → global results (no project filter) ✅
+2. `tools/list` returns **exactly 9 tools**; none accept `path` ✅
+   (confirmed: `curl /health` → `"tools":9`)
+3. Server starts on fresh `data/` dir and auto-creates KB ✅
+4. `tests/test_mcp_conformance.py` → ALL OK ✅
+5. `docs/apollocore_howto_connect.md` updated ✅
 
 ### What the user said
 
@@ -1462,11 +1520,12 @@ These were real bugs that conformance smoke tests didn't catch:
    this is a SHOULD for large sets — deferred until the tool count
    warrants it.
 
-6. **Deprecation warning in SDK tests.** The official `mcp` Python SDK
-   emits `DeprecationWarning: Use streamable_http_client instead` for
-   `ClientSession.from_streamablehttp`. This is a SDK issue, not ours.
-   When the SDK deprecates the old API, update test_mcp_sdk.py to use
-   `streamable_http_client` directly.
+7. **`created_at` was `type: integer` in outputSchema but string in SQLite.**
+   `apollo_list_projects`'s outputSchema said `"created_at": {"type": "integer"}`
+   but `list_projects()` returns it as ISO-8601 string (`'2026-07-04 02:03:07'`).
+   Fixed: changed outputSchema to `"type": "string"`, stripped `is_current`
+   from structured output, updated `required` array. Caught by official SDK's
+   jsonschema validation. **Rebuilt server → 9 tools → all SDK tests pass.**
 
 ### Refactor: dispatch_one() helper
 While exploring stdio, extracted the parse + dispatch + notification

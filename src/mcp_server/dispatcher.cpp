@@ -107,10 +107,15 @@ json Dispatcher::handle_initialize(const JsonRpcRequest& req)
             // here but it's not in the spec — keep serverInfo spec-clean.
         }},
         {"instructions",
-         "ApolloCore is a local-first RAG knowledge base. Use apollo_query_kb to "
-         "search, apollo_add_document to ingest text, apollo_ingest_codebase for "
-         "code directories, and apollo_search_symbols for code symbol lookup. "
-         "Set the active project with apollo_set_project before reading."}
+         "ApolloCore is a local-first RAG knowledge base. There is exactly "
+         "ONE knowledge base, fixed at startup — no tool can change it. "
+         "Use apollo_query_kb to search across every project, "
+         "apollo_add_document / apollo_ingest_codebase to ingest text or "
+         "code (pass `project` per call to tag the source), "
+         "apollo_search_symbols for code symbol lookup, "
+         "apollo_get_neighbors for the knowledge graph. Projects are tags "
+         "for provenance and bulk deletion — not isolation units; every "
+         "chunk is part of the same shared pool."}
     };
 }
 

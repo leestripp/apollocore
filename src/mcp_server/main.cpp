@@ -168,6 +168,20 @@ int main(int argc, char** argv)
     // config (e.g. model paths changed via /api/config).
     state.set_data_dir(args.data_dir);
 
+    // Auto-open the single global KB at the operator-set data_dir. There
+    // is no MCP tool that can move or recreate this KB from here on; the
+    // path is bound to the process. First run on a fresh dir creates a
+    // new KB; subsequent runs open the existing one in place.
+    if (!fs::exists(args.data_dir)) {
+        std::error_code ec;
+        fs::create_directories(args.data_dir, ec);
+        if (ec) {
+            std::cerr << "[apollo_mcp_server] WARN: could not create "
+                      << args.data_dir << ": " << ec.message() << "\n";
+        }
+    }
+    state.try_open_or_create_kb(args.data_dir, "default");
+
     // Register the install-path models directory as a search target for
     // resolving bare filenames (e.g. when the user picks a file via the
     // browser's <input type="file">, which doesn't expose the full path).

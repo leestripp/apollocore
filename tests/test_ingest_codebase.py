@@ -83,9 +83,7 @@ def main():
 
         must_alive()
 
-        kb_path = os.path.join(src, "kb")
-        tools_call("apollo_create_kb", {"path": kb_path, "name": "ingest-regression"})
-
+        # KB is auto-opened at startup — no create step needed.
         t0 = time.time()
         report_text = tools_call(
             "apollo_ingest_codebase",

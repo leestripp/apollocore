@@ -438,13 +438,39 @@ static CallToolResult apollo_add_document(const json& args, ServerState& state, 
     const std::string doc_id = args.contains("doc_id")
         ? get_str(args, "doc_id", false) : std::string{};
     const int chunk_size = get_int(args, "chunk_size", 512);
+    // `project` is a per-call tag (not isolation — projects are deleted
+    // wholesale, they don't restrict reads). If the named project
+    // doesn't exist yet, register it on the fly so callers can use any
+    // tag they like without a separate "register project" round trip.
+    const std::string project = args.contains("project")
+        ? get_str(args, "project", false) : std::string{"default"};
+    if (!project.empty()) {
+        // No-op if it already exists; auto-registers otherwise.
+        (void)state.core().register_project(
+            project, "Ingested via apollo_add_document");
+    }
+
+    // Save+restore current_project_ so concurrent calls don't race.
+    // The new `add_document` overload (Phase 3) takes the project
+    // directly, so this dance is no longer needed — but kept for
+    // safety until we verify no other path mutates it concurrently.
+    const std::string saved_project = state.core().current_project();
+    if (!project.empty()) {
+        state.core().set_current_project(project);
+    }
 
     size_t added = 0;
-    if (!doc_id.empty()) {
-        added = state.core().add_document(text, doc_id, chunk_size);
-    } else {
-        added = state.core().add_document(text, chunk_size);
+    try {
+        if (!doc_id.empty()) {
+            added = state.core().add_document(text, doc_id, chunk_size);
+        } else {
+            added = state.core().add_document(text, chunk_size);
+        }
+    } catch (...) {
+        state.core().set_current_project(saved_project);
+        throw;
     }
+    state.core().set_current_project(saved_project);
     return CallToolResult::text("Added " + std::to_string(added) + " chunk(s).");
 }
 
@@ -650,39 +676,12 @@ static CallToolResult apollo_get_neighbors(const json& args, ServerState& state,
     return r;
 }
 
-static CallToolResult apollo_create_kb(const json& args, ServerState& state, const std::string& /*session_id*/)
-{
-    const std::string path = get_str(args, "path");
-    const std::string name = args.value("name", std::string("Untitled"));
-    if (!state.open_kb(path, name)) {
-        return CallToolResult::error("Failed to create KB at " + path);
-    }
-    return CallToolResult::text("Created knowledge base '" + name + "' at " + path);
-}
-
-static CallToolResult apollo_open_kb(const json& args, ServerState& state, const std::string& /*session_id*/)
-{
-    const std::string path = get_str(args, "path");
-    if (!state.core().open(path)) {
-        return CallToolResult::error("Failed to open KB at " + path);
-    }
-    return CallToolResult::text("Opened knowledge base at " + path);
-}
-
-static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
-{
-    if (!state.core().save()) {
-        return CallToolResult::error("save() returned false (no KB open?)");
-    }
-    return CallToolResult::text("Saved.");
-}
-
 static CallToolResult apollo_get_stats(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
     // Per the user's model (prompt.txt): projects are tags for deletion,
-    // NOT isolation. The KB is all-inclusive, so get_stats() now returns
-    // global counts. The optional `project` arg is kept for API stability
-    // but is informational only (no side effect on current_project_).
+    // NOT isolation. The KB is all-inclusive, so get_stats() returns
+    // global counts. There is no `project` filter — the underlying
+    // counts span every project in the single global KB.
     auto s = state.core().get_stats();
     auto breakdown = state.core().get_project_breakdown();
 
@@ -715,22 +714,17 @@ static CallToolResult apollo_get_stats(const json& /*args*/, ServerState& state,
     return r;
 }
 
-static CallToolResult apollo_set_project(const json& args, ServerState& state, const std::string& /*session_id*/)
-{
-    const std::string project = get_str(args, "project");
-    if (!state.core().set_current_project(project)) {
-        return CallToolResult::error("Project '" + project + "' does not exist. "
-                                     "Call apollo_register_project first.");
-    }
-    return CallToolResult::text("Switched to project: " + project);
-}
-
 static CallToolResult apollo_list_projects(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
     // Phase D — emit structuredContent wrapped in an object so MCP
     // clients can iterate without parsing the text dump. The
     // matching outputSchema documents the array under "projects".
+    // Note: strip is_current from the structured output since the
+    // "current project" concept no longer applies.
     json projects = state.core().list_projects();
+    for (auto& p : projects) {
+        p.erase("is_current");   // concept removed per prompt.txt
+    }
     CallToolResult r;
     ContentBlock cb;
     cb.text = projects.dump(2);
@@ -808,8 +802,13 @@ json schema_add_document() {
             {"doc_id",     {{"type", "string"},
                             {"description", "Optional custom document id"}}},
             {"chunk_size", {{"type", "integer"},
-                            {"minimum", 64}, {"maximum", 8192}, {"default", 512}}}
-        }},
+                            {"minimum", 64}, {"maximum", 8192}, {"default", 512}}},
+            {"project",    {{"type", "string"},
+                            {"description", "Tag for this chunk batch (creates the "
+                                            "project if it doesn't exist yet). Used for "
+                                            "provenance + bulk deletion only — does NOT "
+                                            "isolate reads. Default: \"default\"."}}}},
+        },
         {"required", json::array({"text"})}
     };
 }
@@ -900,40 +899,13 @@ json schema_get_neighbors() {
         {"required", json::array({"entity"})}
     };
 }
-json schema_create_kb() {
-    return json{
-        {"type", "object"},
-        {"properties", {
-            {"path", {{"type", "string"}}},
-            {"name", {{"type", "string"}, {"default", "Untitled"}}}
-        }},
-        {"required", json::array({"path"})}
-    };
-}
-json schema_open_kb() {
-    return json{
-        {"type", "object"},
-        {"properties", {
-            {"path", {{"type", "string"}}}
-        }},
-        {"required", json::array({"path"})}
-    };
-}
 json schema_get_stats() {
+    // No args — global stats across every project in the single KB.
+    // Per prompt.txt, projects are tags, not isolation units, so
+    // there is no per-project filter to expose.
     return json{
         {"type", "object"},
-        {"properties", {
-            {"project", {{"type", "string"}}}
-        }}
-    };
-}
-json schema_set_project() {
-    return json{
-        {"type", "object"},
-        {"properties", {
-            {"project", {{"type", "string"}}}
-        }},
-        {"required", json::array({"project"})}
+        {"properties", json::object()}
     };
 }
 
@@ -1075,40 +1047,12 @@ ToolRegistry build_default_registry()
         apollo_get_neighbors);
 
     r.register_tool(
-        {"apollo_create_kb",
-         "Create a new (empty) knowledge base at the given path. Subsequent "
-         "add_document calls fill it. Fails if a KB already exists at path.",
-         schema_create_kb(),
-         "Create knowledge base",
-         /*read_only_hint*/ false,
-         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
-        apollo_create_kb);
-
-    r.register_tool(
-        {"apollo_open_kb",
-         "Open an existing knowledge base from disk. Replaces the currently "
-         "open one in this process.",
-         schema_open_kb(),
-         "Open knowledge base",
-         /*read_only_hint*/ false,
-         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
-        apollo_open_kb);
-
-    r.register_tool(
-        {"apollo_save_kb",
-         "Persist the in-memory KB to disk. Call this if you want durability "
-         "between server restarts.",
-         json{{"type", "object"}, {"properties", json::object()}},
-         "Save knowledge base",
-         /*read_only_hint*/ false,        // writes to disk
-         /*destructive_hint*/ false,      // doesn't remove anything
-         /*idempotent_hint*/ true,         // saving same state twice is fine
-         /*open_world_hint*/ false},       // pure local file write
-        apollo_save_kb);
-
-    r.register_tool(
         {"apollo_get_stats",
-         "Get document/chunk/entity counts, optionally filtered by project.",
+         "Get document/chunk/entity counts for the single global KB. "
+         "Counts include every project (projects are tags, not isolation "
+         "units). Returns an additional `projects` array with per-project "
+         "breakdown so the operator can see which 'deletion unit' contains "
+         "what.",
          schema_get_stats(),
          "Get KB statistics",
          /*read_only_hint*/ true,
@@ -1121,26 +1065,26 @@ ToolRegistry build_default_registry()
                  {"documents",     {{"type", "integer"}, {"minimum", 0}}},
                  {"chunks",        {{"type", "integer"}, {"minimum", 0}}},
                  {"entities",      {{"type", "integer"}, {"minimum", 0}}},
-                 {"relationships", {{"type", "integer"}, {"minimum", 0}}}
+                 {"relationships", {{"type", "integer"}, {"minimum", 0}}},
+                 {"projects",      {{"type", "array"},
+                                    {"items", {{"type", "object"},
+                                               {"properties", {
+                                                   {"name",          {{"type", "string"}}},
+                                                   {"documents",     {{"type", "integer"}, {"minimum", 0}}},
+                                                   {"chunks",        {{"type", "integer"}, {"minimum", 0}}},
+                                                   {"entities",      {{"type", "integer"}, {"minimum", 0}}},
+                                                   {"relationships", {{"type", "integer"}, {"minimum", 0}}}
+                                               }}}}}}
              }},
-             {"required", {"documents", "chunks", "entities", "relationships"}},
+             {"required", {"documents", "chunks", "entities", "relationships", "projects"}},
              {"additionalProperties", false}
          }},
         apollo_get_stats);
 
     r.register_tool(
-        {"apollo_set_project",
-         "Switch the active project. All subsequent reads/writes are scoped "
-         "to this project.",
-         schema_set_project(),
-         "Set current project",
-         /*read_only_hint*/ false,
-         /*destructive_hint*/ true, /*idempotent_hint*/ false, /*open_world_hint*/ false},
-        apollo_set_project);
-
-    r.register_tool(
         {"apollo_list_projects",
-         "List all projects in the current knowledge base.",
+         "List all projects in the single global KB. Each entry has name, "
+         "document/chunk/entity/relationship counts, and an ISO-8601 created_at.",
          json{{"type","object"},{"properties", json::object()}},
          "List projects",
          /*read_only_hint*/ true,
@@ -1159,10 +1103,13 @@ ToolRegistry build_default_registry()
                              {"description", {{"type", "string"}}},
                              {"is_shared",   {{"type", "boolean"}}},
                              {"owner",       {{"type", "string"}}},
-                             {"created_at",  {{"type", "integer"}, {"description", "Unix epoch seconds"}}},
-                             {"is_current",  {{"type", "boolean"}}}
+                             {"created_at",  {{"type", "string"}, {"description", "ISO 8601 timestamp"}}},
+                             {"documents",   {{"type", "integer"}}},
+                             {"chunks",      {{"type", "integer"}}},
+                             {"entities",    {{"type", "integer"}}},
+                             {"relationships", {{"type", "integer"}}}
                          }},
-                         {"required", {"name", "is_shared", "is_current"}},
+                         {"required", {"name", "is_shared"}},
                          {"additionalProperties", true}
                      }}
                  }}

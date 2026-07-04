@@ -99,7 +99,7 @@ way, not just *what it does*.
 │  ├──────────────────────────────────────────────────────────────┤  │
 │  │  Dispatcher       — routes JSON-RPC methods to handlers     │  │
 │  │  ServerState      — owns one ApolloCore, maps session → pro… │  │
-│  │  ToolRegistry     — 12 outcome-oriented tools                │  │
+│  │  ToolRegistry     — 9 outcome-oriented tools                │  │
 │  │  ResourceRegistry —  5 URI-addressed data sources             │  │
 │  │  PromptRegistry   —  4 pre-built prompt templates            │  │
 │  └──────────────────────┬───────────────────────────────────────┘  │
@@ -134,7 +134,7 @@ harder to navigate. As a private library it stays as a CMake nicety.
 | `dispatcher.cpp` | Routes JSON-RPC methods to registries |
 | `jsonrpc.cpp` | Envelope parser/serializer |
 | `server_state.cpp` | Owns `ApolloCore`, manages `session_id → project_id` |
-| `tools.cpp` | 12 `apollo_*` tool handlers |
+| `tools.cpp` | 9 `apollo_*` tool handlers |
 | `resources.cpp` | 5 `apollo://*` resource handlers |
 | `prompts.cpp` | 4 prompt templates |
 | `CMakeLists.txt` | Links server, library, OmniNet, threads |
@@ -368,7 +368,7 @@ agent-compatible client sees.
 `POST /mcp` over Streamable HTTP. JSON-RPC 2.0 in, JSON-RPC 2.0 out.
 Optional `Mcp-Session-Id` header round-trips a UUID v4 session id.
 
-### Tools (12)
+### Tools (9)
 
 All service-prefixed `apollo_*`. Each has a JSON Schema 2020-12 input
 schema and the appropriate `readOnlyHint`/`destructiveHint`/`idempotentHint`
@@ -382,12 +382,9 @@ annotations.
 | `apollo_ingest_codebase` | | ✓ | |
 | `apollo_search_symbols` | ✓ | | ✓ |
 | `apollo_get_neighbors` | ✓ | | ✓ |
-| `apollo_create_kb` | | ✓ | |
-| `apollo_open_kb` | | ✓ | |
-| `apollo_save_kb` | | ✓ | ✓ |
 | `apollo_get_stats` | ✓ | | ✓ |
-| `apollo_set_project` | | ✓ | |
 | `apollo_list_projects` | ✓ | | ✓ |
+| `apollo_set_config` | | ✓ | ✓ |
 
 ### Resources (5)
 
