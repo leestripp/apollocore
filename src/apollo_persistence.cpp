@@ -1047,50 +1047,80 @@ EntityExtractor* ApolloCore::get_entity_extractor() {
 ApolloCore::Stats ApolloCore::get_stats() {
     Stats stats;
 
-    // M3.C: Filter by visible projects
-    auto visible = visible_projects();
-    std::unordered_set<std::string> visible_set(visible.begin(), visible.end());
-
-    // Count documents visible to current project (real count below)
+    // Per the user's model (prompt.txt): projects are tags for deletion,
+    // NOT isolation. The KB is all-inclusive — every chunk is reachable
+    // from every search, every entity is visible to every graph walk.
+    // So we count globally across every project that exists in the DB,
+    // regardless of `current_project_` or `shared_read_sources_`.
     if (is_open_) {
-        // Filtered counts from DB
+        // Filter-free counts from DB. Projects are tags, NOT isolation.
         auto nodes = kb_persistence_->load_all_nodes();
-        std::unordered_set<std::string> visible_doc_ids;
-        for (const auto& n : nodes) {
-            if (visible_set.count(n.project_id)) {
-                visible_doc_ids.insert(n.id);
-            }
-        }
-        stats.document_count = visible_doc_ids.size();
+        std::unordered_set<std::string> doc_ids;
+        for (const auto& n : nodes) doc_ids.insert(n.id);
+        stats.document_count = doc_ids.size();
 
-        // Filtered chunks
-        stats.chunk_count = 0;
-        for (const auto& c : chunks_) {
-            if (visible_set.count(c.project_id)) {
-                stats.chunk_count++;
-            }
-        }
+        // Filter-free chunks — iterate every chunk regardless of project.
+        stats.chunk_count = chunks_.size();
 
-        // Filtered entities
-        auto entities = kb_persistence_->load_entities_for_projects(visible);
-        stats.entity_count = entities.size();
-
-        // Filtered relationships
-        auto rels = kb_persistence_->load_relationships_for_projects(visible);
+        // Entities + relationships in one shot. `load_*_for_projects({})`
+        // is the existing "empty filter = everything" contract; using it
+        // keeps the SQL count at O(1) queries instead of one per project.
+        auto entities = kb_persistence_->load_entities_for_projects({});
+        auto rels     = kb_persistence_->load_relationships_for_projects({});
+        stats.entity_count       = entities.size();
         stats.relationship_count = rels.size();
+
+        std::unordered_set<std::string> chunk_ids_with_entities;
+        for (const auto& e : entities) chunk_ids_with_entities.insert(e.chunk_id);
+        stats.chunks_with_entities = chunk_ids_with_entities.size();
 
         auto disk_stats = kb_persistence_->get_disk_stats();
         stats.embedding_files_size = disk_stats.embedding_files_size;
-
-        // Count chunks with entities (filtered)
-        std::unordered_set<std::string> chunk_ids;
-        for (const auto& e : entities) {
-            chunk_ids.insert(e.chunk_id);
-        }
-        stats.chunks_with_entities = chunk_ids.size();
     }
 
     return stats;
+}
+
+std::vector<ApolloCore::ProjectStats> ApolloCore::get_project_breakdown() {
+    std::vector<ProjectStats> out;
+    if (!is_open_) return out;
+
+    // Iterate every project in the DB. For each, count its chunks,
+    // distinct documents, entities, and relationships. Done in O(P) where
+    // P = number of projects; each project hits at most 4 small SQL
+    // aggregates. Fine for the tens-to-hundreds of projects that is the
+    // expected scale.
+    auto projects_json = list_projects();
+    if (!projects_json.is_array()) return out;
+
+    for (const auto& pj : projects_json) {
+        ProjectStats ps;
+        ps.name = pj.value("name", "");
+
+        // Chunks in this project — directly indexed by project_id.
+        size_t chunks = 0;
+        for (const auto& c : chunks_) {
+            if (c.project_id == ps.name) ++chunks;
+        }
+        ps.chunk_count = chunks;
+
+        // Distinct documents whose project_id == ps.name.
+        auto nodes = kb_persistence_->load_all_nodes();
+        std::unordered_set<std::string> docs;
+        for (const auto& n : nodes) {
+            if (n.project_id == ps.name) docs.insert(n.id);
+        }
+        ps.document_count = docs.size();
+
+        // Entities + relationships via the existing project-scoped loaders.
+        auto ents = kb_persistence_->load_entities_for_projects({ps.name});
+        ps.entity_count = ents.size();
+        ps.relationship_count =
+            kb_persistence_->load_relationships_for_projects({ps.name}).size();
+
+        out.push_back(std::move(ps));
+    }
+    return out;
 }
 
 // ============================================================================

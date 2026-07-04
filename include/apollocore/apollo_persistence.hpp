@@ -334,8 +334,42 @@ public:
         size_t embedding_files_size = 0;
         size_t chunks_with_entities = 0;  // How many chunks have been entity-extracted
     };
-    
+
+    /**
+     * Stats breakdown per project — projects are NOT isolation units
+     * (the KB is all-inclusive), but each project carries counts so the UI
+     * can show the user where their data lives. This is also the natural
+     * "what do I delete if I drop project X?" answer the user wants.
+     *
+     * Fields mirror `Stats` but are scoped to one project_id. Entity and
+     * relationship counts follow the chunk they were extracted from (the
+     * `entities` and `relationships` tables hold a chunk_id, not a project).
+     */
+    struct ProjectStats {
+        std::string name;                 // project name (= project_id)
+        size_t document_count = 0;
+        size_t chunk_count = 0;
+        size_t entity_count = 0;
+        size_t relationship_count = 0;
+    };
+
+    /**
+     * Return GLOBAL stats — counts across every project in the KB.
+     *
+     * Per the user's model (see docs/prompt.txt): projects are tags for
+     * deletion and provenance, NOT isolation. The KB is one shared graph
+     * and any chunk the embedder/LLM touches is visible to every other
+     * chunk via search/hybrid/graph. So `get_stats()` reports the WHOLE
+     * KB, not just the current project.
+     */
     Stats get_stats();
+
+    /**
+     * Per-project count breakdown — useful for the Health tab so the user
+     * can see which "deletion unit" contains what. The KB stays
+     * all-inclusive; this is just inventory.
+     */
+    std::vector<ProjectStats> get_project_breakdown();
 
     // ========================================================================
     // Project Scoping (Phase M3.C — multi-agent support)

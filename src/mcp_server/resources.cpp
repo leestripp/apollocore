@@ -94,12 +94,29 @@ static ResourceReadResult res_config(const std::string& uri, ServerState& state)
 
 static ResourceReadResult res_stats(const std::string& uri, ServerState& state)
 {
+    // GLOBAL counts — the KB is all-inclusive (projects are tags, not
+    // isolation). Plus a per-project breakdown so the UI can show the
+    // user what each "deletion unit" contains.
     auto s = state.core().get_stats();
-    json j = {
+    auto breakdown = state.core().get_project_breakdown();
+
+    nlohmann::json projects_arr = nlohmann::json::array();
+    for (const auto& p : breakdown) {
+        projects_arr.push_back({
+            {"name",          p.name},
+            {"documents",     p.document_count},
+            {"chunks",        p.chunk_count},
+            {"entities",      p.entity_count},
+            {"relationships", p.relationship_count},
+        });
+    }
+
+    nlohmann::json j = {
         {"documents",     s.document_count},
         {"chunks",        s.chunk_count},
         {"entities",      s.entity_count},
         {"relationships", s.relationship_count},
+        {"projects",      projects_arr},
     };
     return {{ {uri, j.dump(2)} }};
 }

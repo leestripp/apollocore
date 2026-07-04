@@ -106,7 +106,10 @@ async function onSearch(e) {
             <div class="empty">
                 <h3>Search failed</h3>
                 <p>${escapeHtml(err.message)}</p>
-                <p class="muted">Tip: open a KB in <a href="#settings">Settings</a> and load an embedding model first.</p>
+                <p class="muted">Tip: an embedding model needs to be loaded on the
+                    <a href="#settings">Settings</a> tab before search can run.
+                    (The knowledge base itself is always open at the
+                    location the operator set at startup.)</p>
             </div>`;
     } finally {
         go.disabled = false;

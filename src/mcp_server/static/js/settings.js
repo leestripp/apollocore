@@ -69,8 +69,15 @@ export async function renderSettings(panel) {
         </div>
 
         <div class="card">
-            <h3 style="margin-top: 0;">Projects</h3>
-            <p class="muted">All knowledge bases accessible to this server.</p>
+            <h3 style="margin-top: 0;">Projects (deletion units)</h3>
+            <p class="muted">
+                Every knowledge base shares one global pool of chunks.
+                Projects here are <strong>tags for provenance and bulk deletion</strong>
+                &mdash; they do not isolate data, they just remember where
+                ingested data came from and let you wipe one project at a
+                time when you no longer need it. The "Open" button below
+                sets the tag that new ingestions will stamp by default.
+            </p>
             <div id="settings-projects"></div>
         </div>
     `;

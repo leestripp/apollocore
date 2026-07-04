@@ -677,17 +677,32 @@ static CallToolResult apollo_save_kb(const json& /*args*/, ServerState& state, c
     return CallToolResult::text("Saved.");
 }
 
-static CallToolResult apollo_get_stats(const json& args, ServerState& state, const std::string& /*session_id*/)
+static CallToolResult apollo_get_stats(const json& /*args*/, ServerState& state, const std::string& /*session_id*/)
 {
-    const std::string project = args.contains("project")
-        ? get_str(args, "project", false) : std::string{};
-    if (!project.empty()) state.core().set_current_project(project);
+    // Per the user's model (prompt.txt): projects are tags for deletion,
+    // NOT isolation. The KB is all-inclusive, so get_stats() now returns
+    // global counts. The optional `project` arg is kept for API stability
+    // but is informational only (no side effect on current_project_).
     auto s = state.core().get_stats();
+    auto breakdown = state.core().get_project_breakdown();
+
+    json projects_arr = json::array();
+    for (const auto& p : breakdown) {
+        projects_arr.push_back({
+            {"name",          p.name},
+            {"documents",     p.document_count},
+            {"chunks",        p.chunk_count},
+            {"entities",      p.entity_count},
+            {"relationships", p.relationship_count},
+        });
+    }
+
     json j = {
         {"documents",     s.document_count},
         {"chunks",        s.chunk_count},
         {"entities",      s.entity_count},
         {"relationships", s.relationship_count},
+        {"projects",      projects_arr},
     };
     // Phase D: emit structuredContent so MCP clients can validate the
     // shape without parsing the text dump. The matching outputSchema
