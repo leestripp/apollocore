@@ -1310,14 +1310,85 @@ production-ready except for the items in §Open issues below.
 
 ## Current test summary
 ```
-ctest -E test_ingest_codebase          → 19/19 pass
+ctest -E test_ingest_codebase            → 19/19 pass
 tests/test_stdio_conformance.py         →  4/4 (init, notif, tools/list, ping)
 tests/test_mcp_conformance.py           → 27/27 (HTTP conformance)
 tests/test_sse_streaming.py             →  ': connected' + keep-alive
 tests/test_pagination.py                →  ALL OK (cursor encode/decode + offset 5)
 tests/test_auth.py                      →  ALL OK (Bearer-token)
+tests/test_health_global_stats.py        →  ALL OK (multi-project breakdown,
+  global counts unchanged across set_project — see "Active Plan" below)
 tests/runall.sh (stability runs)         →  all green
 ```
+
+---
+
+## Active Plan — Single Global KB (in response to user feedback)
+
+> **Status:** shipped (commit `db273ec`). More to do — see bottom.
+
+### What the user said
+
+> *I think you have misunderstood what the project separation was for, its
+> ONLY for deleting data, NOT for data separation or isolation, its so
+> the Agents can know which project the data is from, but the knowledge
+> base is all inclusive as in all data is accessable, so the Health Page
+> in its current state makes no sence at all. why do we need to select a
+> project to see any data, states? This is wrong.*
+
+And `prompt.txt` (the architectural blueprint):
+
+> *We ONLY have 1 knowledge base, one location set by the user, this
+> should NOT be changeable by the AI Agent at ALL, so we need to remove
+> those Tools.*
+>
+> *AI Agents do need to create projects to store data in the knowledge
+> base, but this is ONLY for reference NOT isolation, it also makes it
+> easier to remove data project wide etc... Its not ment to
+> seperate/isolate data, ONLY tag it so we know where its from.*
+
+### What changed in this commit
+
+The Health tab was the user's primary complaint — it was gating data
+behind a project picker that should not exist. Three things landed:
+
+1. **C++:** `ApolloCore::get_stats()` now returns GLOBAL counts (was
+   filtered by `visible_projects() = [current_project_] ∪ shared_sources_`).
+   New `ApolloCore::get_project_breakdown()` returns per-project counts
+   for the UI to show "deletion unit" inventory.
+
+2. **MCP:** `apollo://stats` and `apollo_get_stats` both now emit
+   `{documents, chunks, entities, relationships, projects:[...]}`.
+   The optional `project` arg on `apollo_get_stats` is now advisory —
+   no longer mutates `current_project_` as a side effect.
+
+3. **Web UI:** Health tab rewritten. "Active project" framing is gone.
+   New "Projects (deletion units)" card lists every project with its
+   chunk/document/entity count + percentage share. Settings tab
+   relabels "Projects" to "Projects (deletion units)" with explanatory
+   copy. Search tab's misleading "open a KB" tip replaced.
+
+### What's still pending (next pass)
+
+These are the user's `prompt.txt` items NOT yet addressed — they're
+out of scope for the focused Health-page fix, but they're the next
+chunk of the same architectural plan:
+
+* **Remove KB-lifecycle tools.** `apollo_create_kb`, `apollo_open_kb`,
+  `apollo_save_kb` should be deleted — the KB lives at the path the
+  operator set at startup and the agent cannot move or recreate it.
+* **Read tools become global by default.** `apollo_query_kb`,
+  `apollo_get_neighbors`, `apollo_search_symbols`, the Graph tab —
+  all of these currently take an optional `project` filter. Per the
+  user's model: default = global, filter = optional narrowing (never
+  the only way to see data).
+* **Single global KB at `~/.apollocore/data/`.** Default `data_dir`
+  on startup. Migration: on first run, if `./data/` exists, move it
+  to `~/.apollocore/data/` and write the `.installed` sentinel.
+
+The active plan section above (now further down in this file)
+captured this in more detail before any of it landed. Use that as
+the spec for the next pass.
 
 ```
 
