@@ -48,6 +48,190 @@ This refactor:
 3. Applies **2026 MCP best practices** (outcome-oriented tool design, flat
    arguments, service-prefixed names, paginated, curated).
 
+## Active Plan — Single Global KB (in response to user feedback)
+
+> **Status:** pending approval / start.
+> **Source:** `prompt.txt` (user feedback, not me).
+> **Goal:** Fix the "agent creates KBs everywhere, no way to find them" mess.
+
+### Why this section exists
+
+The previous design let the AI agent **create** knowledge bases anywhere on disk
+(`apollo_create_kb(path)`), **open** any KB (`apollo_open_kb(path)`), and
+**switch between** them at will. This produced three concrete problems:
+
+1. **Discovery is impossible.** An agent that creates KBs at
+   `/home/lee/projects/foo/data/` and another at `/tmp/kb_x/` and a third
+   inside a project checkout cannot — by definition — find each other later.
+   The whole point of a knowledge base is *finding things back*.
+2. **The shared-knowledge use case dies.** A static library in project A should
+   be discoverable from project B. With multiple isolated KBs, this requires
+   the agent to know in advance which KB to open. It doesn't, and it can't.
+3. **The web UI had to ask "which project first?"** because projects were the
+   only unit of isolation. Health tab gated all data behind a project picker
+   — terrible UX for "what's in the KB right now?"
+
+The user was right to be angry. The fix below is the right one.
+
+### New architecture — one KB, always at `~/.apollocore/data/`
+
+```
+~/.apollocore/                  (XDG-style: $APOLLO_HOME overrides)
+├── data/                       THE knowledge base — fixed location
+│   ├── apollo.kb              (sqlite, all projects)
+│   ├── vectors/               (vec0 / sqlite-vec tables)
+│   ├── graph.sqlite           (entity graph)
+│   ├── config.json            (model paths, defaults)
+│   └── logs/
+├── models/                     (GGUF — embed + llm)
+└── .installed                  (sentinel — first run did model download)
+```
+
+Projects remain as **logical tags / namespaces inside the single KB**, not as
+separate databases. Rationale (user-stated):
+
+- **Project isolation exists only so data can be deleted easily.** A delete
+  on a project name purges its chunks/entities/relations atomically.
+- **Search is global by default.** `apollo_query_kb` returns results from
+  *all* projects unless the caller passes an explicit `project` filter.
+  This is the shared-knowledge payoff.
+- **`apollo_set_project` becomes a "current ingestion context"** — it tells
+  the server *which project to stamp on new chunks* during ingest. It does
+  not restrict reads.
+
+### Tool surface changes
+
+| Tool | Old behaviour | New behaviour | Action |
+|---|---|---|---|
+| `apollo_create_kb` | create new KB at any path | — | **REMOVE** |
+| `apollo_open_kb` | swap currently-open KB | — | **REMOVE** |
+| `apollo_save_kb` | explicit flush | implicit on every mutation | **REMOVE** (auto-save instead) |
+| `apollo_set_project` | switch KB + set context | set ingestion context only | **KEEP, narrow scope** |
+| `apollo_list_projects` | list projects in *current* KB | list projects in the *global* KB | **KEEP** |
+| `apollo_query_kb` | search current KB | search **all** projects (optional filter) | **MODIFY** |
+| `apollo_get_stats` | stats for current KB | stats for **all** projects (optional filter) | **MODIFY** |
+| `apollo_get_neighbors` | graph in current KB | graph across all projects (optional filter) | **MODIFY** |
+| `apollo_search_symbols` | current KB only | **all** projects (optional filter) | **MODIFY** |
+| `apollo_ingest_codebase` | current KB | global KB, stamps `project=<arg>` on chunks | **MODIFY** |
+| `apollo_add_document` | current KB | global KB, stamps `project=<current>` | **MODIFY** |
+| `apollo_extract_entities` | current KB | global KB, stamps `project=<current>` | **MODIFY** |
+| `apollo_set_config` | config of current KB | config of global KB (model paths, etc.) | **MODIFY** |
+| `apollo_get_stats` (per-project) | n/a | keep `project` filter optional | **MODIFY** |
+
+Net result: **13 tools → 10 tools.** Project isolation survives as a *tag*
+on every chunk and entity; reads can be unfiltered (global) or filtered.
+
+### Files to change
+
+| File | Change |
+|---|---|
+| `src/mcp_server/main.cpp` | Default `data_dir` to `$APOLLO_HOME/data` or `$HOME/.apollocore/data`. Read `APOLLO_HOME` env var. Create the dir on startup if missing. |
+| `src/mcp_server/main.cpp` | Remove CLI flag `--data-dir` (or keep as override, but never as a "different KB"). Actually — keep `--data-dir` as override but only for testing; doc says "don't use this". |
+| `src/mcp_server/tools.cpp` | Remove `apollo_create_kb`, `apollo_open_kb`, `apollo_save_kb` definitions + registrations. |
+| `src/mcp_server/tools.cpp` | `apollo_set_project` — narrow to "set current ingestion context" only; remove the "rebind KB" path. |
+| `src/mcp_server/tools.cpp` | `apollo_query_kb` — accept optional `project` filter; default is "all". |
+| `src/mcp_server/tools.cpp` | `apollo_ingest_codebase` — `project` arg becomes mandatory (was optional defaulting to "default"). |
+| `src/apollo_persistence.cpp` | Remove `create_kb()` / `open_kb()` APIs (or keep as internal "load from path", no longer reachable from MCP). |
+| `src/apollo_persistence.cpp` | All queries: default visible-projects set = "all" (was: "current only"). |
+| `src/kb_persistence.cpp` | Same as above. |
+| `src/apollocore.cpp` | Singleton-style lifecycle: load the global KB at startup, never swap. |
+| `src/mcp_server/server_state.cpp` | Drop `set_data_dir()` ambiguity; the path is read once at startup. |
+| `src/mcp_server/dispatcher.cpp` | Update tool list (10 tools not 13). |
+| `scripts/start.sh` | Default `APOLLO_DATA_DIR` to `$HOME/.apollocore/data` (or `$APOLLO_HOME/data`). |
+| `scripts/ensure-running.sh` | Same. Probe `$APOLLO_HOME/data/.installed` as "ready" sentinel. |
+| `src/mcp_server/static/js/health.js` | **Default to "All projects"** view. Show total counts across all projects. Project filter is a *secondary* chip, not a required selector. |
+| `src/mcp_server/static/js/search.js` | Results table includes a `Project` column by default. |
+| `src/mcp_server/static/js/app.js` | On startup, fetch global stats; don't gate UI on a project choice. |
+| `src/mcp_server/static/index.html` | Add "All projects" pill in the project picker; make it default. |
+| `docs/apollocore_howto_connect.md` | Remove `apollo_create_kb` / `apollo_open_kb` / `apollo_save_kb` from §5. Update §12 (CLI flags). Update §1 (location of the KB). |
+| `docs/mcp_compliance.md` | Update the "auth" deviation note to reflect that the global KB is single-process and single-user by design. |
+| `README.md` | Update "what is ApolloCore" copy: one KB per host, multi-project tags, shared knowledge across the agent's working set. |
+| `tests/test_mcp_conformance.py` | Update expected tool count from 13 to 10; remove `apollo_*_kb` cases. |
+| `tests/test_pagination.py` | Confirm cross-project query behaviour. |
+
+### Migration plan (one-shot)
+
+For users who already have a KB at `$PROJECT_ROOT/data` (the old default):
+
+1. On startup, if the *old* per-project `data/` exists AND `$APOLLO_HOME/data`
+   does **not**:
+   - Print a one-line warning: `apollo: migrating data/ → ~/.apollocore/data/`
+   - `mv` the dir. Don't copy — single source of truth.
+   - Write `~/.apollocore/.installed` sentinel.
+2. If both exist, refuse to start: `apollo: both ./data and ~/.apollocore/data exist; pick one`. Exits 4.
+3. Otherwise, normal startup.
+
+This is intentionally loud — better to make the user notice than silently
+double-up the storage.
+
+### Web UI redesign — health tab
+
+Old:
+
+```
++--------------------------------------+
+|  Health                              |
++--------------------------------------+
+|  Active project: <dropdown required> |
+|  → chunks: ... (only that project)   |
++--------------------------------------+
+```
+
+New:
+
+```
++--------------------------------------+
+|  Health                              |
++--------------------------------------+
+|  KB location: ~/.apollocore/data/    |
+|  Documents: 1,247                    |
+|  Chunks:    8,304                    |
+|  Entities:    612  (across 5 proj.)  |
+|                                      |
+|  Projects:                           |
+|   • apollo_core    3,201 chunks      |
+|   • libstrutil       812 chunks      |
+|   • notes            194 chunks      |
+|   • ...                             |
+|                                      |
+|  Filter by project: [All ▾]         |
++--------------------------------------+
+```
+
+Data table gains a `Project` column. Default sort: by relevance (no change).
+The project filter is a chip — *optional* — not a gate.
+
+### Acceptance criteria
+
+This plan is **done** when:
+
+1. `apollo_query_kb("foo")` returns results from every project, not just the
+   current one. Verified by `tests/test_global_search.py`.
+2. No tool exists that can change which KB the server is bound to. The
+   tool list shrinks from 13 to 10; no new lifecycle tools can be added
+   without breaking this rule.
+3. The web UI Health tab shows global counts at first paint, with no project
+   picker interaction required.
+4. `./scripts/start.sh` on a fresh machine produces a single KB at
+   `$HOME/.apollocore/data/` with `~/.apollocore/.installed` written.
+5. The migration step is testable: `./scripts/start.sh` in a tree with the
+   old `./data/` moves it to the new location and warns exactly once.
+6. `tests/test_mcp_conformance.py` passes with the new tool list.
+7. `docs/apollocore_howto_connect.md` is updated and reflects the 10-tool
+   surface + global-KB assumption.
+
+### Out of scope for this plan (deferred)
+
+- **Per-user KBs** (multi-tenant). Single user per process. Sharing across
+  users is the OS's job (`chmod`).
+- **Network-shared KB.** Future. For now, NFS-mount `~/.apollocore/data` if
+  you want; sqlite handles concurrent reads fine, writes need a process lock
+  we don't ship yet.
+- **Migration of chunk embeddings between machines.** Out of scope — if you
+  move `~/.apollocore/data` you take your embeddings with you.
+
+---
+
 ## Why MCP and Why Now
 
 - Anthropic's open-standard protocol since 2024; ~1 year later there is a critical mass
