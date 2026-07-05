@@ -80,7 +80,50 @@ export async function renderSettings(panel) {
             </p>
             <div id="settings-projects"></div>
         </div>
+
+        <div class="card danger-zone">
+            <h3 style="margin-top: 0;">Danger Zone</h3>
+            <p class="muted">
+                <strong>Clear Knowledge Base</strong> permanently deletes all ingested
+                documents, chunks, embeddings, and entity graph data from
+                <code>~/.apollocore/</code>. The server reinitialises a fresh,
+                empty database automatically. This action
+                <strong>cannot be undone</strong>.
+            </p>
+            <button id="btn-clear-kb"
+                style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;">
+                Clear Knowledge Base
+            </button>
+            <span id="clear-kb-status" style="margin-left:12px;"></span>
+        </div>
     `;
+
+    // Wire up Clear KB button.
+    document.getElementById('btn-clear-kb').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-clear-kb');
+        const status = document.getElementById('clear-kb-status');
+        if (!confirm('Are you sure? This will permanently delete ALL data in the knowledge base. This cannot be undone.')) return;
+        btn.disabled = true;
+        status.textContent = 'Clearing...';
+        status.style.color = '';
+        try {
+            const r = await fetch('/api/clear-kb', {method: 'POST'});
+            const j = await r.json();
+            if (j.success) {
+                status.textContent = 'Cleared! Reloading...';
+                status.style.color = 'green';
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                status.textContent = 'Error: ' + (j.error || 'unknown');
+                status.style.color = 'red';
+                btn.disabled = false;
+            }
+        } catch (e) {
+            status.textContent = 'Error: ' + e.message;
+            status.style.color = 'red';
+            btn.disabled = false;
+        }
+    });
 
     await load();
 

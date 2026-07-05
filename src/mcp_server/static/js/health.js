@@ -92,9 +92,12 @@ async function refresh() {
             httpJson('/info').catch(() => null),
             callTool('apollo_get_stats', {}).catch(() => null),
         ]);
-        // apollo_get_stats returns {content:[...], structured_content: {documents,...}}
-        const stats = rawStats && rawStats.structured_content
-            ? rawStats.structured_content
+        // apollo_get_stats: callTool already unwraps the JSON-in-content-text into
+// a plain object via unwrapToolResult, so rawStats IS the stats object
+// (with documents, chunks, entities, projects[]). The MCP `structuredContent`
+// field is also exposed by the backend but we don't need to parse it ourselves.
+        const stats = rawStats && typeof rawStats === 'object' && 'documents' in rawStats
+            ? rawStats
             : null;
 
         renderServer(info, health);

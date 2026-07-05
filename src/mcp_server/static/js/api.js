@@ -13,12 +13,19 @@ const MCP_ENDPOINT = '/mcp';
 let _id = 1;
 function nextId() { return _id++; }
 
+// Module-level session ID. Set by `initialize()` from the response headers.
+// Subsequent rpc() calls automatically include it. Per the MCP 2025-11-25 spec,
+// post-initialize requests MUST carry the negotiated Mcp-Session-Id or the
+// server rejects them with code -32600.
+let _sessionId = null;
+export function getSessionId() { return _sessionId; }
+
 /**
  * Send a JSON-RPC 2.0 request to /mcp.
  *
  * @param {string} method  e.g. "tools/call"
  * @param {object} params  method-specific params
- * @param {string|null} sessionId  optional Mcp-Session-Id header
+ * @param {string|null} sessionId  optional override for Mcp-Session-Id header
  * @returns {Promise<{result?: object, error?: {code: number, message: string, data?: any}, sessionId?: string}>}
  */
 export async function rpc(method, params = {}, sessionId = null) {

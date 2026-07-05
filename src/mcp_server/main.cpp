@@ -24,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
 #include <string>
 
 #include "OmniNet.h"   // <-- bring in the OmniNet namespace
@@ -41,6 +42,42 @@ namespace fs = std::filesystem;
 
 namespace {
 
+
+// Expand ~ in paths to the user's home directory.
+static std::string expand_user(const std::string& path) {
+    if (!path.empty() && path[0] == '~') {
+        const char* home = std::getenv("HOME");
+        if (home) return std::string(home) + path.substr(1);
+    }
+    return path;
+}
+
+// Ensure the data directory exists and has a config.json with sane defaults.
+// Creates the directory if needed; writes default config only if absent.
+// Does NOT overwrite an existing config.json (user's choices are preserved).
+static void ensure_default_config(const std::string& data_dir) {
+    namespace fs = std::filesystem;
+    fs::path dir = data_dir;
+    if (!fs::exists(dir)) {
+        std::cerr << "[apollo_mcp_server] Creating data directory: " << dir << "\n";
+        fs::create_directories(dir);
+    }
+    fs::path cfg = dir / "config.json";
+    if (fs::exists(cfg)) return;
+    std::cerr << "[apollo_mcp_server] Writing default config.json: " << cfg << "\n";
+    std::ofstream out(cfg);
+        out << "{\n"
+         << "  \"data_dir\": \"" << data_dir << "\",\n"
+         << "  \"embed_model\": \"models/nomic-embed-text-v1.5.Q4_K_M.gguf\",\n"
+         << "  \"llm_model\": \"models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\n"
+         << "  \"host\": \"127.0.0.1\",\n"
+         << "  \"port\": 8765,\n"
+         << "  \"note\": \"This file is auto-created. Edit to change defaults.\"\n"
+         << "}\n";
+    out.close();
+}
+
+
 struct CliArgs {
     // MCP spec §6.2 (Streamable HTTP): "Bind to 127.0.0.1, NOT 0.0.0.0,
     // for local servers." We default to loopback for safety. Use
@@ -48,7 +85,7 @@ struct CliArgs {
     // network — there's no auth beyond APOLLO_AUTH_TOKEN).
     std::string host = "127.0.0.1";
     int port = 8765;
-    std::string data_dir = "data";
+    std::string data_dir = expand_user("~/.apollocore");
     std::string embed_model = "models/nomic-embed-text-v1.5.Q4_K_M.gguf";
     std::string llm_model = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf";
     std::string ui_static_dir;       // empty = try default; --no-ui disables
@@ -172,14 +209,9 @@ int main(int argc, char** argv)
     // is no MCP tool that can move or recreate this KB from here on; the
     // path is bound to the process. First run on a fresh dir creates a
     // new KB; subsequent runs open the existing one in place.
-    if (!fs::exists(args.data_dir)) {
-        std::error_code ec;
-        fs::create_directories(args.data_dir, ec);
-        if (ec) {
-            std::cerr << "[apollo_mcp_server] WARN: could not create "
-                      << args.data_dir << ": " << ec.message() << "\n";
-        }
-    }
+    // Expand ~ in data_dir and ensure ~/.apollocore/ + config.json exist.
+    args.data_dir = expand_user(args.data_dir);
+    ensure_default_config(args.data_dir);
     state.try_open_or_create_kb(args.data_dir, "default");
 
     // Register the install-path models directory as a search target for

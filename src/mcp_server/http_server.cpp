@@ -33,6 +33,9 @@
 #include "mcp_sse_bus.hpp"
 #include "mcp_dispatch.hpp"
 
+#include <filesystem>
+#include <iostream>
+
 namespace apollo::mcp {
 
 using nlohmann::json;
@@ -171,6 +174,13 @@ struct HttpServer::Impl {
         // ------------------------------------------------------------------
         server->post("/api/config", [this](const onh::Request& req, onh::Response& resp) {
             handle_post_config(req, resp);
+        });
+
+        // ------------------------------------------------------------------
+        // POST /api/clear-kb — wipe the knowledge base and start fresh.
+        // ------------------------------------------------------------------
+        server->post("/api/clear-kb", [this](const onh::Request& req, onh::Response& resp) {
+            handle_post_clear_kb(req, resp);
         });
 
         // ------------------------------------------------------------------
@@ -512,6 +522,55 @@ struct HttpServer::Impl {
             }()},
         };
         write_json(resp, 200, body);
+    }
+
+    // Handle POST /api/clear-kb — wipe the KB and reinitialise.
+    // Deletes all files in data_dir (apollo.db, embeddings/, etc.),
+    // then re-creates the ApolloCore KB so the server is immediately usable.
+    void handle_post_clear_kb(const onh::Request& req, onh::Response& resp)
+    {
+        namespace fs = std::filesystem;
+        (void)req;  // no body needed
+
+        std::string data_dir = state.data_dir();
+        std::cerr << "[apollo_mcp_server] Clearing knowledge base: " << data_dir << "\n";
+
+        // 1. Close the ApolloCore instance so the WAL checkpoints cleanly.
+        state.core().close();
+
+        // 2. Delete all files and subdirs inside data_dir.
+        //    Keep the directory itself so the next step doesn't fail.
+        std::error_code ec;
+        for (const auto& entry : fs::directory_iterator(data_dir, ec)) {
+            if (ec) {
+                std::cerr << "[apollo_mcp_server] WARN: could not list " << data_dir
+                          << ": " << ec.message() << "\n";
+                break;
+            }
+            fs::remove_all(entry.path(), ec);
+        }
+        if (ec) {
+            std::cerr << "[apollo_mcp_server] WARN: error removing KB files: "
+                      << ec.message() << "\n";
+            write_json(resp, 500, {{"success", false},
+                                   {"error", "Failed to remove some KB files: " + ec.message()}});
+            // Try to reopen the KB anyway
+            state.try_open_or_create_kb(data_dir, "default");
+            return;
+        }
+
+        // 3. Re-open (recreate) the KB.
+        bool ok = state.try_open_or_create_kb(data_dir, "default");
+        if (!ok) {
+            std::cerr << "[apollo_mcp_server] ERROR: failed to recreate KB after clear\n";
+            write_json(resp, 500, {{"success", false},
+                                   {"error", "Failed to recreate KB after clear"}});
+            return;
+        }
+
+        std::cerr << "[apollo_mcp_server] Knowledge base cleared and recreated\n";
+        write_json(resp, 200, {{"success", true},
+                               {"message", "Knowledge base cleared. All data has been deleted."}});
     }
 
     void handle_post_config(const onh::Request& req, onh::Response& resp)
