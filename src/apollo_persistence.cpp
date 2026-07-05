@@ -1250,10 +1250,12 @@ bool ApolloCore::delete_project(const std::string& name, bool confirm) {
 }
 
 std::vector<std::string> ApolloCore::visible_projects() const {
+    // Single global KB: every project is visible. Return all of them so
+    // search and other operations span the full knowledge base.
     std::vector<std::string> result;
-    result.push_back(current_project_);
-    for (const auto& src : shared_read_sources_) {
-        result.push_back(src);
+    if (kb_persistence_) {
+        auto all = kb_persistence_->load_all_projects();
+        for (const auto& p : all) result.push_back(p.name);
     }
     return result;
 }
