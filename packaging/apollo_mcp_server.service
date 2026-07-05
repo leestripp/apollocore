@@ -37,11 +37,11 @@ EnvironmentFile=-/etc/default/apollocore
 
 # Where to find the binary (the install script puts it here).
 ExecStart=/opt/apollocore/bin/apollo_mcp_server \
-    --host   ${APOLLO_HOST:-0.0.0.0} \
-    --port   ${APOLLO_PORT:-8765} \
+    --host   $APOLLO_HOST \
+    --port   $APOLLO_PORT \
     --data-dir   /var/lib/apollocore/data \
-    --embed-model ${APOLLO_EMBED_MODEL:-/opt/apollocore/models/nomic-embed-text-v1.5.Q4_K_M.gguf} \
-    --llm-model   ${APOLLO_LLM_MODEL:-/opt/apollocore/models/qwen2.5-0.5b-instruct-q4_k_m.gguf}
+    --embed-model $APOLLO_EMBED_MODEL \
+    --llm-model   $APOLLO_LLM_MODEL
 
 # Restart on failure. The KB can take a few seconds to come up while
 # llama.cpp warms up the embedding model — give it 5 s before giving up.
@@ -66,7 +66,7 @@ ProtectControlGroups=true
 ProtectHostname=true
 ProtectClock=true
 ProtectKernelLogs=true
-ProtectProc=invisible
+ProtectProc=ptraceable   # allow coredumpctl; ptrace_scope=0 required on host
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true

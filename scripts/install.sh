@@ -97,19 +97,29 @@ run mkdir -p \
     "$APOLLO_DATA_DIR" \
     /var/log/apollocore \
     /var/cache/apollocore || { echo "install.sh: mkdir failed" >&2; exit 4; }
-
-# ─────────────────────────── install binary + UI ───────────────
+# ─────────────────────────── install binary + UI ────────────────
 echo "install.sh: installing binary + UI to $APOLLO_INSTALL_PREFIX"
-run cmake --install "$PROJECT_ROOT/build" \
-    --prefix "$APOLLO_INSTALL_PREFIX" --component apollo_mcp_server \
-    2>/dev/null || run cmake --install "$PROJECT_ROOT/build" \
-    --prefix "$APOLLO_INSTALL_PREFIX" || {
-        echo "install.sh: cmake --install failed; falling back to manual copy" >&2
-        run install -m 0755 "$BIN_SRC" "$APOLLO_INSTALL_PREFIX/bin/apollo_mcp_server"
-        run cp -r "$UI_SRC" "$APOLLO_INSTALL_PREFIX/share/apollocore/ui"
-    }
 
-# ─────────────────────────── systemd ───────────────────────────
+# Note: --component is intentionally omitted. The install rules in
+# src/mcp_server/CMakeLists.txt carry no COMPONENT tag, so
+# --component apollocore_mcp_server matches nothing and cmake --install
+# silently installs zero files (but exits 0, short-circuiting ||).
+# The fix is to run cmake --install without --component so it installs
+# everything: binary, UI, and the bundled OmniNet utilities.
+run cmake --install "$PROJECT_ROOT/build" --prefix "$APOLLO_INSTALL_PREFIX" || {
+    echo "install.sh: cmake --install failed; falling back to manual copy" >&2
+    run install -m 0755 "$BIN_SRC" "$APOLLO_INSTALL_PREFIX/bin/apollo_mcp_server"
+    run cp -r "$UI_SRC" "$APOLLO_INSTALL_PREFIX/share/apollocore/ui"
+}
+
+# Register the installed libs so the dynamic linker finds them without
+# requiring LD_LIBRARY_PATH. This persists across reboots.
+if [[ -d "$APOLLO_INSTALL_PREFIX/lib" ]]; then
+    echo "install.sh: running ldconfig to register $APOLLO_INSTALL_PREFIX/lib"
+    run ldconfig "$APOLLO_INSTALL_PREFIX/lib"
+fi
+
+# ─────────────────────────── enable + start ───────────────────────────
 # /etc/default/ may not exist on all distros; ensure it does.
 run mkdir -p /etc/default
 
