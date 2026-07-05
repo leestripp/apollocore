@@ -109,6 +109,10 @@ run cmake --install "$PROJECT_ROOT/build" \
         run cp -r "$UI_SRC" "$APOLLO_INSTALL_PREFIX/share/apollocore/ui"
     }
 
+# ─────────────────────────── systemd ───────────────────────────
+# /etc/default/ may not exist on all distros; ensure it does.
+run mkdir -p /etc/default
+
 # ─────────────────────────── env + unit ────────────────────────
 echo "install.sh: installing systemd unit + env file"
 run install -m 0644 "$ENV_SRC"  /etc/default/apollocore
