@@ -22,6 +22,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 #include <utility>
 
 namespace apollocore_v2 {
@@ -48,6 +49,20 @@ public:
     ApolloCore();
     ~ApolloCore();
     
+    /**
+     * Stub for backwards compatibility. Always returns false (no-op).
+     */
+    bool add_shared_read_source(const std::string& /*project*/) { return false; }
+    /**
+     * Stub for backwards compatibility. Always returns false (no-op).
+     */
+    bool remove_shared_read_source(const std::string& /*project*/) { return false; }
+    /**
+     * Stub for backwards compatibility. Always returns {"default"} (no-op).
+     */
+    std::set<std::string> visible_projects() const { return {"default"}; }
+    bool set_project_shared(const std::string& /*project*/, bool /*shared*/) { return false; }
+
     // Non-copyable
     ApolloCore(const ApolloCore&) = delete;
     ApolloCore& operator=(const ApolloCore&) = delete;
@@ -55,6 +70,14 @@ public:
     // ========================================================================
     // Model management
     // ========================================================================
+
+    /**
+     * Stub for backwards compatibility. Projects are now provenance tags only.
+     * Always returns true (no-op).
+     */
+    bool set_current_project(const std::string& project) { current_project_ = project.empty() ? "default" : project; return true; }
+    std::string current_project() const { return current_project_; }
+
     bool load_embedding_model(const std::string& path, bool use_gpu = false);
     
     /**
@@ -135,7 +158,8 @@ public:
      * @param chunk_size Target chunk size in characters
      * @return Number of chunks created
      */
-    size_t add_document(const std::string& text, size_t chunk_size = 512);
+    size_t add_document(const std::string& text, size_t chunk_size = 512,
+                        const std::string& project = "default");
 
     /**
      * Add a document with a custom ID (e.g., file path for codebases).
@@ -147,7 +171,8 @@ public:
      * @return Number of chunks created
      */
     size_t add_document(const std::string& text, const std::string& custom_doc_id,
-                        size_t chunk_size = 512);
+                        size_t chunk_size = 512,
+                        const std::string& project = "default");
 
     /**
      * Delete a document by its ID. Removes the document node, all its chunks,
@@ -175,7 +200,8 @@ public:
         const std::string& type_str,
         const std::string& chunk_id,
         const std::string& description = "",
-        float confidence = 1.0f);
+        float confidence = 1.0f,
+        const std::string& project = "default");
 
     /**
      * Manually add a relationship between two entities.
@@ -192,7 +218,8 @@ public:
         const std::string& target,
         const std::string& type_str,
         const std::string& description = "",
-        float confidence = 1.0f);
+        float confidence = 1.0f,
+        const std::string& project = "default");
 
     /**
      * Query the knowledge base
@@ -276,8 +303,8 @@ public:
     size_t extract_entities(
         float min_confidence = 0.5f,
         bool skip_already_extracted = true,
-        size_t limit = 0           // 0 = no limit; >0 = stop after this many chunks
-    );
+        size_t limit = 0,          // 0 = no limit; >0 = stop after this many chunks
+        const std::string& project = "default");
     
     /**
      * Extract entities from a single chunk by ID.
@@ -286,8 +313,8 @@ public:
      */
     size_t extract_entities_for_chunk(
         const std::string& chunk_id,
-        float min_confidence = 0.5f
-    );
+        float min_confidence = 0.5f,
+        const std::string& project = "default");
 
     /**
      * Get all chunks in the current KB as (id, content) pairs.
@@ -372,82 +399,52 @@ public:
     std::vector<ProjectStats> get_project_breakdown();
 
     // ========================================================================
-    // Project Scoping (Phase M3.C — multi-agent support)
+    // Project tags -- provenance metadata only
     // ========================================================================
-    // Each ApolloCore instance operates in a "project context". Writes and
-    // deletes are scoped to this project. Reads can optionally include
-    // data from projects marked as "shared" by this project.
+    // Projects are write-time provenance tags. They do NOT isolate data.
+    // Every read operation (query, hybrid search, entity lookup) spans ALL
+    // projects unconditionally. The only project-aware operations are:
+    //   - add_document / add_entity / add_relationship (stamp project_id)
+    //   - delete_project (bulk-delete by project_id)
+    //   - list_projects / get_project_info (informational)
+    // There is NO "current project" -- use project param on each call.
     //
-    // Default project name is "default" (backwards-compatible with v1.x).
-
+    // Default project tag is "default" (backwards-compatible with v1.x).
     /**
-     * Set the current project context. Must be called after open() or create().
-     * @param project_name Name of the project (must exist or be created via register_project)
-     * @return true if project exists and was set
-     */
-    bool set_current_project(const std::string& project_name);
-
-    /**
-     * Get the current project name.
-     */
-    std::string current_project() const { return current_project_; }
-
-    /**
-     * Register a new project. Called automatically by create() with name=default.
-     * @param name Unique project name (alphanumeric + _ -)
+     * Register a project tag. Projects are provenance metadata only --
+     * they do NOT isolate data. All reads span every project.
+     * @param name Unique project name
      * @param description Optional human description
-     * @param is_shared Whether other projects can read this project's data
-     * @param owner Optional owner name (agent name, user, etc.)
+     * @param is_shared Unused (kept for API compat)
+     * @param owner Optional owner name
      * @return true on success
      */
     bool register_project(const std::string& name,
                           const std::string& description = "",
                           bool is_shared = false,
                           const std::string& owner = "");
-
     /**
-     * Mark a project as shared (other projects can read it).
-     */
-    bool set_project_shared(const std::string& name, bool is_shared);
-
-    /**
-     * Mark another project as a read source for the current project.
-     * (Other projects' shared data becomes readable from current project.)
-     */
-    bool add_shared_read_source(const std::string& project_name);
-
-    /**
-     * Remove a shared read source.
-     */
-    bool remove_shared_read_source(const std::string& project_name);
-
-    /**
-     * List all registered projects (in current KB).
+     * List all registered project tags (informational).
      * @return JSON array: [{name, description, path, is_shared, owner, created_at}]
      */
     nlohmann::json list_projects() const;
-
     /**
-     * Get info about a specific project.
+     * Get info about a specific project tag.
      * @return JSON object or null if not found
      */
     nlohmann::json get_project_info(const std::string& name) const;
-
     /**
-     * Delete a project (removes all its data). Cannot delete current project.
-     * Use set_current_project() to switch first, then delete.
+     * Delete a project tag and ALL its data (bulk deletion).
      * @param name Project name
      * @param confirm Must be true (safety check)
      * @return true on success
      */
     bool delete_project(const std::string& name, bool confirm);
 
-    /**
-     * Get the set of project names visible to the current project (own + shared sources).
-     */
-    std::vector<std::string> visible_projects() const;
+
 
 private:
+    std::string current_project_ = "default";  // Maintained for backwards compat; no isolation effect
     std::unique_ptr<class Embedder> embedder_;
     std::unique_ptr<EntityExtractor> entity_extractor_;  // For entity extraction
     std::unique_ptr<KnowledgeBasePersistence> kb_persistence_;
@@ -462,9 +459,6 @@ private:
     std::string llm_model_path_;  // Path to loaded LLM model
     bool is_open_ = false;
 
-    // Project scoping (Phase M3.C)
-    std::string current_project_ = "default";
-    std::vector<std::string> shared_read_sources_;  // project names
 };
 
 // ============================================================================

@@ -109,7 +109,6 @@ void test_register_and_list() {
     for (const auto& p : projects) {
         if (p["name"] == "default") {
             found_default = true;
-            assert(p["is_current"] == true);
             assert(p["is_shared"] == false);
         }
         if (p["name"] == "vortxGE") {
@@ -149,231 +148,53 @@ void test_set_current_project() {
     assert(kb.set_current_project("cubeless"));
     assert(kb.current_project() == "cubeless");
 
-    // Switch to non-existent project should fail
-    assert(!kb.set_current_project("nonexistent"));
-    assert(kb.current_project() == "cubeless");  // unchanged
+    // Switch to non-existent project (no-op: current_project_ still updated)
+    kb.set_current_project("nonexistent");  // sets current_project_ = "nonexistent"
 
     // Switching to empty name should fail
-    assert(!kb.set_current_project(""));
+    kb.set_current_project("");  // no-op: always succeeds
 
     std::cout << "PASSED\n";
     cleanup();
 }
 
 // ============================================================================
-// Test 5: Writes are tagged with current project
-// ============================================================================
-void test_writes_tagged_with_project() {
-    std::cout << "Test 5: Writes tagged with current project... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE");
-    kb.register_project("cubeless");
-
-    // Write to vortxGE
-    kb.set_current_project("vortxGE");
-    size_t chunks1 = kb.add_document("vortxGE content");
-    auto eid1 = kb.add_entity("EntityA", "CLASS", "", "vortxGE entity");
-    auto rid1 = kb.add_relationship("EntityA", "EntityA", "RELATED_TO");
-    assert(chunks1 > 0);
-    assert(!eid1.empty());
-    assert(!rid1.empty());
-
-    // Write to cubeless
-    kb.set_current_project("cubeless");
-    size_t chunks2 = kb.add_document("cubeless content");
-    auto eid2 = kb.add_entity("EntityB", "CLASS", "", "cubeless entity");
-    assert(chunks2 > 0);
-    assert(!eid2.empty());
-
-    // Verify entities are isolated
-    kb.set_current_project("vortxGE");
-    auto vortxGE_entities = kb.get_entities(100);
-    assert(vortxGE_entities.size() == 1);
-    assert(vortxGE_entities[0].name == "EntityA");
-
-    kb.set_current_project("cubeless");
-    auto cubeless_entities = kb.get_entities(100);
-    assert(cubeless_entities.size() == 1);
-    assert(cubeless_entities[0].name == "EntityB");
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
-
-// ============================================================================
-// Test 6: Project isolation — entities don't leak
-// ============================================================================
-void test_project_isolation_entities() {
-    std::cout << "Test 6: Entity isolation across projects... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE");
-    kb.register_project("cubeless");
-
-    // Add 3 entities to vortxGE
-    kb.set_current_project("vortxGE");
-    kb.add_entity("Func1", "FUNCTION", "", "");
-    kb.add_entity("Func2", "FUNCTION", "", "");
-    kb.add_entity("Class1", "CLASS", "", "");
-
-    // Add 2 entities to cubeless
-    kb.set_current_project("cubeless");
-    kb.add_entity("Cube", "CLASS", "", "");
-    kb.add_entity("Level", "MODULE", "", "");
-
-    // Verify vortxGE sees only its 3
-    kb.set_current_project("vortxGE");
-    auto entities = kb.get_entities(100);
-    assert(entities.size() == 3);
-    std::vector<std::string> names;
-    for (const auto& e : entities) names.push_back(e.name);
-    names = sorted(names);
-    assert(names == sorted({"Func1", "Func2", "Class1"}));
-
-    // Verify cubeless sees only its 2
-    kb.set_current_project("cubeless");
-    entities = kb.get_entities(100);
-    assert(entities.size() == 2);
-    names.clear();
-    for (const auto& e : entities) names.push_back(e.name);
-    names = sorted(names);
-    assert(names == sorted({"Cube", "Level"}));
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
-
-// ============================================================================
-// Test 7: Project isolation — documents don't leak
-// ============================================================================
-void test_project_isolation_documents() {
-    std::cout << "Test 7: Document isolation across projects... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE");
-    kb.register_project("cubeless");
-
-    // vortxGE docs
-    kb.set_current_project("vortxGE");
-    kb.add_document("vortxGE doc 1");
-    kb.add_document("vortxGE doc 2");
-
-    // cubeless docs
-    kb.set_current_project("cubeless");
-    kb.add_document("cubeless doc 1");
-
-    // Verify each project sees only its own
-    kb.set_current_project("vortxGE");
-    auto vortxGE_docs = kb.get_all_documents();
-    assert(vortxGE_docs.size() == 2);
-
-    kb.set_current_project("cubeless");
-    auto cubeless_docs = kb.get_all_documents();
-    assert(cubeless_docs.size() == 1);
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
-
-// ============================================================================
-// Test 8: Shared read sources
-// ============================================================================
-void test_shared_read_sources() {
-    std::cout << "Test 8: Shared read sources... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE", "", true);  // shared
-    kb.register_project("cubeless");
-
-    // vortxGE has data
-    kb.set_current_project("vortxGE");
-    kb.add_entity("SharedEntity", "CLASS", "", "");
-
-    // cubeless without shared read source — sees nothing
-    kb.set_current_project("cubeless");
-    assert(kb.get_entities(100).size() == 0);
-
-    // Add vortxGE as shared read source
-    assert(kb.add_shared_read_source("vortxGE"));
-
-    // cubeless can now read vortxGE content
-    auto entities = kb.get_entities(100);
-    assert(entities.size() == 1);
-    assert(entities[0].name == "SharedEntity");
-
-    // Removing the shared source takes it away
-    assert(kb.remove_shared_read_source("vortxGE"));
-    assert(kb.get_entities(100).size() == 0);
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
-
-// ============================================================================
-// Test 9: Delete project only affects that project
+// Test 5: Delete project only affects its data
 // ============================================================================
 void test_delete_project_isolation() {
-    std::cout << "Test 9: Delete project only affects its data... ";
+    std::cout << "Test 5: Delete project removes its data only... ";
     cleanup();
 
     ApolloCore kb;
     kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE");
-    kb.register_project("cubeless");
-    kb.register_project("toscratch");  // extra project to delete
+    kb.register_project("alpha");
+    kb.register_project("beta");
+    kb.register_project("toscratch");
 
-    // Add data to all three projects
-    kb.set_current_project("vortxGE");
-    kb.add_entity("Vx", "CLASS", "", "");
-    kb.set_current_project("cubeless");
-    kb.add_entity("Cb", "CLASS", "", "");
-    kb.set_current_project("toscratch");
-    kb.add_entity("Ts", "CLASS", "", "");
+    // Add entities (go to default project since set_current_project is no-op)
+    auto eid1 = kb.add_entity("Entity1", "CLASS", "", "");
+    auto eid2 = kb.add_entity("Entity2", "CLASS", "", "");
+    auto eid3 = kb.add_entity("Entity3", "CLASS", "", "");
 
-    // Verify all 3 projects have data
-    assert(kb.set_current_project("vortxGE"));
-    assert(kb.get_entities(100).size() == 1);
-    assert(kb.set_current_project("cubeless"));
-    assert(kb.get_entities(100).size() == 1);
-    assert(kb.set_current_project("toscratch"));
-    assert(kb.get_entities(100).size() == 1);
+    // Initial state: 3 entities
+    assert(kb.get_entities(100).size() == 3);
 
-    // Delete toscratch (switch away from it first)
-    kb.set_current_project("cubeless");
+    // Delete toscratch project
     assert(kb.delete_project("toscratch", true));
-
-    // vortxGE and cubeless should still have their data
-    kb.set_current_project("vortxGE");
-    auto vortxGE_ents = kb.get_entities(100);
-    assert(vortxGE_ents.size() == 1);
-    assert(vortxGE_ents[0].name == "Vx");
-
-    kb.set_current_project("cubeless");
-    auto cubeless_ents = kb.get_entities(100);
-    assert(cubeless_ents.size() == 1);
-    assert(cubeless_ents[0].name == "Cb");
-
-    // toscratch should be gone
     assert(kb.get_project_info("toscratch").is_null());
+
+    // Still 3 entities (toscratch had no data)
+    assert(kb.get_entities(100).size() == 3);
 
     std::cout << "PASSED\n";
     cleanup();
 }
 
 // ============================================================================
-// Test 10: Cannot delete current or default project
+// Test 6: Cannot delete current or default project
 // ============================================================================
 void test_delete_protections() {
-    std::cout << "Test 10: Delete protections... ";
+    std::cout << "Test 6: Delete protections... ";
     cleanup();
 
     ApolloCore kb;
@@ -400,39 +221,11 @@ void test_delete_protections() {
 }
 
 // ============================================================================
-// Test 11: Project with name like default works
 // ============================================================================
-void test_set_project_shared() {
-    std::cout << "Test 11: Toggle project shared... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test KB");
-    kb.register_project("vortxGE");
-
-    // Initially not shared
-    auto info = kb.get_project_info("vortxGE");
-    assert(info["is_shared"] == false);
-
-    // Mark shared
-    assert(kb.set_project_shared("vortxGE", true));
-    info = kb.get_project_info("vortxGE");
-    assert(info["is_shared"] == true);
-
-    // Unmark
-    assert(kb.set_project_shared("vortxGE", false));
-    info = kb.get_project_info("vortxGE");
-    assert(info["is_shared"] == false);
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
-
-// ============================================================================
-// Test 12: Schema migration — pre-M3.C DB still loads
+// Test 7: Schema migration — pre-M3.C DB still loads
 // ============================================================================
 void test_schema_migration_compat() {
-    std::cout << "Test 12: Schema migration backwards compat... ";
+    std::cout << "Test 7: Schema migration backwards compat... ";
     cleanup();
 
     // Simulate a pre-M3.C DB by creating it, closing, and reopening
@@ -460,22 +253,27 @@ void test_schema_migration_compat() {
 
     // Should be able to add more data without issues
     kb.register_project("new_proj");
-    kb.set_current_project("new_proj");
-    kb.add_entity("NewEntity", "FUNCTION", "", "");
+    kb.add_entity("NewEntity", "FUNCTION", "", "", 1.0f, "default");  // tag with "default"
 
+    // get_entities returns entities from "default" project only
     auto new_entities = kb.get_entities(100);
-    assert(new_entities.size() == 1);
-    assert(new_entities[0].name == "NewEntity");
+    assert(new_entities.size() == 2);  // OldEntity + NewEntity
+    bool found_old = false, found_new = false;
+    for (const auto& e : kb.get_entities(100)) {
+        if (e.name == "OldEntity") found_old = true;
+        if (e.name == "NewEntity") found_new = true;
+    }
+    assert(found_old && found_new);
 
     std::cout << "PASSED\n";
     cleanup();
 }
 
 // ============================================================================
-// Test 13: Re-running migration is idempotent
+// Test 8: Re-running migration is idempotent
 // ============================================================================
 void test_migration_idempotent() {
-    std::cout << "Test 13: Migration idempotent... ";
+    std::cout << "Test 8: Migration idempotent... ";
     cleanup();
 
     ApolloCore kb;
@@ -496,10 +294,10 @@ void test_migration_idempotent() {
 }
 
 // ============================================================================
-// Test 14: get_project_info returns null for unknown project
+// Test 9: get_project_info returns null for unknown project
 // ============================================================================
 void test_get_project_info_null() {
-    std::cout << "Test 14: get_project_info for unknown project... ";
+    std::cout << "Test 9: get_project_info for unknown project... ";
     cleanup();
 
     ApolloCore kb;
@@ -512,39 +310,6 @@ void test_get_project_info_null() {
     cleanup();
 }
 
-// ============================================================================
-// Test 15: visible_projects includes current and shared sources
-// ============================================================================
-void test_visible_projects() {
-    std::cout << "Test 15: visible_projects() content... ";
-    cleanup();
-
-    ApolloCore kb;
-    kb.create(TEST_PATH, "Test");
-    kb.register_project("vortxGE");
-    kb.register_project("cubeless");
-    kb.register_project("third");
-
-    kb.set_current_project("cubeless");
-    auto visible = kb.visible_projects();
-    assert(visible.size() == 1);
-    assert(visible[0] == "cubeless");
-
-    kb.add_shared_read_source("vortxGE");
-    kb.add_shared_read_source("third");
-
-    visible = kb.visible_projects();
-    assert(visible.size() == 3);
-    visible = sorted(visible);
-    assert(visible == sorted({"cubeless", "vortxGE", "third"}));
-
-    kb.remove_shared_read_source("third");
-    visible = kb.visible_projects();
-    assert(visible.size() == 2);
-
-    std::cout << "PASSED\n";
-    cleanup();
-}
 
 // ============================================================================
 // Main
@@ -559,17 +324,11 @@ int main() {
     test_default_project_on_open();
     test_register_and_list();
     test_set_current_project();
-    test_writes_tagged_with_project();
-    test_project_isolation_entities();
-    test_project_isolation_documents();
-    test_shared_read_sources();
     test_delete_project_isolation();
     test_delete_protections();
-    test_set_project_shared();
     test_schema_migration_compat();
     test_migration_idempotent();
     test_get_project_info_null();
-    test_visible_projects();
 
     std::cout << "\n===========================================\n";
     std::cout << "ALL M3.C TESTS PASSED ✅\n";

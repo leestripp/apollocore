@@ -214,6 +214,7 @@ namespace ingest_limits {
 IngestReport ingest_directory_impl(
     apollocore_v2::ApolloCore& kb,
     const std::string& root,
+    const std::string& project,
     const std::vector<std::string>& extensions,
     size_t max_file_size,
     bool recursive)
@@ -309,7 +310,7 @@ IngestReport ingest_directory_impl(
                 f.seekg(0);
                 std::stringstream ss; ss << f.rdbuf();
                 try {
-                    size_t chunks = kb.add_document(ss.str(), path_str, 512);
+                    size_t chunks = kb.add_document(ss.str(), path_str, 512, project);
                     rep.total_bytes += fsize;
                     rep.total_chunks += chunks;
                     rep.doc_ids.push_back(path_str);
@@ -357,11 +358,12 @@ IngestReport ingest_directory_impl(
 nlohmann::json ingest_directory_local(
     apollocore_v2::ApolloCore& kb,
     const std::string& path,
+    const std::string& project,
     const std::vector<std::string>& extensions,
     size_t max_file_size = 1'000'000,
     bool recursive = true)
 {
-    auto rep = ingest_directory_impl(kb, path, extensions, max_file_size, recursive);
+    auto rep = ingest_directory_impl(kb, path, project, extensions, max_file_size, recursive);
     return nlohmann::json{
         {"files_processed", rep.files_processed},
         {"files_skipped",   rep.files_skipped},
@@ -438,40 +440,29 @@ static CallToolResult apollo_add_document(const json& args, ServerState& state, 
     const std::string doc_id = args.contains("doc_id")
         ? get_str(args, "doc_id", false) : std::string{};
     const int chunk_size = get_int(args, "chunk_size", 512);
-    // `project` is a per-call tag (not isolation — projects are deleted
-    // wholesale, they don't restrict reads). If the named project
-    // doesn't exist yet, register it on the fly so callers can use any
-    // tag they like without a separate "register project" round trip.
+    // `project` is a per-call provenance tag (NOT isolation --
+    // all reads span every project). Register it if it doesn't exist
+    // so it shows in apollo_list_projects.
     const std::string project = args.contains("project")
         ? get_str(args, "project", false) : std::string{"default"};
     if (!project.empty()) {
-        // No-op if it already exists; auto-registers otherwise.
         (void)state.core().register_project(
             project, "Ingested via apollo_add_document");
     }
 
-    // Save+restore current_project_ so concurrent calls don't race.
-    // The new `add_document` overload (Phase 3) takes the project
-    // directly, so this dance is no longer needed — but kept for
-    // safety until we verify no other path mutates it concurrently.
-    const std::string saved_project = state.core().current_project();
-    if (!project.empty()) {
-        state.core().set_current_project(project);
-    }
-
+    // Pass project directly to add_document -- no state mutation needed.
     size_t added = 0;
     try {
         if (!doc_id.empty()) {
-            added = state.core().add_document(text, doc_id, chunk_size);
+            added = state.core().add_document(text, doc_id, chunk_size, project);
         } else {
-            added = state.core().add_document(text, chunk_size);
+            added = state.core().add_document(text, chunk_size, project);
         }
-    } catch (...) {
-        state.core().set_current_project(saved_project);
-        throw;
+    } catch (const std::exception& e) {
+        return CallToolResult::error(
+            std::string("add_document failed: ") + e.what());
     }
-    state.core().set_current_project(saved_project);
-    return CallToolResult::text("Added " + std::to_string(added) + " chunk(s).");
+    return CallToolResult::text("Added " + std::to_string(added) + " chunk(s) (project='" + project + "').");
 }
 
 static CallToolResult apollo_extract_entities(const json& args, ServerState& state, const std::string& /*session_id*/)
@@ -490,9 +481,12 @@ static CallToolResult apollo_extract_entities(const json& args, ServerState& sta
     int limit = args.value("limit", 500);
 
     // `skip_already_extracted` is default-on so calling this tool twice
-    // is idempotent — second call only processes chunks that weren't
+    // is idempotent -- second call only processes chunks that weren't
     // covered the first time.
     bool skip = args.value("skip_already_extracted", true);
+
+    // `project` tags extracted entities for provenance. Default "default".
+    const std::string project = args.value("project", "default");
 
     // ApolloCore's extract_entities() processes chunks already in the KB;
     // there is no per-text entry point. Run it now.
@@ -501,10 +495,13 @@ static CallToolResult apollo_extract_entities(const json& args, ServerState& sta
         if (limit > 0) {
             n = state.core().extract_entities(/*min_confidence=*/0.5f,
                                              /*skip_already_extracted=*/skip,
-                                             /*limit=*/static_cast<size_t>(limit));
+                                             /*limit=*/static_cast<size_t>(limit),
+                                             /*project=*/project);
         } else {
             n = state.core().extract_entities(/*min_confidence=*/0.5f,
-                                             /*skip_already_extracted=*/skip);
+                                             /*skip_already_extracted=*/skip,
+                                             /*limit=*/0,
+                                             /*project=*/project);
         }
     } catch (const std::exception& e) {
         return CallToolResult::error(std::string("Entity extraction failed: ") + e.what());
@@ -522,13 +519,8 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
     const std::string path    = get_str(args, "path");
     const std::string project = get_str(args, "project");
 
-    // Register/switch to the project.
-    if (!state.core().register_project(project, "Ingested via apollo_ingest_codebase")) {
-        // may already exist — that's fine
-    }
-    if (!state.core().set_current_project(project)) {
-        return CallToolResult::error("Failed to switch to project '" + project + "'");
-    }
+    // Register the project tag (no-op if it already exists).
+    (void)state.core().register_project(project, "Ingested via apollo_ingest_codebase");
 
     // Optional extensions override.
     std::vector<std::string> extensions = apollocore_v2::default_code_extensions();
@@ -540,7 +532,8 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
     }
 
     try {
-        auto report = ingest_directory_local(state.core(), path, extensions);
+        // Pass project through to add_document calls inside the walker.
+        auto report = ingest_directory_local(state.core(), path, project, extensions);
         size_t total_chunks = report.contains("total_chunks") &&
                               report["total_chunks"].is_number_integer()
                                   ? report["total_chunks"].get<size_t>()
@@ -565,7 +558,8 @@ static CallToolResult apollo_ingest_codebase(const json& args, ServerState& stat
                 extracted = state.core().extract_entities(
                     /*min_confidence=*/0.5f,
                     /*skip_already_extracted=*/true,
-                    /*limit=*/auto_limit);
+                    /*limit=*/auto_limit,
+                    /*project=*/project);
             } catch (const std::exception& e) {
                 // Don't fail the whole ingest if extraction fails —
                 // the agent can retry apollo_extract_entities separately.
@@ -804,11 +798,8 @@ json schema_add_document() {
             {"chunk_size", {{"type", "integer"},
                             {"minimum", 64}, {"maximum", 8192}, {"default", 512}}},
             {"project",    {{"type", "string"},
-                            {"description", "Tag for this chunk batch (creates the "
-                                            "project if it doesn't exist yet). Used for "
-                                            "provenance + bulk deletion only — does NOT "
-                                            "isolate reads. Default: \"default\"."}}}},
-        },
+                            {"description", "Provenance tag for this chunk batch. Projects are metadata only -- they do NOT isolate reads. All searches span every project. Default: default."}}}
+        }},
         {"required", json::array({"text"})}
     };
 }
@@ -837,6 +828,12 @@ json schema_extract_entities() {
                 {"type", "number"},
                 {"default", 0.5},
                 {"minimum", 0.0}, {"maximum", 1.0}
+            }},
+            {"project", {
+                {"type", "string"},
+                {"description", "Provenance tag for extracted entities. "
+                                "Projects are metadata only — they do NOT "
+                                "isolate data. Default: default."}
             }}
         }},
         {"required", json::array()}
