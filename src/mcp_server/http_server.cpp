@@ -465,9 +465,11 @@ struct HttpServer::Impl {
             {"resources",   resources.size()},
             {"prompts",     prompts.size()},
             {"sessions",    s.live_sessions},
-            {"documents",   s.document_count},
-            {"chunks",      s.chunk_count},
-            {"entities",    s.entity_count}
+            {"documents",     s.document_count},
+            {"chunks",        s.chunk_count},
+            {"entities",      s.entity_count},
+            {"relationships",  s.relationship_count},
+            {"projects",      state.core().list_projects()}
         };
         write_json(resp, 200, body);
     }

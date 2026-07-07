@@ -112,6 +112,12 @@ run cmake --install "$PROJECT_ROOT/build" --prefix "$APOLLO_INSTALL_PREFIX" || {
     run cp -r "$UI_SRC" "$APOLLO_INSTALL_PREFIX/share/apollocore/ui"
 }
 
+# Symlink the models dir into the share tree so the server's model-discovery
+# code finds them (it scans <prefix>/share/apollocore/models/).
+if [[ -d "$APOLLO_INSTALL_PREFIX/models" && ! -L "$APOLLO_INSTALL_PREFIX/share/apollocore/models" ]]; then
+    run ln -s ../../models "$APOLLO_INSTALL_PREFIX/share/apollocore/models"
+fi
+
 # Register the installed libs so the dynamic linker finds them without
 # requiring LD_LIBRARY_PATH. Using ld.so.conf.d means it survives reboots.
 # On NixOS / immutable systems this may fail; the service also carries

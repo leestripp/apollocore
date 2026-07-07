@@ -229,15 +229,24 @@ int main(int argc, char** argv)
     // Default models-dir: the project's models/ directory next to the
     // source tree, plus the install-path models dir if it exists. The
     // user can change this from the Settings page and the dropdown
-    // updates immediately.
+    // updates immediately.  APOLLO_MODELS_DIR env var overrides defaults.
     {
         std::vector<std::string> defaults;
-        if (fs::is_directory("./models"))             defaults.push_back(fs::absolute("./models").string());
-        std::error_code ec;
-        fs::path exe = fs::read_symlink("/proc/self/exe", ec);
-        if (!ec) {
-            fs::path share = exe.parent_path().parent_path() / "share" / "apollocore" / "models";
-            if (fs::is_directory(share)) defaults.push_back(fs::absolute(share).string());
+        if (const char* env_dirs = std::getenv("APOLLO_MODELS_DIR"); env_dirs && *env_dirs) {
+            defaults.push_back(env_dirs);
+        } else {
+            if (fs::is_directory("./models"))             defaults.push_back(fs::absolute("./models").string());
+            std::error_code ec;
+            fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+            if (!ec) {
+                fs::path share = exe.parent_path().parent_path() / "share" / "apollocore" / "models";
+                if (fs::is_directory(share)) defaults.push_back(fs::absolute(share).string());
+            }
+            // Also scan the canonical production install location directly.
+            if (exe.parent_path().parent_path() != exe.parent_path().parent_path().parent_path()) {
+                fs::path canonical = exe.parent_path().parent_path() / "models";
+                if (fs::is_directory(canonical)) defaults.push_back(fs::absolute(canonical).string());
+            }
         }
         state.set_models_dirs(defaults);
         state.rescan_models();
