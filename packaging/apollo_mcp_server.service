@@ -32,6 +32,11 @@ Type=simple
 User=apollocore
 Group=apollocore
 
+# ApolloCore bundled shared libraries (llama.cpp, OmniNet, tree-sitter).
+# The install script writes this path into /etc/ld.so.conf.d/apollocore.conf and
+# runs ldconfig. This Environment= is a secondary fallback that works even on
+# NixOS / immutable-root systems where ld.so.conf.d may be ignored.
+Environment=LD_LIBRARY_PATH=/opt/apollocore/lib
 # Environment file can override any of the variable defaults below.
 EnvironmentFile=-/etc/default/apollocore
 

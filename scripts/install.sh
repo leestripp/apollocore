@@ -113,10 +113,13 @@ run cmake --install "$PROJECT_ROOT/build" --prefix "$APOLLO_INSTALL_PREFIX" || {
 }
 
 # Register the installed libs so the dynamic linker finds them without
-# requiring LD_LIBRARY_PATH. This persists across reboots.
+# requiring LD_LIBRARY_PATH. Using ld.so.conf.d means it survives reboots.
+# On NixOS / immutable systems this may fail; the service also carries
+# LD_LIBRARY_PATH in its Environment block as a fallback (see the .service).
 if [[ -d "$APOLLO_INSTALL_PREFIX/lib" ]]; then
-    echo "install.sh: running ldconfig to register $APOLLO_INSTALL_PREFIX/lib"
-    run ldconfig "$APOLLO_INSTALL_PREFIX/lib"
+    echo "install.sh: registering $APOLLO_INSTALL_PREFIX/lib in ldconfig"
+    run tee /etc/ld.so.conf.d/apollocore.conf > /dev/null <<< "$APOLLO_INSTALL_PREFIX/lib"
+    run ldconfig
 fi
 
 # ─────────────────────────── enable + start ───────────────────────────
