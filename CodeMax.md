@@ -1559,3 +1559,49 @@ transport.
 - `python3 tests/test_mcp_conformance.py` â†’ 9/9 pass (5 Phase A + 4 Phase B1)
 - `python3 tests/test_sse_streaming.py` â†’ `: connected` + 1+ keep-alive observed
 - B3 manual round-trip: 2025-06-18 echoes back, 1999-01-01 falls back
+---
+## Podman Deployment (2026-07-08)
+
+**Images built:**
+- `apollocore/dev:latest` …â€”… 1.45 GB, full toolchain (g++-15, cmake, cargo, tree-sitter-cli)
+- `apollocore/runtime:latest` …â€”… 200 MB, binary + shared libs only
+
+**Key files:**
+- `Containerfile.dev` …â€”… Dev image build
+- `Containerfile` …â€”… Production runtime (multi-stage: builds in dev, ships in ubuntu:26.04 base)
+- `apollocore.container` …â€”… Quadlet systemd unit (~/.config/containers/systemd/)
+- `scripts/patch_llama_cpu_backend.py` …â€”… Idempotent Python patch for GGML_USE_CPU propagation
+- `PODMAN_PLAN.md` …â€”… Full 6-phase plan with learnings
+
+**Build (dev container):**
+```
+./podman-dev.sh --build        # cmake + compile
+./podman-dev.sh --ctest       # run ctest
+./podman-dev.sh               # interactive shell
+```
+
+**Run (runtime container):**
+```
+podman run -p 127.0.0.1:8765:8765 \
+  -v /opt/apollocore/models:/opt/apollocore/models:ro \
+  -v /var/lib/apollocore/data:/var/lib/apollocore/data:ro \
+  apollocore/runtime:latest
+```
+
+**CMake fixes for Podman build:**
+- GGML_USE_CPU propagation: patches llama.cpp's ggml/src/CMakeLists.txt via
+  Python script so ggml-base registers the CPU backend (without this,
+  ggml_backend_reg_count() == 0 at runtime …â†’… crash)
+- ${CMAKE_BINARY_DIR}/bin/libggml-cpu.so linked explicitly (shared, not .a)
+- BUILD_RPATH ${CMAKE_BINARY_DIR}/bin in apollo_mcp_server
+
+**Runtime apt deps:** libgomp1, libopenblas0, libssl3t64, libsqlite3-0, zlib1g, curl
+
+**Runtime user:** root (ubuntu:26.04 base image reserves UID 1000 as 'ubuntu';
+running root inside an unprivileged Podman container is safe)
+
+**Verified:**
+- Runtime: embed_loaded=true, llm_loaded=true
+- MCP conformance: 27/27 tests pass
+- SSE streaming: :connected + keep-alive
+- Progress notifications: start + finish frames
