@@ -69,6 +69,28 @@ else()
 endif()
 
 # ============================================================================
+
+# Patch: propagate GGML_USE_CPU to ggml-base so ggml-backend-reg.cpp
+# can #ifdef GGML_USE_CPU and register the CPU backend.
+# Without this, llama_model_load_from_file() fails with
+# "no backends are loaded" because ggml_backend_reg_count() == 0.
+# Patch llama.cpp's ggml/src/CMakeLists.txt to propagate GGML_USE_CPU to ggml-base.
+# Without this, ggml_backend_reg_count() == 0 at runtime.
+# Done via Python script (no CMake escape-hell, idempotent).
+set(_llama_ggml_src_cmake "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt")
+if(NOT EXISTS "${_llama_ggml_src_cmake}")
+    message(FATAL_ERROR "llama.cpp ggml/src/CMakeLists.txt not found at ${_llama_ggml_src_cmake}")
+endif()
+find_program(_PYTHON python3 REQUIRED)
+execute_process(
+    COMMAND ${_PYTHON} "${CMAKE_SOURCE_DIR}/scripts/patch_llama_cpu_backend.py"
+                "${_llama_ggml_src_cmake}"
+    RESULT_VARIABLE _patch_result
+)
+if(NOT _patch_result EQUAL 0)
+    message(FATAL_ERROR "patch_llama_cpu_backend.py failed")
+endif()
+
 # Tree-sitter — proper AST parsing for code (M3.B)
 # ============================================================================
 # MIT-licensed, modern (v0.26.9, May 2026), used by Neovim/Helix/GitHub.
@@ -182,6 +204,7 @@ target_link_libraries(apollo_core
     PUBLIC
         nlohmann_json::nlohmann_json
         llama
+        ${CMAKE_BINARY_DIR}/bin/libggml-cpu.so  # CPU backend shared lib (GGML_BACKEND_SHARED=ON builds to CMAKE_BINARY_DIR/bin/)
         SQLite::SQLite3
     PRIVATE
         # Tree-sitter (Phase M3.B) - static linking

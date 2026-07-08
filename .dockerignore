@@ -1,0 +1,2 @@
+# Exclude build artifacts from the COPY -- these are rebuilt inside the container
+/container_build

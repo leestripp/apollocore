@@ -1,0 +1,78 @@
+# apollocore.container — Quadlet unit for ApolloCore MCP Server
+#
+# Quadlet reads .container files from:
+#   ~/.config/containers/systemd/  (per-user, rootless)
+#   /etc/containers/systemd/       (system-wide, root)
+#
+# Installation:
+#   mkdir -p ~/.config/containers/systemd
+#   cp apollocore.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now apollocore.service
+#
+# Verification:
+#   systemctl --user status apollocore.service
+#   curl http://127.0.0.1:8765/api/config
+#
+# Logs:
+#   journalctl --user -u apollocore.service
+#   podman logs apollocore
+#
+# Restart on failure:
+#   the Container= directive makes systemd manage the container lifecycle.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Container]
+Image=apollocore/runtime:latest
+ContainerName=apollocore
+
+# Ports: MCP HTTP on 127.0.0.1 (not publicly exposed)
+PublishPort=127.0.0.1:8765:8765/tcp
+
+# Volume mounts: models, KB data, and logs come from the host
+# Change these paths if your setup differs.
+Volume=/opt/apollocore/models:/opt/apollocore/models:rslave
+Volume=/var/lib/apollocore/data:/var/lib/apollocore/data:rslave
+Volume=/var/log/apollocore:/var/log/apollocore:rslave
+
+# ApolloCore binary arguments
+# Models are at the paths below on the host.
+# Override APOLLO_MODELS_DIR env var to change the models directory.
+Exec=/opt/apollocore/bin/apollo_mcp_server --host 0.0.0.0 --port 8765 \
+    --embed-model /opt/apollocore/models/nomic-embed-text-v1.5.Q4_K_M.gguf \
+    --llm-model   /opt/apollocore/models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+    --data-dir    /var/lib/apollocore/data
+
+# Environment (optional overrides)
+Environment=LD_LIBRARY_PATH=/opt/apollocore/lib
+Environment=APOLLO_HOST=0.0.0.0
+Environment=APOLLO_PORT=8765
+Environment=APOLLO_DATA_DIR=/var/lib/apollocore/data
+Environment=APOLLO_MODELS_DIR=/opt/apollocore/models
+
+# ── Health check ──────────────────────────────────────────────────────────────
+# Podman can check HTTP health internally.
+# After starting, wait 20s for models to load, then poll /api/config.
+# healthcheck-command is only supported in podman 4.9+.
+
+# ── Security ──────────────────────────────────────────────────────────────────
+# Run as non-root user inside container (default Quadlet behaviour).
+# The image already has USER apollocore set.
+# Additional hardening:
+#   NoNewPrivileges=true  (systemd default for Container= units)
+#   RestrictNamespaces=yes (systemd default)
+
+[Service]
+# Restart on failure with 10s delay between attempts
+Restart=on-failure
+RestartSec=10s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Logging to journald (viewable with journalctl --user -u apollocore)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

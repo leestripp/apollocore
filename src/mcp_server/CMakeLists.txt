@@ -50,6 +50,12 @@ target_link_libraries(apollo_mcp_server
         Threads::Threads
 )
 
+# rpath so the binary finds libggml-cpu.so at runtime
+# (llama.cpp builds ggml-cpu as a shared library with GGML_BACKEND_SHARED=ON)
+set_target_properties(apollo_mcp_server PROPERTIES
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/bin"
+)
+
 target_compile_features(apollo_mcp_server PRIVATE cxx_std_23)
 
 # Match the rest of the project's warning posture.

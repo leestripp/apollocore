@@ -1,0 +1,82 @@
+# =============================================================================
+# ApolloCore Container — DEVELOPMENT variant
+# =============================================================================
+# 
+# Build:
+#   podman build -f Containerfile.dev -t apollocore/dev:latest .
+#
+# Run interactively:
+#   podman run -it --rm \
+#       -p 127.0.0.1:8765:8765 \
+#       -v $(pwd):/workspace \
+#       -v /opt/apollocore/models:/opt/apollocore/models \
+#       -v /var/lib/apollocore/data:/var/lib/apollocore/data \
+#       -w /workspace \
+#       apollocore/dev:latest bash
+#
+# Inside the container you can:
+#   cmake -S /workspace -B /workspace/build ...
+#   cmake --build /workspace/build --target apollo_mcp_server
+#   cd /workspace/build && ctest -E test_ingest_codebase
+#   python3 /workspace/tests/test_mcp_conformance.py
+#
+# Note: RUN commands execute AS ROOT inside the container build context
+# (user namespace isolation — no host root needed). This is standard Podman.
+#
+# =============================================================================
+
+FROM docker.io/library/ubuntu:26.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── Install build toolchain + runtime libs ────────────────────────────────────
+# All of this runs inside the container as root — no host modifications.
+# Podman's buildah backend runs this in a user namespace (rootless on this host).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        # Compiler toolchain
+        g++-15 gcc-15 binutils make ccache \
+        # CMake
+        cmake \
+        # Python
+        python3 python3-pip \
+        # llama.cpp dependencies
+        libopenblas-dev libomp-dev \
+        # OmniNet / ApolloCore server dependencies
+        libssl-dev libsqlite3-dev zlib1g-dev \
+        # tree-sitter CLI (cargo for binary install)
+        cargo \
+        # Utilities
+        git curl wget jq vim tree htop strace gdb \
+    && \
+    # gcc-15 as system default
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-15 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-15 100 && \
+    update-alternatives --install /usr/bin/cc  cc  /usr/bin/gcc   10 && \
+    update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++   10 && \
+    # tree-sitter-cli v0.22.6 (parser.c generation)
+    cargo install tree-sitter-cli --version 0.22.6 --locked && \
+    # Python test deps
+    pip3 install --break-system-packages pytest pytest-asyncio httpx mcp && \
+    # Clean up apt
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Build environment
+ENV CC=/usr/bin/gcc-15
+ENV CXX=/usr/bin/g++-15
+ENV TREE_SITTER_CLI=/usr/local/cargo/bin/tree-sitter
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+
+# ── Prepare directories ──────────────────────────────────────────────────────
+# Models + data come from host via volume mounts at runtime
+RUN mkdir -p /opt/apollocore/models \
+             /var/lib/apollocore/data \
+             /var/log/apollocore \
+             /etc/ld.so.conf.d && \
+    echo "/opt/apollocore/lib" > /etc/ld.so.conf.d/apollocore.conf && \
+    ldconfig
+
+EXPOSE 8765
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

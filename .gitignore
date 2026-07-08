@@ -56,3 +56,8 @@ apollo_mcp_server.log
 __pycache__/
 *.pyc
 *.pyo
+
+# Build artifacts (rebuilt by cmake inside dev container)
+container_build/
+build/          # local host build
+
