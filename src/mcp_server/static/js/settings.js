@@ -21,7 +21,7 @@
 //   Even if an agent can change a setting via a tool, the user needs
 //   to see and be able to change every configurable knob here.
 
-import { httpJson, httpPost, readResource, callTool, toast } from './api.js';
+import { httpJson, httpPost, readResource, callTool, toast, escapeHtml } from './api.js';
 
 export async function renderSettings(panel) {
     panel.innerHTML = `
@@ -86,9 +86,9 @@ export async function renderSettings(panel) {
             <p class="muted">
                 <strong>Clear Knowledge Base</strong> permanently deletes all ingested
                 documents, chunks, embeddings, and entity graph data from
-                <code>~/.apollocore/</code>. The server reinitialises a fresh,
-                empty database automatically. This action
-                <strong>cannot be undone</strong>.
+                <code id="clear-kb-path">the configured data directory</code>.
+                The server reinitialises a fresh, empty database automatically.
+                This action <strong>cannot be undone</strong>.
             </p>
             <button id="btn-clear-kb"
                 style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;">
@@ -156,15 +156,15 @@ export async function renderSettings(panel) {
             <tr><td class="key">Data directory</td>
                 <td><input id="cfg-data-dir" type="text" class="mono"
                            value="${escapeHtml(dd)}"
-                           placeholder="/path/to/data (or ~/.apollocore/data)"
+                           placeholder="/path/to/data (default: data/)"
                            style="width: 100%;"></td></tr>
             <tr><td class="key">config.json</td>
                 <td class="mono muted">${escapeHtml(config.config_path || '(not yet written)')}</td></tr>
             <tr><td colspan="2">
                 <button id="cfg-data-dir-apply" class="primary" style="margin-top: 6px;">Apply (restart required)</button>
                 <span class="muted" style="margin-left: 8px;">
-                    Holds the SQLite KB and embedding files. Run
-                    <code>./scripts/ensure-running.sh</code> after applying.
+                    Holds the SQLite KB and embedding files. Restart the
+                    server after applying.
                 </span>
             </td></tr>
         `;
@@ -178,6 +178,9 @@ export async function renderSettings(panel) {
         });
         document.getElementById('settings-config-path').textContent =
             config.config_path ? `config.json: ${config.config_path}` : '';
+        // Show the real data dir in the Danger Zone warning.
+        const kbPath = document.getElementById('clear-kb-path');
+        if (kbPath) kbPath.textContent = dd || 'data/ (default)';
     }
 
     // ── Diagnostics (verbose logging, default search mode) ───────
@@ -434,10 +437,4 @@ export async function renderSettings(panel) {
             </tbody>
         </table>`;
     }
-}
-
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

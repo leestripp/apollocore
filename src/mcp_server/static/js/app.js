@@ -1,6 +1,6 @@
 // app.js — tab switching + module loading + global error handling
 
-import { initialize, toast } from './api.js';
+import { initialize, toast, escapeHtml } from './api.js';
 import { renderHealth }   from './health.js';
 import { renderSearch }   from './search.js';
 import { renderGraph }    from './graph.js';
@@ -20,6 +20,11 @@ const TAB_ORDER = ['health', 'search', 'graph', 'settings', 'about'];
 /** Active timers/callbacks per tab so we can clean up on tab switch. */
 const activeCleanups = new Map();
 
+let currentTab = 'health';
+// Monotonic counter so a slow async render from a previous switch can't
+// overwrite the tab the user has since moved to.
+let showSeq = 0;
+
 function getTabFromHash() {
     const h = window.location.hash.replace(/^#/, '');
     return TABS[h] ? h : 'health';
@@ -33,6 +38,7 @@ function highlightTab(name) {
 
 async function showTab(name) {
     if (!TABS[name]) name = 'health';
+    const seq = ++showSeq;
 
     // Clean up the previous tab if it registered a teardown.
     const prev = activeCleanups.get(currentTab);
@@ -49,22 +55,21 @@ async function showTab(name) {
     currentTab = name;
     try {
         const cleanup = await t.render(panel);
+        if (seq !== showSeq) {
+            // A newer tab switch happened while we were rendering — run
+            // the teardown immediately and don't touch state.
+            if (typeof cleanup === 'function') try { cleanup(); } catch (e) { console.error(e); }
+            return;
+        }
         if (typeof cleanup === 'function') activeCleanups.set(name, { cleanup });
         else                                  activeCleanups.set(name, {});
     } catch (e) {
+        if (seq !== showSeq) return;
         console.error(e);
         toast(`Failed to render ${name}: ${e.message}`, 'err');
         panel.innerHTML = `<div class="empty"><h3>Render error</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
 }
-
-function escapeHtml(s) {
-    return String(s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-let currentTab = 'health';
 
 // Wire tab clicks + hashchange.
 document.querySelectorAll('.tab').forEach(el => {

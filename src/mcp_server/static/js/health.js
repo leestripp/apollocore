@@ -1,6 +1,6 @@
 // health.js — Health tab: server stats + global KB inventory.
 //
-// Per the user's model (see docs/prompt.txt and prompt.txt):
+// Per the user's model:
 //   * There is exactly ONE knowledge base, located at the path set by the
 //     operator at startup. The AI agent cannot move or recreate it.
 //   * "Projects" inside that KB are TAGS — they identify the origin of a
@@ -16,7 +16,7 @@
 // `httpJson()`, `callTool()`, `readResource()`, and `toast()`. No other
 // dependencies. No bundler. Hand-written.
 
-import { httpJson, callTool, readResource, toast } from './api.js';
+import { httpJson, callTool, readResource, toast, escapeHtml } from './api.js';
 
 let refreshTimer = null;
 
@@ -83,6 +83,8 @@ export async function renderHealth(panel) {
 }
 
 async function refresh() {
+    // Don't poll while the browser tab is in the background.
+    if (document.hidden) return;
     const status = document.getElementById('health-refresh-status');
     if (status) status.innerHTML = '<span class="spinner"></span> refreshing…';
 
@@ -190,9 +192,8 @@ function renderKB(stats) {
 // many chunks/entities live under each tag lets the operator audit
 // provenance and bulk-wipe data they no longer want to keep.
 //
-// No toolbar here: the actual delete action lives on the Settings tab
-// (or will, once a dedicated `apollo_delete_project_data` tool is
-// added — see CodeMax.md § Active Plan for that next step).
+// No toolbar here: the actual delete action would live on the Settings
+// tab if a dedicated `apollo_delete_project_data` tool is ever added.
 function renderProjects(stats) {
     const host = document.getElementById('health-projects');
     if (!host) return;
@@ -289,10 +290,4 @@ function fmtNum(n) {
 
 function badge(kind, text) {
     return `<span class="badge badge-${kind}">${escapeHtml(String(text))}</span>`;
-}
-
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

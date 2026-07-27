@@ -1,6 +1,6 @@
 // search.js — Search tab: query the KB with vector/hybrid/rerank/full modes.
 
-import { callTool, toast } from './api.js';
+import { callTool, toast, escapeHtml } from './api.js';
 
 export async function renderSearch(panel) {
     panel.innerHTML = `
@@ -54,7 +54,10 @@ async function onSearch(e) {
     e.preventDefault();
     const query = document.getElementById('search-query').value.trim();
     const mode  = document.getElementById('search-mode').value;
-    const topK  = parseInt(document.getElementById('search-topk').value, 10);
+    // Empty/garbage Top-K → NaN → would serialize as null; clamp instead.
+    let topK = parseInt(document.getElementById('search-topk').value, 10);
+    if (!Number.isFinite(topK) || topK < 1) topK = 10;
+    if (topK > 100) topK = 100;
     if (!query) return;
 
     const go = document.getElementById('search-go');
@@ -152,10 +155,4 @@ function scoreBadge(label, score, primary = false) {
     let cls = 'badge';
     if (primary) cls += ' badge-ok';
     return `<span class="${cls} mono">${label} ${Number(score).toFixed(3)}</span>`;
-}
-
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

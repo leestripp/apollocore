@@ -9,14 +9,14 @@
 // modelcontextprotocol.io/specification/2025-11-25 is reachable from here.
 
 const MCP_ENDPOINT = '/mcp';
+const PROTOCOL_VERSION = '2025-11-25';
 
 let _id = 1;
 function nextId() { return _id++; }
 
-// Module-level session ID. Set by `initialize()` from the response headers.
-// Subsequent rpc() calls automatically include it. Per the MCP 2025-11-25 spec,
-// post-initialize requests MUST carry the negotiated Mcp-Session-Id or the
-// server rejects them with code -32600.
+// Module-level session ID. Captured from the initialize response headers
+// and attached to every subsequent request — per MCP 2025-11-25 the
+// server rejects post-initialize requests without it (HTTP 400, -32600).
 let _sessionId = null;
 export function getSessionId() { return _sessionId; }
 
@@ -28,23 +28,63 @@ export function getSessionId() { return _sessionId; }
  * @param {string|null} sessionId  optional override for Mcp-Session-Id header
  * @returns {Promise<{result?: object, error?: {code: number, message: string, data?: any}, sessionId?: string}>}
  */
-export async function rpc(method, params = {}, sessionId = null) {
+export async function rpc(method, params = {}, sessionId = null, _retried = false) {
+    const sid = sessionId ?? _sessionId;
     const headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     };
-    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+    if (sid) {
+        headers['Mcp-Session-Id'] = sid;
+        // Spec §Transports#Protocol-Version-Header: clients SHOULD send
+        // the negotiated version on every post-initialize request.
+        headers['MCP-Protocol-Version'] = PROTOCOL_VERSION;
+    }
 
     const resp = await fetch(MCP_ENDPOINT, {
         method: 'POST',
         headers,
         body: JSON.stringify({ jsonrpc: '2.0', id: nextId(), method, params }),
     });
-    const sid = resp.headers.get('Mcp-Session-Id');
-    const body = await resp.json();
+    const respSid = resp.headers.get('Mcp-Session-Id');
+    let body = {};
+    try { body = await resp.json(); } catch { /* non-JSON error page */ }
 
-    if (body.error) return { error: body.error, sessionId: sid };
-    return { result: body.result, sessionId: sid };
+    // Session went stale (server restarted, session reaped): the server
+    // 400s with "Unknown MCP-Session-Id". Re-initialize once and retry
+    // transparently so an open tab survives a server restart.
+    if (!resp.ok && sid && !_retried && method !== 'initialize'
+        && (resp.status === 400 || resp.status === 404)) {
+        _sessionId = null;
+        try {
+            await initialize();
+            return rpc(method, params, null, true);
+        } catch { /* fall through to the original error */ }
+    }
+
+    if (body.error) return { error: body.error, sessionId: respSid };
+    if (!resp.ok) {
+        return { error: { code: resp.status, message: `HTTP ${resp.status} from ${MCP_ENDPOINT}` },
+                 sessionId: respSid };
+    }
+    return { result: body.result, sessionId: respSid };
+}
+
+/** Send a true JSON-RPC notification (no id — spec: server MUST NOT reply). */
+async function notify(method, params = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    };
+    if (_sessionId) {
+        headers['Mcp-Session-Id'] = _sessionId;
+        headers['MCP-Protocol-Version'] = PROTOCOL_VERSION;
+    }
+    await fetch(MCP_ENDPOINT, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ jsonrpc: '2.0', method, params }),
+    });
 }
 
 /** Raw HTTP fetch helper for non-JSON-RPC endpoints like /health and /info. */
@@ -127,13 +167,15 @@ export async function listTools() {
 /** Initialize the MCP session. Safe to call repeatedly; returns serverInfo. */
 export async function initialize() {
     const r = await rpc('initialize', {
-        protocolVersion: '2025-11-25',
-        capabilities: { roots: { listChanged: false }, sampling: {} },
+        protocolVersion: PROTOCOL_VERSION,
+        capabilities: { roots: { listChanged: false } },
         clientInfo: { name: 'apollocore-web-ui', version: '1.0.0' },
     });
     if (r.error) throw new Error(`${r.error.code}: ${r.error.message}`);
-    // Send initialized notification (no id → notification; rpc() still assigns one,
-    // but JSON-RPC 2.0 allows either. We don't strictly need it for the server to work.)
+    if (r.sessionId) _sessionId = r.sessionId;
+    // Spec §Lifecycle: confirm the handshake with an initialized
+    // notification. Best-effort — the server tolerates its absence.
+    try { await notify('notifications/initialized'); } catch { /* ignore */ }
     return r.result;
 }
 
@@ -149,6 +191,13 @@ export function toast(message, kind = 'info') {
         el.style.opacity = '0';
         setTimeout(() => el.remove(), 200);
     }, 4000);
+}
+
+/** Escape a string for safe interpolation into innerHTML. */
+export function escapeHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** Format a Date or ISO string as relative time ("3 min ago"). */

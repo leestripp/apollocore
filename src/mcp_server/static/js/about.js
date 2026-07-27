@@ -3,7 +3,7 @@
 // Anything that's read-only and informational lives here. The Settings
 // tab is reserved for things the user can change. (See settings.js.)
 
-import { httpJson, toast } from './api.js';
+import { httpJson, toast, escapeHtml } from './api.js';
 
 export async function renderAbout(panel) {
     let info = {}, health = {};
@@ -50,8 +50,8 @@ export async function renderAbout(panel) {
             <h3 style="margin-top: 0;">Server (read-only — restart to change)</h3>
             <p class="muted">
                 <strong>host</strong>, <strong>port</strong>, and <strong>data-dir</strong>
-                are bind params and can't be changed at runtime. Edit the
-                systemd unit or <code>./scripts/start.sh</code> and restart.
+                are bind params and can't be changed at runtime. Restart the
+                server with different CLI flags (or env vars) to change them.
             </p>
             <table class="kv">
                 <tr><td class="key">Hostname (browser sees)</td> <td>${escapeHtml(window.location.hostname)}</td></tr>
@@ -100,10 +100,4 @@ export async function renderAbout(panel) {
             .then(() => toast('Config copied'))
             .catch(e => toast(`Copy failed: ${e.message}`, 'err'));
     });
-}
-
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

@@ -1,6 +1,10 @@
 // graph.js — Graph viewer: hand-rolled Fruchterman-Reingold layout on canvas.
 
-import { readResource, toast } from './api.js';
+import { readResource, toast, escapeHtml } from './api.js';
+
+// Hard cap on rendered nodes. Fruchterman-Reingold is O(n²) per step, so
+// beyond ~1500 nodes the upfront layout alone would freeze the tab.
+const MAX_NODES = 1500;
 
 const TYPE_COLORS = {
     PERSON:               '#58a6ff',
@@ -114,6 +118,11 @@ export async function renderGraph(panel) {
     let paused = false;
     let hoverNode = null;
     let typeFilters = new Set();
+    let truncatedFrom = 0;
+    // Simulation "heat": 1 = full jitter, decays toward 0 as the layout
+    // settles. The sim sleeps at 0 (no O(n²) work per frame, no eternal
+    // jiggle) and re-heats on reload or when the user drags a node.
+    let heat = 1;
 
     document.getElementById('graph-reload').addEventListener('click', load);
     document.getElementById('graph-pause').addEventListener('click', (e) => {
@@ -145,6 +154,8 @@ export async function renderGraph(panel) {
         if (hit) {
             dragging = { node: hit, mode: 'node', offX: hit.x - p.x, offY: hit.y - p.y };
             hit.pinned = true;
+            // Dragging a node stirs its neighbourhood — re-heat a little.
+            heat = Math.max(heat, 0.3);
         } else {
             dragging = { mode: 'pan', lastX: e.clientX, lastY: e.clientY };
         }
@@ -196,7 +207,8 @@ export async function renderGraph(panel) {
             ingest(data);
             initLayout();
             rebuildTypeFilters();
-            status.textContent = `${nodes.length} nodes, ${edges.length} edges`;
+            status.textContent = `${nodes.length} nodes, ${edges.length} edges`
+                + (truncatedFrom ? ` (capped from ${truncatedFrom})` : '');
         } catch (err) {
             status.textContent = '';
             toast(`Graph load failed: ${err.message}`, 'err');
@@ -209,8 +221,18 @@ export async function renderGraph(panel) {
     }
 
     function ingest(data) {
-        const rawNodes = data.nodes ?? data.entities ?? [];
+        let rawNodes = data.nodes ?? data.entities ?? [];
         const rawEdges = data.edges ?? data.relationships ?? [];
+
+        // Cap node count so the O(n²) layout stays interactive. Keep the
+        // highest-degree nodes: sort by connectivity first requires edges,
+        // so we approximate by order (server emits important entities
+        // first) and just truncate, noting it in the status line.
+        truncatedFrom = 0;
+        if (rawNodes.length > MAX_NODES) {
+            truncatedFrom = rawNodes.length;
+            rawNodes = rawNodes.slice(0, MAX_NODES);
+        }
 
         const idToIdx = new Map();
         nodes = rawNodes.map((n, i) => {
@@ -218,6 +240,7 @@ export async function renderGraph(panel) {
             idToIdx.set(id, i);
             return {
                 id,
+                idx: i,
                 name: n.name ?? id,
                 type: n.type ?? 'UNKNOWN',
                 description: n.description ?? '',
@@ -249,6 +272,7 @@ export async function renderGraph(panel) {
             frStep(nodes, edges, area, k, temperature);
             temperature *= 0.97;
         }
+        heat = 1;  // fresh layout — let the live sim settle from hot
         fitView();
     }
 
@@ -325,10 +349,10 @@ export async function renderGraph(panel) {
         const el = document.getElementById('graph-detail');
         el.classList.add('shown');
         const neighbors = edges
-            .filter(e => e.si === nodes.indexOf(n) || e.ti === nodes.indexOf(n))
+            .filter(e => e.si === n.idx || e.ti === n.idx)
             .map(e => {
-                const other = e.si === nodes.indexOf(n) ? nodes[e.ti] : nodes[e.si];
-                return `${other.name} <span class="muted">— ${e.type || 'relates'}</span>`;
+                const other = e.si === n.idx ? nodes[e.ti] : nodes[e.si];
+                return `${escapeHtml(other.name)} <span class="muted">— ${escapeHtml(e.type || 'relates')}</span>`;
             })
             .join('<br>') || '<span class="muted">(no neighbors)</span>';
         el.innerHTML = `
@@ -350,9 +374,14 @@ export async function renderGraph(panel) {
         const rect = canvas.parentElement.getBoundingClientRect();
         const area = { w: rect.width, h: rect.height };
         const k = Math.sqrt(area.w * area.h / (nodes.length || 1));
-        if (!paused) {
-            const temperature = area.w / 60;
+        // Cool the simulation: constant temperature meant the graph
+        // jittered forever and burned CPU on an O(n²) step every frame.
+        // Below the threshold the layout is settled — skip the physics
+        // entirely (also when the browser tab is hidden).
+        if (!paused && heat > 0.005 && !document.hidden) {
+            const temperature = (area.w / 60) * heat;
             frStep(nodes, edges, area, k, temperature);
+            heat *= 0.98;
         }
         draw();
         raf = requestAnimationFrame(tick);
@@ -416,10 +445,4 @@ export async function renderGraph(panel) {
         cancelAnimationFrame(raf);
         window.removeEventListener('resize', resize);
     };
-}
-
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
