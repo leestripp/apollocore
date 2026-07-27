@@ -199,6 +199,25 @@ else()
 endif()
 
 # ============================================================================
+# Coverage (gcov — GCC only, no lcov/gcovr)
+# ============================================================================
+# -DAPOLLO_COVERAGE=ON instruments everything defined from this point on
+# (apollo_core, apollo_mcp_server, tests, examples) with gcov counters.
+# Dependencies are deliberately NOT instrumented — they are all added via
+# FetchContent above, and we only measure our own code. Then:
+#   cmake --build build -j$(nproc) && cmake --build build --target coverage
+option(APOLLO_COVERAGE "Instrument project targets with gcov" OFF)
+if(APOLLO_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        message(FATAL_ERROR "APOLLO_COVERAGE requires GCC (gcov)")
+    endif()
+    # -O0 so line attribution isn't mangled by optimization; the coverage
+    # build is for measuring, not for running fast.
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
+# ============================================================================
 # Library
 # ============================================================================
 
@@ -269,6 +288,20 @@ add_subdirectory(src/mcp_server)
 # ============================================================================
 enable_testing()
 add_subdirectory(tests)
+
+if(APOLLO_COVERAGE)
+    # `cmake --build build --target coverage`: run the suite, then print a
+    # per-file line-coverage summary for project sources (deps excluded).
+    add_custom_target(coverage
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        COMMAND ${CMAKE_COMMAND}
+                -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                -P ${CMAKE_SOURCE_DIR}/cmake/coverage_report.cmake
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        USES_TERMINAL
+        COMMENT "Running tests and summarizing gcov coverage")
+endif()
 
 # ============================================================================
 # Examples

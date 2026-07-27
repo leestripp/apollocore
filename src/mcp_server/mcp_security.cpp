@@ -25,12 +25,19 @@ bool iequals(std::string_view a, std::string_view b)
 
 // Extract the host portion from a full origin URL. We don't pull in a
 // URL parser for this — the format is strict enough (scheme://host[:port][/path])
-// that we can hand-roll it.
+// that we can hand-roll it. Bracketed IPv6 literals (`[::1]`) are matched
+// up to and including the closing bracket so the port separator isn't
+// confused with the colons inside the address.
 std::string_view host_of_origin(std::string_view origin)
 {
     auto scheme_end = origin.find("://");
     if (scheme_end == std::string_view::npos) return {};
     auto host_start = scheme_end + 3;
+    if (host_start < origin.size() && origin[host_start] == '[') {
+        auto bracket_end = origin.find(']', host_start);
+        if (bracket_end == std::string_view::npos) return {};
+        return origin.substr(host_start, bracket_end - host_start + 1);
+    }
     auto host_end   = origin.find_first_of(":/", host_start);
     if (host_end == std::string_view::npos) host_end = origin.size();
     return origin.substr(host_start, host_end - host_start);

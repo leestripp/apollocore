@@ -206,6 +206,8 @@ function(add_mcp_test name)
         ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_security.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/cursor.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/dispatcher.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_dispatch.cpp
+        ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_stdio.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/tools.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/resources.cpp
         ${CMAKE_SOURCE_DIR}/src/mcp_server/prompts.cpp
@@ -223,6 +225,23 @@ endfunction()
 
 add_mcp_test(mcp_dispatcher)
 add_mcp_test(mcp_tools)
+add_mcp_test(mcp_dispatch)
+add_mcp_test(mcp_stdio)
+add_mcp_test(mcp_sse)
+
+# HTTP security helpers (Origin / protocol-version / bearer auth) — pure
+# functions, no dispatcher needed, so a lean standalone target suffices.
+add_executable(test_mcp_security
+    test_mcp_security.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp_server/mcp_security.cpp
+)
+target_include_directories(test_mcp_security PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/mcp_server
+)
+target_compile_features(test_mcp_security PRIVATE cxx_std_23)
+add_test(NAME mcp_security COMMAND test_mcp_security
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # ============================================================================
 # Web UI static-files smoke test (no network required)

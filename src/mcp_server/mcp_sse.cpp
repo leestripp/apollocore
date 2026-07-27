@@ -3,6 +3,7 @@
 // mcp_sse.cpp — Server-Sent Events bridge for GET /mcp.
 
 #include "mcp_sse.hpp"
+#include "mcp_sse_frame.hpp"
 
 #include <thread>
 #include <utility>
@@ -14,16 +15,11 @@ namespace {
 // Per-event keep-alive. SSE comments are lines beginning with ':'.
 constexpr auto kKeepAlive = std::chrono::seconds(15);
 
-// SSE write helper. Returns false on socket failure (caller closes).
+// SSE write helpers. Frame building lives in mcp_sse_frame.hpp (pure,
+// unit-tested); these just push the bytes. Returns false on socket
+// failure (caller closes).
 bool write_sse_frame(OmniNet::Socket& sock, const std::string& data) {
-    // Each frame is `data: <payload>\n\n` per the SSE spec. We use
-    // a single `data:` line because each notification is a single
-    // JSON object; multi-line events would need multiple data: lines.
-    std::string frame;
-    frame.reserve(data.size() + 8);
-    frame.append("data: ");
-    frame.append(data);
-    frame.append("\r\n\r\n");
+    const std::string frame = make_sse_frame(data);
     std::span<const uint8_t> bytes(
         reinterpret_cast<const uint8_t*>(frame.data()), frame.size());
     sock.sendAll(bytes);
@@ -31,7 +27,7 @@ bool write_sse_frame(OmniNet::Socket& sock, const std::string& data) {
 }
 
 bool write_sse_comment(OmniNet::Socket& sock, const std::string& text) {
-    std::string frame = ": " + text + "\r\n\r\n";
+    const std::string frame = make_sse_comment(text);
     std::span<const uint8_t> bytes(
         reinterpret_cast<const uint8_t*>(frame.data()), frame.size());
     sock.sendAll(bytes);
@@ -40,13 +36,7 @@ bool write_sse_comment(OmniNet::Socket& sock, const std::string& text) {
 
 bool write_sse_event(OmniNet::Socket& sock, const std::string& event,
                      const std::string& data) {
-    std::string frame;
-    frame.reserve(event.size() + data.size() + 16);
-    frame.append("event: ");
-    frame.append(event);
-    frame.append("\r\ndata: ");
-    frame.append(data);
-    frame.append("\r\n\r\n");
+    const std::string frame = make_sse_event(event, data);
     std::span<const uint8_t> bytes(
         reinterpret_cast<const uint8_t*>(frame.data()), frame.size());
     sock.sendAll(bytes);

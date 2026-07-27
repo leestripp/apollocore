@@ -316,7 +316,7 @@ ApolloCore/
 ├── include/apollocore/         Public headers of the internal apollo_core target
 ├── src/                        Library: RAG, KG, persistence, hybrid search, …
 │   └── mcp_server/             MCP server: dispatcher, tools, resources, prompts
-├── tests/                      CTest targets (17 core + 2 MCP-specific)
+├── tests/                      CTest targets (17 core + 6 MCP-specific)
 ├── examples/full_demo.cpp       Standalone CLI demo of the library
 ├── docs/                       design.md, file-formats.md, mcp-quickstart.md
 └── models/                     GGUF files (gitignored)
@@ -329,7 +329,7 @@ cmake --build build -j$(nproc)
 cd build && ctest --output-on-failure
 ```
 
-19 test executables, all passing:
+23 test executables, all passing:
 
 - 17 core (`test_persistence`, `test_fbin`, `test_kb_persistence`,
   `test_apollo_persistence`, `test_v2`, `test_embeddings`,
@@ -337,8 +337,22 @@ cd build && ctest --output-on-failure
   `test_contextual_retrieval`, `test_hybrid_search`, `test_code_extractor`,
   `test_multi_project`, `test_coverage_holes`, `test_text_chunker`,
   `test_cursor`, `test_ui_static`)
-- 2 MCP-specific (`mcp_dispatcher` — JSON-RPC method routing,
-  `mcp_tools` — handler-level tests using a real KB in tmpdir)
+- 6 MCP-specific (`mcp_dispatcher` — JSON-RPC method routing,
+  `mcp_tools` — handler-level tests using a real KB in tmpdir,
+  `mcp_security` — Origin/protocol-version/bearer-auth guards,
+  `mcp_dispatch` — shared dispatch envelope helper,
+  `mcp_stdio` — stdio transport framing,
+  `mcp_sse` — SSE wire framing + notification bus)
+
+### Line coverage (gcov)
+
+```bash
+cmake -S . -B build -DAPOLLO_COVERAGE=ON
+cmake --build build -j$(nproc)
+cmake --build build --target coverage   # ctest + per-file gcov summary
+```
+
+Pure GCC tooling — no lcov/gcovr. Dependencies are not instrumented.
 
 ### Worked example
 

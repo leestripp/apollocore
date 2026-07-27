@@ -185,10 +185,16 @@ cd build && ctest --output-on-failure
   `test_entity_extraction`, `test_cross_encoder`, `test_hyde`,
   `test_contextual_retrieval`, `test_hybrid_search`, `test_code_extractor`,
   `test_multi_project`, `test_coverage_holes`, `test_text_chunker`,
-  `test_ui_static`, `test_cursor`, plus MCP-specific `mcp_dispatcher` and
-  `mcp_tools` (these compile the MCP sources directly, bypassing OmniNet, to
-  test the dispatcher layer in isolation). Some tests need the GGUF models in
-  `models/` and are run with `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`.
+  `test_ui_static`, `test_cursor`, plus MCP-specific `mcp_dispatcher`,
+  `mcp_tools`, `mcp_security`, `mcp_dispatch`, `mcp_stdio`, and `mcp_sse`
+  (these compile the MCP sources directly, bypassing OmniNet, to test the
+  dispatcher/security/transport logic in isolation). Some tests need the
+  GGUF models in `models/` and are run with
+  `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}`.
+- **Line coverage**: `-DAPOLLO_COVERAGE=ON` instruments project targets
+  (not deps) with gcov; `cmake --build build --target coverage` runs ctest
+  and prints a per-file summary via `cmake/coverage_report.cmake`. GCC-only,
+  no lcov/gcovr.
 
 When adding a C++ test, register it in `tests/CMakeLists.txt` (use the
 `add_apollo_test` / `add_mcp_test` helper functions).
