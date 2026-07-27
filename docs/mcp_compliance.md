@@ -168,10 +168,13 @@ These are intentional, documented deviations:
 
 | Test suite                                  | Coverage                |
 |---------------------------------------------|-------------------------|
-| `ctest` (18 unit tests)                     | Dispatcher, tools, persistence, embeddings, entity extraction, code extraction, hyde, hybrid search, UI static |
-| `tests/test_mcp_conformance.py`             | A1 + A2 + A4 + D1 + D2 + B1 + E3 (24 cases) |
-| `tests/test_sse_streaming.py`               | B1 — ': connected' + keep-alive |
-| `tests/test_progress_notification.py`       | D4 — start + finish progress frames |
+| `ctest` (C++ unit tests)                    | Dispatcher, tools, persistence, embeddings, entity extraction, code extraction, hyde, hybrid search, UI static |
+
+The live-server conformance suites (transport security cases A1–E3, SSE
+keep-alives, progress frames) were Python-based and were removed when the
+project went C++-only. Those areas are now verified manually against a
+running server (`curl` + the checklist in this document's earlier
+sections); the enforcement code itself lives in `src/mcp_server/mcp_security.cpp`.
 
 ---
 

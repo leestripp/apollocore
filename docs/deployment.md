@@ -1,194 +1,13 @@
-# Deploying ApolloCore on Ubuntu 26.04
+# Deploying ApolloCore
 
-This is the end-to-end deployment guide for running `apollo_mcp_server`
-as a long-lived systemd service on Ubuntu 26.04 LTS (or any distro with
-systemd v255+). The same steps work on Debian 13 and recent Fedora.
-
-If you're running this somewhere without systemd (distrobox, plain
-containers, CI sandboxes), use [`scripts/start.sh`](#manual-fallback-no-systemd)
-instead.
+`apollo_mcp_server` is a single self-contained executable. There is no
+installer or packaging in this repo — build it, then run the binary
+directly, under your own supervisor if you need one (a hand-written
+systemd unit, tmux, a CI wrapper, …).
 
 ---
 
-## 1. Quick install (one command)
-
-```bash
-sudo ./scripts/install.sh
-```
-
-That's it. The script:
-
-1. Creates a system user `apollocore` (`/usr/sbin/nologin` shell).
-2. Creates directories under `/opt/apollocore/`, `/var/lib/apollocore/`,
-   `/var/log/apollocore/`, `/var/cache/apollocore/`.
-3. Installs the binary and UI via `cmake --install`.
-4. Copies the systemd unit + env file to `/etc/`.
-5. Downloads the embedding + LLM GGUF models (~550 MB) if missing.
-6. `systemctl daemon-reload && systemctl enable --now apollo_mcp_server`.
-
-The service is now reachable on `http://<host>:8765/`.
-
-Re-run the script any time to update (binary, models, UI).
-
-## 2. Verify the install
-
-```bash
-systemctl status apollo_mcp_server       # should be active (running)
-journalctl -u apollo_mcp_server -f       # live logs
-curl -s http://localhost:8765/health     # JSON, status:"ok"
-```
-
-Open `http://localhost:8765/` in a browser to see the Web UI.
-
-## 3. Configuration
-
-Edit `/etc/default/apollocore` then `systemctl restart apollo_mcp_server`:
-
-```bash
-sudoedit /etc/default/apollocore
-sudo systemctl restart apollo_mcp_server
-```
-
-Variables (all optional):
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `APOLLO_HOST` | `0.0.0.0` | bind address |
-| `APOLLO_PORT` | `8765` | listen port |
-| `APOLLO_EMBED_MODEL` | `/opt/apollocore/models/nomic-embed-text-v1.5.Q4_K_M.gguf` | embedding GGUF |
-| `APOLLO_LLM_MODEL` | `/opt/apollocore/models/qwen2.5-0.5b-instruct-q4_k_m.gguf` | LLM GGUF (optional) |
-| `APOLLO_MEMORY_MAX` | `2G` | systemd `MemoryMax=` cap |
-| `APOLLO_UI` | `1` | set to `0` to disable the dashboard |
-
-## 4. Operational tasks
-
-### Connect an MCP client
-
-Any client speaking the Streamable HTTP transport works. Claude
-Desktop example at `~/.config/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "apollocore": {
-      "url": "http://localhost:8765/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
-```
-
-The same URL works for Cursor, Cline, Windsurf, Continue.dev.
-
-### Browse the UI
-
-```bash
-xdg-open http://localhost:8765/
-```
-
-Five tabs: Health (auto-refresh), Search, Graph, Settings, About.
-Full tour in [`docs/ui.md`](ui.md).
-
-### Manage the KB
-
-Tools exposed as MCP tools (also clickable in the UI):
-
-- `apollo_list_projects` / `apollo_add_document` / `apollo_query_kb`
-- `apollo_ingest_codebase` / `apollo_extract_entities`
-- `apollo_search_symbols` / `apollo_get_neighbors` / `apollo_get_stats`
-
-### Logs
-
-```bash
-journalctl -u apollo_mcp_server -f               # journald (primary)
-tail -f /var/log/apollocore/apollo_mcp_server.log   # mirror (also via systemd)
-```
-
-### Restart / stop / status
-
-```bash
-sudo systemctl restart apollo_mcp_server
-sudo systemctl stop    apollo_mcp_server
-sudo systemctl status  apollo_mcp_server
-```
-
-The unit restarts on crash with `RestartSec=5`, so transient
-failures (model load timeout, etc.) self-heal without intervention.
-
-## 5. Hardening notes
-
-The shipped unit is locked down by default:
-
-- **`ProtectSystem=strict`** — `/usr`, `/boot`, `/etc` are read-only.
-- **`ProtectHome=true`** — `/home`, `$HOME` invisible.
-- **`PrivateTmp=true`** — `/tmp` is a private namespace.
-- **`ReadWritePaths=`** — only `/var/lib/apollocore`,
-  `/var/log/apollocore`, `/var/cache/apollocore` are writable.
-- **`MemoryDenyWriteExecute=true`** — no W^X pages.
-- **`RestrictNamespaces`**, **`RestrictRealtime`**, **`RestrictSUIDSGID`**,
-  **`LockPersonality`**, **`ProtectKernelTunables`** — defence in depth.
-
-The server still binds a TCP port (AF_INET) and creates `/tmp` files
-(via OmniNet). All other namespaces and capabilities are dropped.
-
-If you want to expose the server to the network behind a reverse
-proxy, keep these settings as-is and proxy `localhost:8765` only —
-do not bind the service to `0.0.0.0` directly without TLS.
-
-## 6. Uninstall
-
-Keep data, remove service:
-
-```bash
-sudo ./scripts/uninstall.sh
-```
-
-Remove everything (binary, models, data, system user):
-
-```bash
-sudo ./scripts/uninstall.sh --purge --purge-user
-```
-
-## 7. Manual fallback (no systemd)
-
-If systemd isn't available (distrobox container, sandbox, etc.):
-
-```bash
-# Foreground (logs to terminal)
-./scripts/start.sh
-
-# Detached (writes PID + log file)
-./scripts/start.sh --detach
-./scripts/stop.sh
-
-# Idempotent "ensure running" — preferred for agents and CI.
-# Probes /health; if not running, starts; if running, no-op.
-./scripts/ensure-running.sh
-# Exit codes:
-#   0  server is up and responding
-#   1  binary not built (cmake --build build)
-#   2  start.sh failed (unknown)
-#   3  port held by something that isn't apollo
-
-# Check status (no side effects)
-./scripts/start.sh --status   # 0 = running, 1 = not
-```
-
-Environment overrides:
-
-```bash
-APOLLO_PORT=9000 APOLLO_HOST=127.0.0.1 ./scripts/start.sh --no-ui --verbose
-```
-
-When the server runs on the host (e.g. as a systemd service) and
-the agent is in a distrobox container, point the probe at the
-host's network interface instead of 127.0.0.1:
-
-```bash
-APOLLO_PROBE_HOST=10.0.2.2 ./scripts/ensure-running.sh
-```
-
-## 8. Build from source
+## 1. Build
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -206,38 +25,93 @@ cmake -S . -B build -DLLAMA_METAL=ON    # Apple
 First configure takes ~5 min (llama.cpp + OmniNet + their transitive deps).
 Subsequent builds are incremental.
 
----
+## 2. Run
 
-## File map
-
+```bash
+./build/src/mcp_server/apollo_mcp_server --port 8765
 ```
-/opt/apollocore/
-├── bin/
-│   └── apollo_mcp_server                ← the only executable
-└── share/apollocore/ui/
-    └── static/                          ← HTML/CSS/JS dashboard
 
-/var/lib/apollocore/
-└── data/                                ← SQLite + .fbin embeddings (per-KB subdirs)
+Verify:
 
-/var/log/apollocore/
-└── apollo_mcp_server.log                 ← mirror of journald
-
-/var/cache/apollocore/                    ← OmniNet HTTP cache
-
-/etc/
-├── default/apollocore                    ← EnvironmentFile
-└── systemd/system/apollo_mcp_server.service
+```bash
+curl -s http://localhost:8765/health     # JSON, status:"ok"
 ```
+
+Open `http://localhost:8765/` in a browser to see the Web UI.
+
+Useful flags / env vars (all optional):
+
+| Flag / env var | Default | Meaning |
+|----------------|---------|---------|
+| `--host` / `APOLLO_HOST` | `0.0.0.0` | bind address |
+| `--port` / `APOLLO_PORT` | `8765` | listen port |
+| `--data-dir` / `APOLLO_DATA_DIR` | `data` | KB root directory |
+| `--embed-model` / `APOLLO_EMBED_MODEL` | `models/nomic-embed-text-v1.5.Q4_K_M.gguf` | embedding GGUF |
+| `--llm-model` / `APOLLO_LLM_MODEL` | `models/qwen2.5-0.5b-instruct-q4_k_m.gguf` | LLM GGUF (optional) |
+| `--no-ui` / `APOLLO_NO_UI` | off | serve only JSON-RPC, no dashboard |
+| `--admin` | off | mount OmniNet admin dashboard at `/omninet` |
+| `-v` / `--verbose` | off | debug logging |
+
+## 3. Connect an MCP client
+
+Any client speaking the Streamable HTTP transport works. Claude
+Desktop example at `~/.config/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "apollocore": {
+      "url": "http://localhost:8765/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+The same URL works for Cursor, Cline, Windsurf, Continue.dev.
+
+## 4. Exposing on a network
+
+The server runs **without authentication by default** and is designed for
+loopback use. If you expose it on a LAN/internet:
+
+1. Set `APOLLO_AUTH_TOKEN` to a strong random secret (32+ chars) — clients
+   send it as an RFC 6750 Bearer token.
+2. Pass `--host 0.0.0.0` to bind on the network interface.
+3. Front it with a TLS reverse proxy (Caddy/Nginx) for HTTPS — proxy
+   `localhost:8765` only.
+4. There is no rate limiting and no multi-tenant isolation.
+
+## 5. Running as a service
+
+Write your own unit / supervisor entry around the binary. A minimal
+systemd example:
+
+```ini
+[Unit]
+Description=ApolloCore MCP server
+After=network.target
+
+[Service]
+ExecStart=/path/to/build/src/mcp_server/apollo_mcp_server --port 8765
+WorkingDirectory=/path/to/ApolloCore
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Hardening (`ProtectSystem=strict`, `MemoryDenyWriteExecute`,
+`NoNewPrivileges`, `PrivateTmp`, …) is recommended for any networked
+deployment — the server needs a writable `--data-dir`, a TCP port, and
+nothing else.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `systemctl status` shows `failed (exit-code)` | `journalctl -u apollo_mcp_server -n 100` |
-| `Address already in use` on startup | another process holds the port; `ss -ltnp 'sport = :8765'` then change `APOLLO_PORT` in `/etc/default/apollocore` |
-| Embedding model missing | the install script auto-downloads; check `/var/log/apollocore/apollo_mcp_server.log` |
-| High memory use | lower `APOLLO_MEMORY_MAX` in `/etc/default/apollocore` |
-| Want only JSON-RPC, no UI | set `APOLLO_UI=0` |
-| After editing `/etc/default/apollocore` | `sudo systemctl restart apollo_mcp_server` |
-| Logs filling `/var/log` | journald handles rotation; tune via `/etc/logrotate.d/apollo_mcp_server` |
+| `Address already in use` on startup | another process holds the port; `ss -ltnp 'sport = :8765'`, then change `--port` |
+| Embedding model missing | download the GGUFs into `models/` (see `README.md` → Models) or pass `--embed-model` |
+| `no backends are loaded` on model load | stale llama.cpp build — reconfigure from a clean build dir so the CMake patch in `CMakeLists.txt` re-applies |
+| Want only JSON-RPC, no UI | `--no-ui` |

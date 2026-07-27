@@ -13,7 +13,7 @@ The server speaks two transports. Pick one.
 
 ```bash
 # Start the server:
-./scripts/start.sh --detach
+./build/src/mcp_server/apollo_mcp_server --port 8765 &
 
 # Probe:
 curl http://127.0.0.1:8765/health
@@ -314,10 +314,9 @@ apollo_mcp_server
   -v, --verbose            verbose logging
 ```
 
-The packaged launcher is `./scripts/start.sh` (defaults: `--port 8765 --host 0.0.0.0`,
-uses `--data-dir ./data` and the bundled model paths). Use `./scripts/ensure-running.sh`
-when you don't know whether the server is already up — it probes `/health` first and
-does nothing if so.
+Run the binary directly, e.g. `./build/src/mcp_server/apollo_mcp_server --port 8765`
+(uses `--data-dir ./data` and the bundled model paths by default). To check whether a
+server is already up, probe `curl -sf http://127.0.0.1:8765/health`.
 
 ---
 
@@ -326,9 +325,8 @@ does nothing if so.
 1. **Check `/health`** — fastest sanity check.
    `curl http://127.0.0.1:8765/health` → 200 + JSON or refuse.
 2. **Look at the log** — `apollo_mcp_server.log` in the project root.
-3. **Run a smoke test** — `./scripts/ensure-running.sh` is idempotent;
-   the test scripts under `tests/` (conformance, SSE, stdio, pagination, auth) are
-   the canonical "is it actually OK" probes.
+3. **Run the C++ test suite** — `cmake --build build -j$(nproc) && (cd build && ctest --output-on-failure)`;
+   the `mcp_dispatcher` / `mcp_tools` targets are the canonical "is the dispatch layer OK" probes.
 4. **Re-initialize** if you get `-32600` about sessions — your old SID may have
    been reaped, or you started against a different server.
 

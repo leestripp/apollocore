@@ -4,7 +4,7 @@ project(ApolloCore VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
@@ -40,56 +40,58 @@ FetchContent_Declare(llama_cpp
 set(GGML_VULKAN OFF CACHE BOOL "Enable ggml Vulkan backend" FORCE)
 FetchContent_MakeAvailable(llama_cpp)
 
-# Patch: GGML_VULKAN option is declared in ggml/CMakeLists.txt but
-# never used, so the Vulkan backend is never built. The original
-# file also has a final `ggml_add_backend(Vulkan)` at the bottom
-# that collides with our patch (both call add_subdirectory(ggml-vulkan)
-# → CMake error: "binary directory already used").
+# Patch the fetched llama.cpp ggml/src/CMakeLists.txt, in pure CMake
+# (idempotent, and keeps the project free of any Python dependency):
 #
-# We do TWO things, idempotently:
-#   1. Strip every `ggml_add_backend(Vulkan)` and `ggml_add_backend(VULKAN)`
-#      (and any prior patches wrapping them).
-#   2. After `ggml_add_backend(CPU)`, insert exactly one
-#      `ggml_add_backend(VULKAN)` activation.
-#
-# Done via a Python helper instead of CMake's string(REGEX REPLACE)
-# because CMake's regex has no multiline ^ anchor, which makes
-# line-start matching fiddly. Python handles this cleanly with
-# `re.MULTILINE`. See scripts/patch_llama_vulkan.py for the
-# idempotent implementation.
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/patch_llama_vulkan.py
-            ${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt
-    RESULT_VARIABLE _vulkan_patch_rc
-)
-if (_vulkan_patch_rc EQUAL 0)
-    message(STATUS "Patched llama.cpp to enable Vulkan backend")
-else()
-    message(FATAL_ERROR "Failed to apply Vulkan patch to llama.cpp (rc=${_vulkan_patch_rc})")
+#   1. Propagate GGML_USE_CPU to ggml-base so ggml-backend-reg.cpp can
+#      #ifdef GGML_USE_CPU and register the CPU backend. Without this,
+#      llama_model_load_from_file() fails with "no backends are loaded"
+#      because ggml_backend_reg_count() == 0.
+#   2. The GGML_VULKAN option is declared in ggml/CMakeLists.txt but never
+#      used, so the Vulkan backend is never built. Strip every bare
+#      `ggml_add_backend(Vulkan|VULKAN)` activation (an unconditional one
+#      would collide with ours → CMake error "binary directory already
+#      used") and insert exactly one `if (GGML_VULKAN)`-guarded activation.
+set(_ggml_src_cmake "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt")
+if(NOT EXISTS "${_ggml_src_cmake}")
+    message(FATAL_ERROR "llama.cpp ggml/src/CMakeLists.txt not found at ${_ggml_src_cmake}")
 endif()
+file(READ "${_ggml_src_cmake}" _ggml_cmake)
 
-# ============================================================================
+set(_cpu_patch_block
+"# ApolloCore patch: propagate GGML_USE_CPU to ggml-base
+# (needed so ggml-backend-reg.cpp can #ifdef on GGML_USE_CPU)
+if (GGML_CPU)
+    target_compile_definitions(ggml-base PUBLIC GGML_USE_CPU)
+endif()
+")
+set(_vulkan_patch_block
+"# Patch: enable Vulkan backend (GGML_VULKAN option was declared but never used)
+if (GGML_VULKAN)
+    ggml_add_backend(VULKAN)
+endif()
+")
 
-# Patch: propagate GGML_USE_CPU to ggml-base so ggml-backend-reg.cpp
-# can #ifdef GGML_USE_CPU and register the CPU backend.
-# Without this, llama_model_load_from_file() fails with
-# "no backends are loaded" because ggml_backend_reg_count() == 0.
-# Patch llama.cpp's ggml/src/CMakeLists.txt to propagate GGML_USE_CPU to ggml-base.
-# Without this, ggml_backend_reg_count() == 0 at runtime.
-# Done via Python script (no CMake escape-hell, idempotent).
-set(_llama_ggml_src_cmake "${llama_cpp_SOURCE_DIR}/ggml/src/CMakeLists.txt")
-if(NOT EXISTS "${_llama_ggml_src_cmake}")
-    message(FATAL_ERROR "llama.cpp ggml/src/CMakeLists.txt not found at ${_llama_ggml_src_cmake}")
+# Strip our own previous insertions and any bare Vulkan activations so
+# re-running configure stays idempotent.
+string(REPLACE "${_cpu_patch_block}" "" _ggml_cmake "${_ggml_cmake}")
+string(REPLACE "${_vulkan_patch_block}" "" _ggml_cmake "${_ggml_cmake}")
+string(REGEX REPLACE "\n[ \t]*ggml_add_backend\\([Vv][Uu][Ll][Kk][Aa][Nn]\\)[ \t]*\r?\n" "\n" _ggml_cmake "${_ggml_cmake}")
+
+# Insert both patches right after the first ggml_add_backend(CPU).
+string(FIND "${_ggml_cmake}" "ggml_add_backend(CPU)" _cpu_pos)
+if(_cpu_pos EQUAL -1)
+    message(FATAL_ERROR
+        "ggml_add_backend(CPU) not found in ${_ggml_src_cmake} — llama.cpp "
+        "upstream layout changed; update the ApolloCore patch block in CMakeLists.txt")
 endif()
-find_program(_PYTHON python3 REQUIRED)
-execute_process(
-    COMMAND ${_PYTHON} "${CMAKE_SOURCE_DIR}/scripts/patch_llama_cpu_backend.py"
-                "${_llama_ggml_src_cmake}"
-    RESULT_VARIABLE _patch_result
-)
-if(NOT _patch_result EQUAL 0)
-    message(FATAL_ERROR "patch_llama_cpu_backend.py failed")
-endif()
+string(LENGTH "ggml_add_backend(CPU)" _anchor_len)
+math(EXPR _insert_pos "${_cpu_pos} + ${_anchor_len}")
+string(SUBSTRING "${_ggml_cmake}" 0 ${_insert_pos} _ggml_before)
+string(SUBSTRING "${_ggml_cmake}" ${_insert_pos} -1 _ggml_after)
+set(_ggml_cmake "${_ggml_before}\n${_cpu_patch_block}\n${_vulkan_patch_block}${_ggml_after}")
+file(WRITE "${_ggml_src_cmake}" "${_ggml_cmake}")
+message(STATUS "Patched llama.cpp ggml backends (GGML_USE_CPU propagation + Vulkan activation)")
 
 # Tree-sitter — proper AST parsing for code (M3.B)
 # ============================================================================
@@ -118,7 +120,35 @@ if(NOT TREE_SITTER_SKIP_FETCH)
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(tree-sitter)
-    FetchContent_MakeAvailable(tree-sitter-cpp)
+
+    # tree-sitter-cpp's CMakeLists regenerates src/parser.c with the
+    # tree-sitter CLI whenever grammar.json looks newer — which is always on
+    # a fresh clone — and fails hard when the CLI is not installed. The repo
+    # ships a pre-generated parser.c and the CLI is not a build dependency
+    # of ours, so after populating we guard the regeneration rule behind
+    # `if(TREE_SITTER_CLI)` before the subproject is added. Hard error if
+    # upstream restructures the file and the patch anchor disappears
+    # (better than a confusing TREE_SITTER_CLI-NOTFOUND build error).
+    FetchContent_GetProperties(tree-sitter-cpp)
+    if(NOT tree-sitter-cpp_POPULATED)
+        FetchContent_Populate(tree-sitter-cpp)
+        file(READ "${tree-sitter-cpp_SOURCE_DIR}/CMakeLists.txt" _tsc_cmake)
+        string(REGEX REPLACE
+            "(add_custom_command\\(OUTPUT [^\n]*parser\\.c\")"
+            "if(TREE_SITTER_CLI)\n\\1"
+            _tsc_cmake "${_tsc_cmake}")
+        string(REGEX REPLACE
+            "(COMMENT \"Generating parser\\.c\"\\))"
+            "\\1\nendif()"
+            _tsc_cmake "${_tsc_cmake}")
+        if(NOT _tsc_cmake MATCHES "if\\(TREE_SITTER_CLI\\)")
+            message(FATAL_ERROR
+                "Could not patch ${tree-sitter-cpp_SOURCE_DIR}/CMakeLists.txt "
+                "(parser.c regeneration guard) — tree-sitter-cpp upstream layout changed")
+        endif()
+        file(WRITE "${tree-sitter-cpp_SOURCE_DIR}/CMakeLists.txt" "${_tsc_cmake}")
+    endif()
+    add_subdirectory(${tree-sitter-cpp_SOURCE_DIR} ${tree-sitter-cpp_BINARY_DIR})
 else()
     find_package(tree-sitter QUIET)
     if(NOT tree-sitter_FOUND)

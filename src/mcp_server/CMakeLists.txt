@@ -59,7 +59,7 @@ set_target_properties(apollo_mcp_server PROPERTIES
 target_compile_features(apollo_mcp_server PRIVATE cxx_std_23)
 
 # Match the rest of the project's warning posture.
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(apollo_mcp_server PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
